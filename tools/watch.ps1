@@ -1,80 +1,113 @@
-# watch.ps1 - Ambient live coach. Watches your whole screen every ~40s while you follow a lesson
-#   (video on one side) and rebuild it in Excel (other side). Pipes up with ONE short nudge only
-#   when you diverge from the lesson or look stuck; stays quiet ("On track") otherwise.
-#   Keep the video AND your Excel both visible so it can compare.
-# Test: watch.ps1 -Once   (one check, prints to console, no overlay)
+# watch.ps1 - Ambient live coach that LISTENS + WATCHES.
+#   Each cycle: records ~7s of audio (your speakers feed the video into your mic) -> measures volume.
+#     * Silent  => video PAUSED => you're doing the activity / stuck => it actively helps with your Excel.
+#     * Playing => transcribes the instructor -> knows exactly where you are -> nudges only if you've diverged.
+#   Fuses the lesson audio + your spreadsheet on screen. Logs to Coaching/.
+# Test: watch.ps1 -Once   (one check with diagnostics, no overlay)
 param([switch]$Once, [int]$IntervalSec=40)
 
 $Vault="C:\Users\jonah\Projects\excel-coach"; $Coaching=Join-Path $Vault "Coaching"; $EnvFile=Join-Path $Vault ".env"; $Model="gpt-4o"
-$WatchSys = "You are an ambient tutor watching a student's full screen while they follow a Breaking Into Wall Street Excel lesson (usually a video on one side) and replicate it in their own Excel (other side). Compare what they are building to the lesson. If they made a mistake, diverged from the lesson, mislabeled or mislinked something, or look stuck, reply with ONE short, specific, actionable nudge: max 22 words, start with the fix. If they look on track, reply with EXACTLY: OK"
+$WatchSys = "You are an ambient tutor watching a student's full screen while they follow a Breaking Into Wall Street Excel lesson and rebuild it in their own Excel. You are given (a) what the instructor is currently saying (or that the video is paused), and (b) the screen. If the student is on track and nothing needs saying, reply EXACTLY: OK . Otherwise reply with ONE short, specific, actionable nudge: max 22 words, start with the fix."
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 $script:png = Join-Path $env:TEMP "watch_shot.png"
-$script:lastNudge = ""
-$script:paused = $false
+$script:wav = Join-Path $env:TEMP "watch_audio.wav"
+$script:lastNudge=""; $script:paused=$false
+$script:lastLevel=0; $script:lastPaused=$false; $script:lastLesson=""
 
-function Read-Key {
-  $line = Get-Content $EnvFile | Where-Object { $_ -match '^\s*OPENAI_API_KEY\s*=' } | Select-Object -First 1
-  return ($line -replace '^\s*OPENAI_API_KEY\s*=\s*','').Trim().Trim('"')
+function Read-EnvVal($name,$default){
+  $l = Get-Content $EnvFile | Where-Object { $_ -match ("^\s*"+$name+"\s*=") } | Select-Object -First 1
+  if($l){ return ($l -replace ("^\s*"+$name+"\s*=\s*"),'').Trim().Trim('"') } else { return $default }
 }
+$script:key = Read-EnvVal "OPENAI_API_KEY" ""
+$MicDevice  = Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)"
+$script:ff = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
+if(-not $script:ff){ $script:ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
+
 function W-Append($file,$s){ [IO.File]::AppendAllText($file,$s,(New-Object System.Text.UTF8Encoding($false))) }
-function Log-Watch($text){
+function Log-Watch($text,$lesson){
   New-Item -ItemType Directory -Force -Path $Coaching | Out-Null
   $date=(Get-Date).ToString("yyyy-MM-dd"); $time=(Get-Date).ToString("HH:mm")
   $daily=Join-Path $Coaching ($date+".md")
   if(-not(Test-Path $daily)){ W-Append $daily ("# Coaching log - "+$date+"`n") }
-  W-Append $daily ("`n### "+$time+"  [WATCH]`n"+$text+"`n`n---`n")
+  $ctx = if($lesson){ "_lesson: "+$lesson+"_`n`n" } else { "_(video paused / working)_`n`n" }
+  W-Append $daily ("`n### "+$time+"  [WATCH]`n"+$ctx+$text+"`n`n---`n")
 }
 function Capture-Desktop($path){
   $b=[System.Windows.Forms.SystemInformation]::VirtualScreen
   $full=New-Object System.Drawing.Bitmap $b.Width,$b.Height
   $g=[System.Drawing.Graphics]::FromImage($full)
   $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
-  $maxW=1600.0; $scale=[Math]::Min(1.0,$maxW/$b.Width)
-  $nw=[int]($b.Width*$scale); $nh=[int]($b.Height*$scale)
+  $maxW=1600.0; $scale=[Math]::Min(1.0,$maxW/$b.Width); $nw=[int]($b.Width*$scale); $nh=[int]($b.Height*$scale)
   $small=New-Object System.Drawing.Bitmap $nw,$nh
   $g2=[System.Drawing.Graphics]::FromImage($small); $g2.InterpolationMode='HighQualityBicubic'
   $g2.DrawImage($full,0,0,$nw,$nh); $g2.Dispose()
   $small.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $full.Dispose(); $small.Dispose()
 }
+function Record-Audio($sec){
+  if(Test-Path $script:wav){ Remove-Item $script:wav -Force -ErrorAction SilentlyContinue }
+  & $script:ff -hide_banner -loglevel error -f dshow -i ("audio="+$MicDevice) -t $sec -ac 1 -ar 16000 -y $script:wav 2>$null
+}
+function Audio-Level {
+  if(-not (Test-Path $script:wav)){ return -100 }
+  $e="$env:TEMP\watch_vol.txt"
+  & $script:ff -hide_banner -i $script:wav -af volumedetect -f null NUL 2>$e
+  $line = Get-Content $e | Where-Object { $_ -match 'mean_volume' } | Select-Object -First 1
+  if($line -match '(-?[0-9.]+) dB'){ return [double]$Matches[1] } else { return -100 }
+}
+function Transcribe-Audio {
+  if(-not (Test-Path $script:wav)){ return "" }
+  $resp = & curl.exe -s --max-time 60 "https://api.openai.com/v1/audio/transcriptions" -H "Authorization: Bearer $script:key" -F "file=@$script:wav" -F "model=whisper-1" -F "response_format=json"
+  $j=$null; try{ $j=$resp|ConvertFrom-Json }catch{}
+  if($j.text){ return ([string]$j.text).Trim() } else { return "" }
+}
 function Post-Json($payload){
-  $bodyFile=Join-Path $env:TEMP "watch_body.json"
+  $bodyFile="$env:TEMP\watch_body.json"
   [IO.File]::WriteAllText($bodyFile,$payload,(New-Object System.Text.UTF8Encoding($false)))
   $resp = & curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H "Authorization: Bearer $script:key" -H "Content-Type: application/json" -d "@$bodyFile"
   $j=$null; try{ $j=$resp|ConvertFrom-Json }catch{}
   if($j.choices){ return [string]$j.choices[0].message.content }
-  if($j.error){ return "OK" }
   return "OK"
 }
 function Check {
+  Record-Audio 7
+  $level = Audio-Level
+  $paused = ($level -lt -47)
+  $lesson = if($paused){ "" } else { Transcribe-Audio }
   Capture-Desktop $script:png
   $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($script:png))
-  $u="Watch my screen and compare my Excel to the lesson."
-  if($script:lastNudge -and $script:lastNudge -ne "OK"){ $u+=" You last told me: '"+$script:lastNudge+"'. Don't repeat it unless it's still unaddressed." }
+  if($paused){ $u="The lesson video is PAUSED (silence) - I'm doing the hands-on activity or I'm stuck. Look at my Excel and the on-screen lesson example and tell me the specific next step or fix for exactly what I'm doing right now." }
+  else { $u="I'm watching the lesson. The instructor is currently saying: `""+$lesson+"`". Use that to know exactly where I am. Compare my Excel to the lesson; only nudge if I've clearly diverged or fallen behind." }
+  if($script:lastNudge -and $script:lastNudge -ne "OK"){ $u+=" You last told me: '"+$script:lastNudge+"'. Don't repeat unless still unaddressed." }
   $payload=@{ model=$Model; max_tokens=80; messages=@(
     @{role="system";content=$WatchSys},
     @{role="user";content=@(@{type="text";text=$u},@{type="image_url";image_url=@{url=("data:image/png;base64,"+$b64)}})}
   )} | ConvertTo-Json -Depth 12
+  $script:lastLevel=$level; $script:lastPaused=$paused; $script:lastLesson=$lesson
   return (Post-Json $payload).Trim()
 }
 
-$script:key = Read-Key
 if(-not $script:key -or $script:key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
+if(-not $script:ff){ Write-Host "ffmpeg not found"; exit }
 
-if($Once){ Write-Host ("Result: " + (Check)); exit }
+if($Once){
+  $r = Check
+  Write-Host ("level=" + [math]::Round($script:lastLevel,1) + " dB  paused=" + $script:lastPaused)
+  Write-Host ("lesson heard: '" + $script:lastLesson + "'")
+  Write-Host ("Result: " + $r)
+  exit
+}
 
 # ---------------- Coach strip overlay ----------------
 $strip=New-Object System.Windows.Forms.Form
 $strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'
-$strip.Width=620; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
+$strip.Width=640; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 $wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $strip.Left=$wa.Left + [int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-12
-
 $status=New-Object System.Windows.Forms.Panel; $status.Dock='Left'; $status.Width=8; $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90)
 $script:msg=New-Object System.Windows.Forms.Label
 $script:msg.Dock='Fill'; $script:msg.ForeColor=[System.Drawing.Color]::White; $script:msg.Font=New-Object System.Drawing.Font("Segoe UI",10)
-$script:msg.TextAlign='MiddleLeft'; $script:msg.Padding='12,0,0,0'; $script:msg.Text="Starting watch..."
-
+$script:msg.TextAlign='MiddleLeft'; $script:msg.Padding='12,0,0,0'; $script:msg.Text="Starting live coach..."
 $btns=New-Object System.Windows.Forms.Panel; $btns.Dock='Right'; $btns.Width=180; $btns.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 function Mini($t,$x,$w){
   $b=New-Object System.Windows.Forms.Button; $b.Text=$t; $b.Left=$x; $b.Top=12; $b.Width=$w; $b.Height=28
@@ -83,23 +116,20 @@ function Mini($t,$x,$w){
 }
 $bPause=Mini "Pause" 6 70; $bAsk=Mini "Ask" 80 50; $bX=Mini "X" 134 40
 $btns.Controls.AddRange(@($bPause,$bAsk,$bX))
-
 $strip.Controls.Add($script:msg); $strip.Controls.Add($status); $strip.Controls.Add($btns)
-
-$timer=New-Object System.Windows.Forms.Timer; $timer.Interval=[Math]::Max(15,$IntervalSec)*1000
-
+$timer=New-Object System.Windows.Forms.Timer; $timer.Interval=[Math]::Max(20,$IntervalSec)*1000
 function Do-Check {
   if($script:paused){ return }
-  $script:msg.Text="checking..."; [System.Windows.Forms.Application]::DoEvents()
+  $script:msg.Text="listening + checking..."; [System.Windows.Forms.Application]::DoEvents()
   $r = Check
-  if($r -eq "OK" -or $r -eq ""){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:msg.Text="On track" }
+  if($r -eq "OK" -or $r -eq ""){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:msg.Text=$(if($script:lastPaused){"Working - looks fine"}else{"On track"}) }
   else {
     $status.BackColor=[System.Drawing.Color]::FromArgb(220,170,60); $script:msg.Text=$r
-    if($r -ne $script:lastNudge){ Log-Watch $r; [System.Media.SystemSounds]::Asterisk.Play() }
+    if($r -ne $script:lastNudge){ Log-Watch $r $script:lastLesson; [System.Media.SystemSounds]::Asterisk.Play() }
   }
   $script:lastNudge=$r
 }
-$bPause.Add_Click({ $script:paused = -not $script:paused; $bPause.Text = if($script:paused){"Resume"}else{"Pause"}; if($script:paused){ $script:msg.Text="Paused" } })
+$bPause.Add_Click({ $script:paused = -not $script:paused; $bPause.Text=$(if($script:paused){"Resume"}else{"Pause"}); if($script:paused){ $script:msg.Text="Paused" } })
 $bAsk.Add_Click({ Start-Process "C:\Users\jonah\Projects\excel-coach\tools\Coach me now.lnk" -ErrorAction SilentlyContinue })
 $bX.Add_Click({ $timer.Stop(); $strip.Close() })
 $timer.Add_Tick({ Do-Check })
