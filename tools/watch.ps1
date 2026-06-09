@@ -10,6 +10,11 @@ $Vault="C:\Users\jonah\Projects\excel-coach"; $Coaching=Join-Path $Vault "Coachi
 $WatchSys = "You are an ambient tutor watching a student's full screen while they follow a Breaking Into Wall Street Excel lesson and rebuild it in their own Excel. You are given (a) what the instructor is currently saying (or that the video is paused), and (b) the screen. If the student is on track and nothing needs saying, reply EXACTLY: OK . Otherwise reply with ONE short, specific, actionable nudge: max 22 words, start with the fix."
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class Win { [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr h, uint a); }
+'@
 $script:png = Join-Path $env:TEMP "watch_shot.png"
 $script:wav = Join-Path $env:TEMP "watch_audio.wav"
 $script:lastNudge=""; $script:paused=$false
@@ -72,8 +77,9 @@ function Post-Json($payload){
 function Check {
   Record-Audio 7
   $level = Audio-Level
-  $paused = ($level -lt -47)
+  $paused = ($level -lt -45)
   $lesson = if($paused){ "" } else { Transcribe-Audio }
+  if(-not $paused -and $lesson.Length -lt 3){ $paused = $true; $lesson = "" }
   Capture-Desktop $script:png
   $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($script:png))
   if($paused){ $u="The lesson video is PAUSED (silence) - I'm doing the hands-on activity or I'm stuck. Look at my Excel and the on-screen lesson example and tell me the specific next step or fix for exactly what I'm doing right now." }
@@ -133,5 +139,5 @@ $bPause.Add_Click({ $script:paused = -not $script:paused; $bPause.Text=$(if($scr
 $bAsk.Add_Click({ Start-Process "C:\Users\jonah\Projects\excel-coach\tools\Coach me now.lnk" -ErrorAction SilentlyContinue })
 $bX.Add_Click({ $timer.Stop(); $strip.Close() })
 $timer.Add_Tick({ Do-Check })
-$strip.Add_Shown({ Do-Check; $timer.Start() })
+$strip.Add_Shown({ try{ [Win]::SetWindowDisplayAffinity($strip.Handle, 0x11) | Out-Null }catch{}; Do-Check; $timer.Start() })
 [void]$strip.ShowDialog()
