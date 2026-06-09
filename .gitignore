@@ -1,0 +1,34 @@
+# --- Privacy: never commit study content, media, or secrets ---
+
+# Obsidian config — contains plugin settings INCLUDING your OpenAI API key
+.obsidian/
+
+# Your captured study content — keep local only
+Sessions/
+Flashcards/
+
+# Media of any kind, anywhere
+*.mp3
+*.wav
+*.webm
+*.m4a
+*.ogg
+*.flac
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.mp4
+*.mov
+
+# Secrets
+.env
+*.env
+*.key
+secrets*
+
+# OS cruft
+Thumbs.db
+.DS_Store
+desktop.ini
