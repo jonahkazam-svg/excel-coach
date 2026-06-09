@@ -1,11 +1,12 @@
-# coach.ps1 - Multi-mode AI tutor popup.
+# coach.ps1 - Multi-mode AI tutor popup that logs everything into the Obsidian vault.
 #   Socratic (flag & ask) | Just answer (tell me now) | Analyze session (weak points from last transcript)
-#   Switch modes with the buttons in the popup.
-# Test:  coach.ps1 -Test -Mode socratic|answer|analyze   (prints to console, no popup)
+#   Every response is saved to Coaching/<date>.md (+ screenshot); analyses also append to Coaching/Weak Points.md
+# Test:  coach.ps1 -Test -Mode socratic|answer|analyze   (prints to console, still logs)
 param([switch]$Test, [ValidateSet('socratic','answer','analyze')][string]$Mode='socratic')
 
 $Vault    = "C:\Users\jonah\Projects\excel-coach"
 $Sessions = Join-Path $Vault "Sessions"
+$Coaching = Join-Path $Vault "Coaching"
 $EnvFile  = Join-Path $Vault ".env"
 $Model    = "gpt-4o"
 
@@ -25,6 +26,27 @@ function Capture-Screen($path){
   $g=[System.Drawing.Graphics]::FromImage($bmp)
   $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size)
   $bmp.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $g.Dispose(); $bmp.Dispose()
+}
+function W-Append($file,$s){ [IO.File]::AppendAllText($file,$s,(New-Object System.Text.UTF8Encoding($false))) }
+function Save-Shot($tempPng){
+  $d=Join-Path $Coaching "_shots"; New-Item -ItemType Directory -Force -Path $d | Out-Null
+  $leaf="coach-"+(Get-Date).ToString("yyyyMMdd-HHmmss")+".png"
+  Copy-Item $tempPng (Join-Path $d $leaf) -Force; return $leaf
+}
+function Log-Coaching($mode,$text,$shotLeaf){
+  New-Item -ItemType Directory -Force -Path $Coaching | Out-Null
+  $date=(Get-Date).ToString("yyyy-MM-dd"); $time=(Get-Date).ToString("HH:mm")
+  $daily=Join-Path $Coaching ($date+".md")
+  if(-not(Test-Path $daily)){ W-Append $daily ("# Coaching log - "+$date+"`n") }
+  $e="`n### "+$time+"  ["+$mode.ToUpper()+"]`n"
+  if($shotLeaf){ $e+="![["+$shotLeaf+"]]`n`n" }
+  $e+=$text+"`n`n---`n"
+  W-Append $daily $e
+  if($mode -eq 'analyze'){
+    $wp=Join-Path $Coaching "Weak Points.md"
+    if(-not(Test-Path $wp)){ W-Append $wp "# Weak Points (accumulating across sessions)`n" }
+    W-Append $wp ("`n## "+$date+" "+$time+"`n"+$text+"`n")
+  }
 }
 function Post-Json($key,$payload){
   $bodyFile=Join-Path $env:TEMP "coach_body.json"
@@ -62,11 +84,11 @@ $script:key = Read-Key
 if(-not $script:key -or $script:key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 
 if($Test){
-  if($Mode -eq 'analyze'){ Write-Host (Analyze-Session $script:key) }
+  if($Mode -eq 'analyze'){ $r=Analyze-Session $script:key; Log-Coaching 'analyze' $r $null; Write-Host $r }
   else {
-    $p=Join-Path $env:TEMP "coach_shot.png"; Capture-Screen $p
+    $p=Join-Path $env:TEMP "coach_shot.png"; Capture-Screen $p; $leaf=Save-Shot $p
     $sys = if($Mode -eq 'answer'){$AnswerSys}else{$SocraticSys}
-    Write-Host (Ask-Vision $script:key $p $sys)
+    $r=Ask-Vision $script:key $p $sys; Log-Coaching $Mode $r $leaf; Write-Host $r
   }
   exit
 }
@@ -74,6 +96,7 @@ if($Test){
 # --- Live popup ---
 $script:png = Join-Path $env:TEMP "coach_shot.png"
 Capture-Screen $script:png
+$script:shotLeaf = Save-Shot $script:png
 
 $script:tb = New-Object System.Windows.Forms.TextBox
 $script:title = New-Object System.Windows.Forms.Label
@@ -83,9 +106,9 @@ function Run-Mode($mode){
   elseif($mode -eq 'analyze'){ $script:title.Text="COACH - Session analysis"; $script:tb.Text="Reading your last session..." }
   else { $script:title.Text="COACH - Socratic"; $script:tb.Text="Thinking..." }
   [System.Windows.Forms.Application]::DoEvents()
-  if($mode -eq 'analyze'){ $script:tb.Text = Analyze-Session $script:key }
-  elseif($mode -eq 'answer'){ $script:tb.Text = Ask-Vision $script:key $script:png $AnswerSys }
-  else { $script:tb.Text = Ask-Vision $script:key $script:png $SocraticSys }
+  if($mode -eq 'analyze'){ $r=Analyze-Session $script:key; $script:tb.Text=$r; Log-Coaching 'analyze' $r $null }
+  elseif($mode -eq 'answer'){ $r=Ask-Vision $script:key $script:png $AnswerSys; $script:tb.Text=$r; Log-Coaching 'answer' $r $script:shotLeaf }
+  else { $r=Ask-Vision $script:key $script:png $SocraticSys; $script:tb.Text=$r; Log-Coaching 'socratic' $r $script:shotLeaf }
   $script:tb.Select(0,0); $script:tb.ScrollToCaret()
 }
 
