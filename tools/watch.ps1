@@ -73,15 +73,16 @@ while(-not $sync.stop){
         Cap $sync.png; $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png))
         if($asked){
           $u="The student spoke to you and asked: '"+$txt+"'. Look at their screen and answer clearly and helpfully in 1 to 4 sentences - actually explain it so they understand, like a good tutor. Use their screen and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
-          $useModel=$sync.model; $det="high"; $maxtok=380
+          $useModel=$sync.model; $det="high"; $maxtok=2500; $effort="medium"
         } else {
           if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). Look at what I'm actually doing and, ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences). If it looks fine or you're unsure, reply EXACTLY: OK." }
           else { $u="Recent lesson audio: '"+$lessonCtx+"'. Look at what I'm doing on screen. ONLY if you can clearly see a real, specific mistake, point it out (1-2 sentences). If it looks fine or you're not sure, reply EXACTLY: OK - do not guess or nitpick." }
+          $u+=" Do NOT try to compute or answer quiz/test calculation questions yourself; reply OK for those (the student can ask for that)."
           if($sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat it." }
-          $useModel=$sync.model; $det="auto"; $maxtok=120
+          $useModel=$sync.model; $det="auto"; $maxtok=120; $effort="none"
         }
         $msgs=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail=$det}})})
-        if($useModel -match '^gpt-5'){ $payload=@{ model=$useModel; max_completion_tokens=$maxtok; reasoning_effort='none'; messages=$msgs } | ConvertTo-Json -Depth 12 }
+        if($useModel -match '^gpt-5'){ $payload=@{ model=$useModel; max_completion_tokens=$maxtok; reasoning_effort=$effort; messages=$msgs } | ConvertTo-Json -Depth 12 }
         else { $payload=@{ model=$useModel; max_tokens=$maxtok; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
         $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
         $vr=& curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)

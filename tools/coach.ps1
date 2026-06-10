@@ -10,14 +10,19 @@ $SystemPrompt="You are a sharp Excel and financial-modeling tutor at Breaking In
 $AnalyzeSys="You are a financial-modeling study coach. Given a transcript of a Breaking Into Wall Street session (instructor + the student thinking aloud), produce: WEAK POINTS (where they were confused/guessed/erred - quote briefly), COVERED (key concepts/shortcuts), DRILLS (2-3 specific 5-10 min exercises). Be specific and concise."
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Net.Http
+Add-Type 'using System; using System.Runtime.InteropServices; public class W4 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); }'
 $script:history=@(); $script:png=Join-Path $env:TEMP "coach_shot.png"; $script:shotLeaf=$null; $script:brain=""
 
 function Read-Key { $l=Get-Content $EnvFile | Where-Object { $_ -match '^\s*OPENAI_API_KEY\s*=' } | Select-Object -First 1; return ($l -replace '^\s*OPENAI_API_KEY\s*=\s*','').Trim().Trim('"') }
 function Capture-Desktop($path){
-  $b=[System.Windows.Forms.SystemInformation]::VirtualScreen
-  $full=New-Object System.Drawing.Bitmap $b.Width,$b.Height
-  $g=[System.Drawing.Graphics]::FromImage($full); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
-  $mw=1500.0; $s=[Math]::Min(1.0,$mw/$b.Width); $nw=[int]($b.Width*$s); $nh=[int]($b.Height*$s)
+  $h=[W4]::GetForegroundWindow(); $r=New-Object W4+RECT; [void][W4]::GetWindowRect($h,[ref]$r); $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
+  if($w -gt 300 -and $ht -gt 200){
+    $full=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($full); try{ $g.CopyFromScreen($r.Left,$r.Top,0,0,(New-Object System.Drawing.Size($w,$ht))) }catch{}; $g.Dispose()
+  } else {
+    $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; $w=$b.Width; $ht=$b.Height
+    $full=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($full); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
+  }
+  $mw=2000.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
   $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($full,0,0,$nw,$nh); $g2.Dispose()
   $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $full.Dispose(); $sm.Dispose()
 }
@@ -40,7 +45,7 @@ function Load-Brain {
   return ("`n`nMEMORY - what you know about this student from past sessions (reference recurring weaknesses by name):`n"+($parts -join "`n`n"))
 }
 function Stream-Chat($messages,$onToken){
-  if($Model -match '^gpt-5'){ $payload=@{ model=$Model; max_completion_tokens=600; reasoning_effort='none'; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14 }
+  if($Model -match '^gpt-5'){ $payload=@{ model=$Model; max_completion_tokens=3500; reasoning_effort='medium'; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14 }
   else { $payload=@{ model=$Model; max_tokens=600; temperature=0; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14 }
   $client=New-Object System.Net.Http.HttpClient; $client.Timeout=[TimeSpan]::FromSeconds(120)
   $req=New-Object System.Net.Http.HttpRequestMessage('Post','https://api.openai.com/v1/chat/completions')
@@ -65,7 +70,7 @@ function Stream-Chat($messages,$onToken){
 function Chat($userText,$onToken){
   Capture-Desktop $script:png
   $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($script:png))
-  $msgs=@(@{role="system";content=($SystemPrompt+$script:brain)})+$script:history+@(@{role="user";content=@(@{type="text";text=$userText},@{type="image_url";image_url=@{url=("data:image/png;base64,"+$b64)}})})
+  $msgs=@(@{role="system";content=($SystemPrompt+$script:brain)})+$script:history+@(@{role="user";content=@(@{type="text";text=$userText},@{type="image_url";image_url=@{url=("data:image/png;base64,"+$b64);detail="high"}})})
   $r=Stream-Chat $msgs $onToken
   $script:history+=@{role="user";content=$userText}; $script:history+=@{role="assistant";content=$r}; $script:shotLeaf=Save-Shot $script:png
   return $r
