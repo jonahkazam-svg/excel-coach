@@ -25,7 +25,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
@@ -93,7 +93,7 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
@@ -116,7 +116,8 @@ while(-not $sync.stop){
       if($exB){ $ca+=@{type='text';text='[Image: Excel window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail='high'}} }
       if($coB){ $ca+=@{type='text';text='[Image: browser window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail='high'}} }
       if($fbB){ $ca+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail='high'}} }
-      $ma=@(@{role='system';content=($sysA+$sync.brain)},@{role='user';content=$ca})
+      $hm=@(); foreach($h in $askHist){ $hm+=@{role='user';content=[string]$h.q}; $hm+=@{role='assistant';content=[string]$h.a} }
+      $ma=@(@{role='system';content=($sysA+$sync.brain)})+$hm+@(@{role='user';content=$ca})
       $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){2800}elseif($tdet){3500}else{900}); reasoning_effort=$(if($isAudit){'high'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
       $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
       $ar=& curl.exe -s --max-time 150 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
@@ -124,6 +125,27 @@ while(-not $sync.stop){
       $ans=if($aj.choices){ ([string]$aj.choices[0].message.content).Trim() }elseif($aj.error){ "Error: "+$aj.error.message }else{ "No response - check your connection." }
       if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ans=Clean-Answer $ans }
       $sync.text=$ans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+      if($ans -and ($ans -notmatch '^(Error|No response|Sorry)')){
+        $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
+        $arec=$(if($ans.Length -gt 1200){ $ans.Substring(0,1200) }else{ $ans })
+        [void]$askHist.Add(@{q=$qrec;a=$arec}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
+      }
+      if($isAudit -and $ans -and ($ans -match '##\s*Issues')){
+        try{
+          $isec=([regex]::Match($ans,'(?s)##\s*Issues(.*?)(?=##|$)')).Groups[1].Value.Trim()
+          if($isec -and ($isec -notmatch '^\s*(none|no issues)')){
+            if($isec.Length -gt 700){ $isec=$isec.Substring(0,700) }
+            if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle ("Sheet audit found: "+(($isec -replace '\s+',' ').Trim())) }catch{} }
+            if($sync.curr){
+              $mp=@{ model="gpt-4o-mini"; max_tokens=40; temperature=0; messages=@(@{role="system";content="Given a CURRICULUM (lines 'ID: topic') and ISSUES found auditing a student's practice sheet, reply with ONLY the single best-matching node ID (like DCF-02), or NONE."},@{role="user";content=("CURRICULUM:`n"+$sync.curr+"`n`nISSUES:`n"+$isec)}) } | ConvertTo-Json -Depth 6
+              $mbf="$env:TEMP\xc_amap.json"; [IO.File]::WriteAllText($mbf,$mp,(New-Object System.Text.UTF8Encoding($false)))
+              $mr=& curl.exe -s --max-time 20 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$mbf)
+              $mj=$null; try{ $mj=$mr|ConvertFrom-Json }catch{}
+              if($mj.choices){ $mid=([string]$mj.choices[0].message.content).Trim(); if(($mid -match '^[A-Z]{2,3}-\d{2}$') -and (Get-Command Bump-Mastery -ErrorAction SilentlyContinue)){ try{ Bump-Mastery $mid 'shaky' 'sheet audit found issues' }catch{} } }
+            }
+          }
+        }catch{}
+      }
     }catch{ $sync.text="Sorry - that question failed. Try again."; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1 }
     continue
   }
@@ -144,6 +166,7 @@ while(-not $sync.stop){
           $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}; if($jj.text){ $txt=([string]$jj.text).Trim() }
         }
         $asked=($sync.micMode -and (-not $sync.muteMe) -and ($txt -match '(?i)\bcoach\b'))
+        if($asked){ $sync.ackPing=$true }
         if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 3){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{} }
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         $fgh=[Win2]::GetForegroundWindow(); $excelFg=$false; try{ $excelFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
@@ -180,13 +203,15 @@ while(-not $sync.stop){
         if($exB){ $content+=@{type='text';text='[Image: MY Excel sheet (my own work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail=$det}} }
         if($coB){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail=$det}} }
         if($fbB){ $content+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail=$det}} }
-        $msgs=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=$content})
+        $hm2=@(); if($asked){ foreach($h in $askHist){ $hm2+=@{role='user';content=[string]$h.q}; $hm2+=@{role='assistant';content=[string]$h.a} } }
+        $msgs=@(@{role='system';content=($sync.sys+$sync.brain)})+$hm2+@(@{role='user';content=$content})
         if($useModel -match '^gpt-5'){ $payload=@{ model=$useModel; max_completion_tokens=$maxtok; reasoning_effort=$effort; messages=$msgs } | ConvertTo-Json -Depth 12 }
         else { $payload=@{ model=$useModel; max_tokens=$maxtok; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
         $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
         $vr=& curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
         $vj=$null; try{ $vj=$vr|ConvertFrom-Json }catch{}
         $sync.text=if($vj.choices){ $at=([string]$vj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $at=Clean-Answer $at }; $at } else { "OK" }
+        if($asked -and $sync.text -and $sync.text -ne "OK"){ $arec2=$(if($sync.text.Length -gt 1200){ $sync.text.Substring(0,1200) }else{ $sync.text }); [void]$askHist.Add(@{q=$txt;a=$arec2}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) } }
         if((-not $asked) -and $working -and $sync.text -ne "OK" -and $sync.text -ne ""){
           $vu="A quick check flagged this about my Excel: '"+$sync.text+"'. Using the EXACT cell data, decide: is this a GENUINE error (wrong formula, wrong value, wrong reference, wrong sign, broken link, or a real conceptual mistake), or is it just a different-but-valid method, a different order of steps, incomplete work in progress, or style? If it is NOT a genuine error, reply EXACTLY: OK. If it IS, restate it in ONE short sentence naming the exact cell."
           $vc=@(@{type='text';text=$vu}); if($xlLive){ $vc+=@{type='text';text=("EXACT Excel data:`n"+$xlLive)} }
@@ -446,7 +471,7 @@ function Tune-WebView($wv){
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
 $script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date)
-$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date)
+$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
 $strip=$mkS.f; $wvS=$mkS.wv; $script:strip=$strip; $script:wvS=$wvS
@@ -510,7 +535,8 @@ function Handle-Ask($q){
   if($script:askBusy){ return }
   $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
   JS $script:wvS ("XC.busy(true)")
-  if($q -eq ""){ Set-Msg "Reading your Excel + the lesson..."; $script:lastHelpQ="" } else { Set-Msg ("Thinking: "+$q); $script:lastHelpQ=$q }
+  if($q -eq ""){ Set-Msg "Reading your Excel + the lesson..."; $script:lastHelpQ=""; $script:busyLabel="Reading your screen" } else { Set-Msg ("Thinking: "+$q); $script:lastHelpQ=$q; $script:busyLabel="Thinking" }
+  $script:busySince=(Get-Date)
   Set-Dot '#2563eb' $false
   [System.Windows.Forms.Application]::DoEvents()
   $det=$false; if($q){ $det=[bool]($q -match '(?i)explain|in detail|elaborate|\bwhy\b') }
@@ -541,7 +567,7 @@ function Handle-Act($k){
       if($script:askBusy){ return }
       $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
       JS $script:wvS ("XC.busy(true)")
-      Set-Msg "Deep-checking your sheet..."; Set-Dot '#2563eb' $false
+      Set-Msg "Deep-checking your sheet..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Deep-checking"
       Show-PanelLoading
       $sync.askLabel="Sheet audit"; $sync.typedDetail=$true; $sync.typedAsk="__AUDIT__"
     }
@@ -557,6 +583,7 @@ function Handle-Panel($k,$term){
       if($script:askBusy){ return }
       $script:askBusy=$true
       JS $script:wvP ("XC.setAnswerLoading()")
+      $script:busySince=(Get-Date); $script:busyLabel="Explaining"
       $sync.askLabel="Explain in detail"; $sync.typedDetail=$true; $sync.typedAsk=$(if($script:lastHelpQ){ $script:lastHelpQ }else{ "__ASSIST__" })
     }
     'define'  {
@@ -565,6 +592,7 @@ function Handle-Panel($k,$term){
       JS $script:wvP ("XC.setAnswerLoading()")
       $q2="Define '"+$term+"' clearly and simply in the context of my course and what I am working on. 2 to 4 sentences, with a tiny concrete example if useful."
       $script:lastHelpQ=$q2
+      $script:busySince=(Get-Date); $script:busyLabel="Defining"
       $sync.askLabel="Define "+$term; $sync.typedDetail=$false; $sync.typedAsk=$q2
     }
     'simplify' {
@@ -637,11 +665,17 @@ $ui.Add_Tick({
   if((-not $script:collapsed) -and $script:idle -and (-not $script:askBusy) -and (-not $panel.Visible)){
     if(((Get-Date)-$script:lastActive).TotalSeconds -ge 45){ $script:collapsed=$true; Apply-Strip }
   }
+  if($sync.ackPing){
+    $sync.ackPing=$false; $script:askBusy=$true; $script:busySince=(Get-Date); $script:busyLabel="Heard you - thinking"
+    $script:idle=$false; Set-Dot '#2563eb' $false; Set-Msg "Heard you - thinking..."; JS $script:wvS ("XC.busy(true)")
+    if(-not $sync.muteSound){ try{ (New-Object System.Media.SoundPlayer $sync.chime).Play() }catch{} }
+  }
+  if($script:askBusy -and $script:busySince){ $es=[int]((Get-Date)-$script:busySince).TotalSeconds; if($es -ge 4){ Set-Msg ($script:busyLabel+"... "+$es+"s") } }
   if($sync.stamp -gt $script:seen){
     $script:seen=$sync.stamp; $r=$sync.text
     if($r -ne "OK" -and $r -ne ""){ $script:lastActive=(Get-Date) }
     if($sync.isAnswer){
-      $script:askBusy=$false; JS $script:wvS ("XC.busy(false)")
+      $script:askBusy=$false; $script:busySince=$null; JS $script:wvS ("XC.busy(false)")
       $lbl=[string]$sync.askLabel; $sync.askLabel=""
       if($r -ne "" -and $r -ne "OK"){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; Set-Dot '#2563eb' $false; Set-Msg "Answer ready"; Show-Answer $r; Set-Query $(if($lbl){ $lbl }else{ "Voice question" }); Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ $sync.ttsText=$r }; $script:baseStatus="On track" }
       else { $script:idle=$true; Set-Dot '#22c55e' $true }
