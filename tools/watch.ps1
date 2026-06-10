@@ -44,6 +44,18 @@ if($WatchCur -eq "1"){ try{ . (Join-Path $PSScriptRoot "curriculum.ps1"); try{ C
 $sync.micMode=$true; $sync.srcLabel="Microphone ("+$sync.mic+")"
 Write-Host ("Audio source: "+$sync.srcLabel)
 
+# takeover: a new launch replaces any previous coach - kill stale watch.ps1
+# instances and orphaned mic recorders so exactly one coach runs after any start
+try{
+  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match '-File\b[^|;]*watch\.ps1' } |
+    ForEach-Object { try{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }catch{} }
+  Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'watch_seg' } |
+    ForEach-Object { try{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }catch{} }
+  Start-Sleep -Milliseconds 600
+}catch{}
+
 # start NONSTOP segmented audio capture
 if(Test-Path $sync.segdir){ Remove-Item $sync.segdir -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force -Path $sync.segdir | Out-Null
