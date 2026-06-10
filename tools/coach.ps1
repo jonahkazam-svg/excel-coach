@@ -6,11 +6,11 @@
 param([switch]$Test, [ValidateSet('socratic','answer','analyze')][string]$Mode='socratic')
 
 $Vault="C:\Users\jonah\Projects\excel-coach"; $Sessions=Join-Path $Vault "Sessions"; $Coaching=Join-Path $Vault "Coaching"; $EnvFile=Join-Path $Vault ".env"; $Model="gpt-5.5"
-$SystemPrompt="You are a sharp Excel and financial-modeling tutor at Breaking Into Wall Street / investment-banking level. The screenshot shows the student's WHOLE desktop - usually the lesson (video/example) on one side and their own Excel on the other. Compare the two. Have a natural back-and-forth: nudge them to think when it helps, answer directly when they ask. Reference their known weak points by name when relevant. Keep replies concise unless they ask for more."
+$SystemPrompt="You are a precise Excel and financial-modeling tutor at Breaking Into Wall Street / investment-banking level. You are given image(s): the student's OWN Excel sheet and/or the course lesson, each labeled. METHOD for getting it right: (1) first read the exact question or task carefully and be sure you understand precisely what is being asked; (2) work through it step by step using the actual numbers and cells you can see; (3) double-check your arithmetic and logic; (4) then give the correct answer with a brief clear explanation, referring to cells by their visible labels. Use the lesson context and the student's known weak points. Accuracy above all - if you are not sure, say what you would check rather than guessing. Keep it focused unless they ask for more."
 $AnalyzeSys="You are a financial-modeling study coach. Given a transcript of a Breaking Into Wall Street session (instructor + the student thinking aloud), produce: WEAK POINTS (where they were confused/guessed/erred - quote briefly), COVERED (key concepts/shortcuts), DRILLS (2-3 specific 5-10 min exercises). Be specific and concise."
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Net.Http
-Add-Type 'using System; using System.Runtime.InteropServices; public class W4 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); }'
+Add-Type 'using System; using System.Runtime.InteropServices; public class W4 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags); }'
 $script:history=@(); $script:png=Join-Path $env:TEMP "coach_shot.png"; $script:shotLeaf=$null; $script:brain=""
 
 function Read-Key { $l=Get-Content $EnvFile | Where-Object { $_ -match '^\s*OPENAI_API_KEY\s*=' } | Select-Object -First 1; return ($l -replace '^\s*OPENAI_API_KEY\s*=\s*','').Trim().Trim('"') }
@@ -57,25 +57,44 @@ function Stream-Chat($messages,$onToken){
   try {
     $resp=$client.SendAsync($req,[System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).Result
     $rd=New-Object System.IO.StreamReader($resp.Content.ReadAsStreamAsync().Result)
-    while(-not $rd.EndOfStream){
-      $line=$rd.ReadLine()
+    $deadline=[DateTime]::UtcNow.AddSeconds(150); $gotAny=$false
+    while($true){
+      if([DateTime]::UtcNow -gt $deadline){ if(-not $gotAny -and $onToken){ & $onToken "(timed out waiting for the model - try again)" }; break }
+      $lt=$rd.ReadLineAsync()
+      if(-not $lt.Wait(100000)){ if(-not $gotAny -and $onToken){ & $onToken "(timed out waiting for the model - try again)" }; break }
+      $line=$lt.Result
+      if($null -eq $line){ break }
       if($line -and $line.StartsWith('data: ')){
         $d=$line.Substring(6); if($d -eq '[DONE]'){ break }
         $o=$null; try{ $o=$d|ConvertFrom-Json }catch{}
         $tok=$o.choices[0].delta.content
-        if($tok){ [void]$full.Append($tok); if($onToken){ & $onToken $tok } }
+        if($tok){ $gotAny=$true; [void]$full.Append($tok); if($onToken){ & $onToken $tok } }
       }
     }
-  } catch { $m="(stream error: "+$_.Exception.Message+")"; if($onToken){ & $onToken $m }; [void]$full.Append($m) } finally { $client.Dispose() }
+  } catch { $m="(stream error: "+$_.Exception.Message+")"; if($onToken){ & $onToken $m }; [void]$full.Append($m) } finally { try{ $rd.Dispose() }catch{}; $client.Dispose() }
   return $full.ToString()
 }
+function Cap-Win($proc){
+  $p=Get-Process $proc -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | Sort-Object { $_.MainWindowTitle.Length } -Descending | Select-Object -First 1
+  if(-not $p){ return $null }
+  $h=$p.MainWindowHandle; $r=New-Object W4+RECT; [void][W4]::GetWindowRect($h,[ref]$r); $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
+  if($w -lt 200 -or $ht -lt 200){ return $null }
+  $bmp=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($bmp); $hdc=$g.GetHdc(); [void][W4]::PrintWindow($h,$hdc,2); $g.ReleaseHdc($hdc); $g.Dispose()
+  $mw=1500.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
+  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g3=[System.Drawing.Graphics]::FromImage($sm); $g3.InterpolationMode='HighQualityBicubic'; $g3.DrawImage($bmp,0,0,$nw,$nh); $g3.Dispose()
+  $f=Join-Path $env:TEMP ("coachcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
+  return @{ b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($f)); path=$f }
+}
 function Chat($userText,$onToken){
-  Capture-Desktop $script:png
-  $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($script:png))
+  $ex=Cap-Win "EXCEL"; $co=Cap-Win "chrome"; if(-not $co){ $co=Cap-Win "msedge" }; if(-not $co){ $co=Cap-Win "firefox" }
   $ut=$userText; $lf=Join-Path $env:TEMP "xc_live_lesson.txt"; if((Test-Path $lf) -and (((Get-Date)-(Get-Item $lf).LastWriteTime).TotalMinutes -lt 5)){ $ll=(Get-Content $lf -Raw).Trim(); if($ll){ $ut="[Instructor has recently been teaching: '"+$ll+"']  "+$userText } }
-  $msgs=@(@{role="system";content=($SystemPrompt+$script:brain)})+$script:history+@(@{role="user";content=@(@{type="text";text=$ut},@{type="image_url";image_url=@{url=("data:image/png;base64,"+$b64);detail="high"}})})
+  $content=@(@{type="text";text=$ut})
+  if($ex){ $content+=@{type="text";text="[Image: MY Excel sheet]"}; $content+=@{type="image_url";image_url=@{url=("data:image/png;base64,"+$ex.b64);detail="high"}} }
+  if($co){ $content+=@{type="text";text="[Image: the course/lesson]"}; $content+=@{type="image_url";image_url=@{url=("data:image/png;base64,"+$co.b64);detail="high"}} }
+  $msgs=@(@{role="system";content=($SystemPrompt+$script:brain)})+$script:history+@(@{role="user";content=$content})
   $r=Stream-Chat $msgs $onToken
-  $script:history+=@{role="user";content=$userText}; $script:history+=@{role="assistant";content=$r}; $script:shotLeaf=Save-Shot $script:png
+  $script:history+=@{role="user";content=$userText}; $script:history+=@{role="assistant";content=$r}
+  if($ex){ try{ Copy-Item $ex.path $script:png -Force; $script:shotLeaf=Save-Shot $script:png }catch{ $script:shotLeaf=$null } } else { $script:shotLeaf=$null }
   return $r
 }
 function Analyze-Session {
