@@ -41,6 +41,30 @@ function XC-SameIssue($a,$b){
   return ((($inter / [double]$union)) -ge 0.5)
 }
 
+# Assemble the full context block the tutor leverages: recurring weak points,
+# concepts already covered, and the curriculum/recency brain. Rebuilt periodically
+# so struggles captured DURING a session are leveraged immediately, not after restart.
+function Build-FullBrain {
+  $brain=""
+  $wpf=Join-Path $script:XCCoaching "Weak Points.md"
+  if(Test-Path $wpf){ $bt=(Get-Content $wpf -Raw); if($bt.Length -gt 1800){ $bt=$bt.Substring($bt.Length-1800) }; $brain=" The student's known recurring weak points and struggles (call one out by name if it recurs, and proactively reinforce it): "+$bt }
+  $kfb=Join-Path $script:XCCoaching "Knowledge.md"
+  if(Test-Path $kfb){ $kt=(Get-Content $kfb -Raw); if($kt.Length -gt 2000){ $kt=$kt.Substring($kt.Length-2000) }; $brain=$brain+" Concepts the student has already covered in lessons: "+$kt }
+  try{ $brain=$brain+(Build-CurriculumBrain) }catch{}
+  return $brain
+}
+
+# Record a struggle the coach caught while the student was working (a confirmed
+# error, or a topic they got wrong) - not just things they said aloud. Feeds back
+# into Weak Points so future help reinforces it.
+function Log-Struggle($text){
+  if(-not $text){ return }
+  $t=([string]$text).Trim(); if($t -eq "" -or $t -match '^\s*OK\s*$'){ return }
+  $wpf=Join-Path $script:XCCoaching "Weak Points.md"
+  if(-not (Test-Path $wpf)){ XC-Append $wpf "# Weak Points (accumulating across sessions)`r`n" }
+  XC-Append $wpf ("`r`n## (caught while working) "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"`r`n- "+$t+"`r`n")
+}
+
 function Get-Curriculum {
   $f = Join-Path $script:XCCoaching "Curriculum.md"
   if(-not (Test-Path $f)){ return @() }

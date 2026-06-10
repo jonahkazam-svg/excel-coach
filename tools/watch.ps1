@@ -81,7 +81,7 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1)
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
@@ -181,6 +181,7 @@ while(-not $sync.stop){
           if($vjj.choices){ $vt=([string]$vjj.choices[0].message.content).Trim(); if(($vt -match '^\s*OK') -or ($vt -eq "")){ $sync.text="OK" } else { if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $vt=Clean-Answer $vt }; $sync.text=$vt } }
         }
         if((-not $asked) -and $sync.text -ne "OK" -and $sync.text -ne ""){ if(((Get-Date)-$lastNudgeT).TotalSeconds -lt 25){ $sync.text="OK" } else { $lastNudgeT=(Get-Date) } }
+        if((-not $asked) -and $working -and $sync.text -ne "OK" -and $sync.text -ne ""){ $newStr=$true; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $newStr=(-not (XC-SameIssue $sync.text $lastStruggleLogged)) }; if($newStr){ $lastStruggleLogged=$sync.text; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $sync.text }catch{} } } }
         $sync.lesson=$lessonCtx; $sync.isPaused=$working; $sync.isAnswer=$asked; $sync.stamp=$sync.stamp+1
         if($segs.Count -gt 20){ for($i=0;$i -lt ($segs.Count-20);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
         if(-not $asked -and $txt){ $sync.distillbuf=($sync.distillbuf+" "+$txt).Trim(); $sync.distillCount=$sync.distillCount+1 }
@@ -203,6 +204,7 @@ while(-not $sync.stop){
             if($cj.choices){ $ct=([string]$cj.choices[0].message.content).Trim(); foreach($cl in ($ct -split "`n")){ $cpp=$cl.Trim() -split '\|'; if($cpp.Count -ge 2){ $nid=$cpp[0].Trim(); $kind=$cpp[1].Trim().ToUpper(); if($kind -eq 'COVERED' -and $cpp.Count -ge 3 -and $cpp[2].Trim().ToUpper() -eq 'HIGH'){ try{ Bump-Mastery $nid 'exposed' 'covered in lesson' }catch{} } elseif($kind -eq 'STRUGGLED'){ try{ Bump-Mastery $nid 'shaky' 'struggled in lesson' }catch{} } } } }
           }
           $sync.distillbuf=""; $sync.distillCount=0
+          if(Get-Command Build-FullBrain -ErrorAction SilentlyContinue){ try{ $sync.brain=Build-FullBrain }catch{} }
         }
       }
     }
