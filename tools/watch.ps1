@@ -571,7 +571,7 @@ function Sync-Ask {
 $script:askHost=$askHost
 $strip.Add_LocationChanged({ Sync-Ask })
 $sync.mute=$false
-$script:seen=0; $script:lastFull=""; $script:pulse=0; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:dotBase=$C.On; $script:lastHelpQ=""
+$script:seen=0; $script:lastFull=""; $script:pulse=0; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:dotBase=$C.On; $script:lastHelpQ=""; $script:lastActive=(Get-Date)
 function Apply-Strip {
   if($script:collapsed){ $nw=$script:pillW; $nh=$script:pillH } else { $nw=$script:stripW; $nh=$script:stripH }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
@@ -596,7 +596,7 @@ $strip.Add_MouseMove({
   if($h -ne $script:hover){
     $oldH=$script:hover; $script:hover=$h
     foreach($el in $script:els){ if($el.k -eq $h -or $el.k -eq $oldH){ $strip.Invalidate($el.r) } }
-    $strip.Cursor=$(if($h){[System.Windows.Forms.Cursors]::Hand}else{[System.Windows.Forms.Cursors]::Default})
+    $strip.Cursor=$(if($h){[System.Windows.Forms.Cursors]::Hand}else{[System.Windows.Forms.Cursors]::Default}); $script:lastActive=(Get-Date)
     if($h){ Set-Msg $script:tips[$h] } else { Set-Msg $script:baseStatus }
   }
 })
@@ -604,7 +604,7 @@ $script:askBusy=$false
 $submitAsk={
   if($script:askBusy){ return }
   $q=$ask.Text.Trim(); if($q -eq $script:askPH){ $q="" }
-  $script:askBusy=$true; $script:idle=$false; $ask.Text=""
+  $script:askBusy=$true; $script:idle=$false; $ask.Text=""; $script:lastActive=(Get-Date)
   if($q -eq ""){ Set-Msg "Reading your Excel + the lesson..."; $script:lastHelpQ="" } else { Set-Msg ("Thinking: "+$q); $script:lastHelpQ=$q }
   $script:dotColor=$C.Accent; $strip.Invalidate($script:rDot); [System.Windows.Forms.Application]::DoEvents()
   $det=$false; if($q){ $det=[bool]($q -match '(?i)explain|in detail|elaborate|\bwhy\b') }
@@ -615,6 +615,7 @@ $submitAsk={
   $script:baseStatus="On track"; $script:idle=$true; $script:dotColor=$script:dotBase; $script:seen=$sync.stamp; $script:askBusy=$false
 }
 function Invoke-El($k){
+  $script:lastActive=(Get-Date)
   switch($k){
     'col'   { $script:collapsed=$true; Apply-Strip }
     'expd'  { $script:collapsed=$false; Apply-Strip }
@@ -663,8 +664,14 @@ $ui.Add_Tick({
   $script:pulse=($script:pulse+1)%8
   if($script:idle -and -not $script:hover){ Set-Msg $script:baseStatus; $tri=[math]::Abs($script:pulse-4)/4.0; $bf=0.5+0.5*(1-$tri); $bc=$script:dotBase; $script:dotColor=[System.Drawing.Color]::FromArgb([int]($bc.R*$bf),[int]($bc.G*$bf),[int]($bc.B*$bf)) }
   $strip.Invalidate($script:rDot); if(-not $script:collapsed){ $strip.Invalidate($script:rTime) }
+  if((-not $script:collapsed) -and $script:idle -and (-not $script:hover) -and (-not $script:askBusy)){
+    $popupOpen=($script:helpPopup -and -not $script:helpPopup.IsDisposed -and $script:helpPopup.Visible)
+    $askTyped=$false; $askFoc=$false; try{ $askTyped=(($ask.Text.Trim() -ne "") -and ($ask.Text -ne $script:askPH)); $askFoc=$ask.Focused }catch{}
+    if((-not $popupOpen) -and (-not $askTyped) -and (-not $askFoc) -and (((Get-Date)-$script:lastActive).TotalSeconds -ge 45)){ $script:collapsed=$true; Apply-Strip }
+  }
   if($sync.stamp -gt $script:seen){
     $script:seen=$sync.stamp; $r=$sync.text
+    if($r -ne "OK" -and $r -ne ""){ $script:lastActive=(Get-Date) }
     if($sync.isAnswer){
       if($r -ne "" -and $r -ne "OK"){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; $script:dotColor=$C.Accent; Set-Msg "Answer ready - click to read"; $script:lastFull=$r; Show-HelpPopup $r; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ $sync.ttsText=$r } }
     }
@@ -688,6 +695,7 @@ $strip.Add_Shown({
   Glass-On $script:strip
   $script:askHost.Show($script:strip); Sync-Ask; $script:strip.Activate()
   $ui.Start()
+  $script:collapsed=$true; Apply-Strip
   if($env:XC_UIPROBE){
     $pv=@('## PP&E roll-forward','Your **ending PP&E** looks off in cell **C39**.','- Ending PP&E = beginning PP&E + CapEx - depreciation','- **CapEx should exceed depreciation** for a growing company','1. Check **C37** - the beginning balance link','2. Re-add **C38** (CapEx) and subtract **C39** (depreciation)') -join "`n"
     $script:lastFull=$pv; Show-HelpPopup $pv
