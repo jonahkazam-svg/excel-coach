@@ -20,7 +20,7 @@ $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-4o"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
-$sync.sys="You are a PRECISE live tutor. The student is following a Breaking Into Wall Street Excel lesson and rebuilding it in their OWN Excel. The screenshot shows their whole screen, which contains BOTH the instructor's lesson (a video, or the instructor's own example/Excel) AND the student's own Excel that they are actively editing. FIRST silently work out which region is the student's work and which is the instructor's example - do NOT mix them up. THEN compare the student's work to the lesson precisely: specific cells, row/column labels, values, formulas, signs (+/-), and structure. If the student's work differs from the lesson, is behind, or has an error, reply with ONE nudge naming the exact cell/label/value that is off and what it should be (max 24 words). If their work matches the lesson and looks correct, reply EXACTLY: OK"
+$sync.sys="You are a precise live study tutor for a student doing a Breaking Into Wall Street finance course. Look at the screen and FIRST work out what the student is ACTUALLY doing right now - it may be a quiz/question in the browser, a video lesson, an Excel model they are building, reading, etc. Help with whatever is genuinely on screen: (a) for a quiz or question, if their selected or likely answer looks wrong, say which and why briefly, otherwise nudge their thinking; (b) if they are building Excel next to an instructor's example, compare the two and flag where theirs differs, but refer to cells by their row/column LABEL or line-item name (e.g. 'the Depreciation row', 'the tax-rate input') NOT guessed grid coordinates like C12, which you cannot read reliably; (c) otherwise flag the single most useful issue or next step. Be accurate - only call something wrong if you can clearly see it. If nothing needs saying, reply EXACTLY: OK. Otherwise ONE short specific nudge, max 24 words."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
@@ -38,7 +38,7 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 function Cap($path){
   $b=[System.Windows.Forms.SystemInformation]::VirtualScreen
   $full=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($full); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
-  $mw=1536.0; $s=[Math]::Min(1.0,$mw/$b.Width); $nw=[int]($b.Width*$s); $nh=[int]($b.Height*$s)
+  $mw=1792.0; $s=[Math]::Min(1.0,$mw/$b.Width); $nw=[int]($b.Width*$s); $nh=[int]($b.Height*$s)
   $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($full,0,0,$nw,$nh); $g2.Dispose()
   $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $full.Dispose(); $sm.Dispose()
 }
@@ -65,10 +65,10 @@ while(-not $sync.stop){
         Cap $sync.png; $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png))
         $maxtok=80
         if($asked){ $u="The student just spoke to you directly (they said 'coach'). They asked: '"+$txt+"'. Answer their question specifically and concisely using their screen and your memory of their weak points. If it was not actually a question for you, reply EXACTLY: OK"; $maxtok=170 }
-        elseif($paused){ $u="The lesson video is PAUSED/silent - I'm doing the hands-on activity or I'm stuck. Find MY Excel (the one I'm editing, NOT the instructor's example) and compare it to the lesson example on screen. Name the specific cell/value/formula I should fix or do next." }
-        else { $u="Live lesson audio (most recent ~30s): '"+$lessonCtx+"'. The screen shows the instructor's example AND my own Excel - compare MINE to theirs and flag the exact cell/value where they differ. Stay silent (OK) unless there is a real, specific difference." }
+        elseif($paused){ $u="The lesson video is paused/silent - I'm working on something (a quiz, an exercise, my Excel, etc.). Look at what I'm ACTUALLY doing on screen right now and help me with THAT specifically - flag a mistake or tell me the next step." }
+        else { $u="Live lesson audio (recent ~30s): '"+$lessonCtx+"'. Look at what I'm actually doing on screen (could be a quiz, the video, my Excel, reading) and only speak up if there's a real specific issue to flag; otherwise reply OK." }
         if(-not $asked -and $sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat unless still unaddressed." }
-        $payload=@{ model=$sync.model; max_tokens=$maxtok; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64)}})}) } | ConvertTo-Json -Depth 12
+        $payload=@{ model=$sync.model; max_tokens=$maxtok; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail='high'}})}) } | ConvertTo-Json -Depth 12
         $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
         $vr=& curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
         $vj=$null; try{ $vj=$vr|ConvertFrom-Json }catch{}
