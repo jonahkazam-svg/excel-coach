@@ -176,7 +176,7 @@ while(-not $sync.stop){
         $working=($excelFg -or $paused)
         $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
         $fbB=$null; if((-not $exB -and -not $coB) -or (-not $excelFg)){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
-        $xlLive=$null; if(($asked -or $working) -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
+        $xlLive=$null; if($asked -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
         $doCheck=($asked -or (-not $working))
         if($doCheck){
         if($asked){
@@ -264,7 +264,7 @@ while(-not $sync.stop){
   if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
   if($sync.paused){ Start-Sleep -Milliseconds 800; continue }
   $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive }catch{ XLog ("read threw: "+$_.Exception.Message) } }
-  if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 5; continue }
+  if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 3; continue }
   if($nullStreak){ $nullStreak=$false; XLog "Excel readable again" }
   if(($xl -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
     $sync.lastWb=$Matches[1]
