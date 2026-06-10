@@ -120,3 +120,39 @@ function Compact-File($path,[int]$keyIndex){
   $out = @($head) + @($seen.Values)
   [IO.File]::WriteAllText($path, (($out -join "`r`n").TrimEnd() + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
 }
+
+# --- Live Excel reader (shared so the worker runspace can read exact cells too, not just Get-Help) ---
+function ColLetter($n){ $r=""; do { $n--; $r=[string][char]([int][char]'A'+($n%26))+$r; $n=[int][math]::Floor($n/26) } while($n -gt 0); return $r }
+function Read-ExcelLive {
+  $xl=$null; try { $xl=[System.Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") } catch { return $null }
+  if(-not $xl){ return $null }
+  $out=$null
+  try {
+    $wb=$xl.ActiveWorkbook; if(-not $wb){ return $null }
+    $sh=$xl.ActiveSheet; $ur=$sh.UsedRange
+    $rows=[int]$ur.Rows.Count; $cols=[int]$ur.Columns.Count; $r0=[int]$ur.Row; $c0=[int]$ur.Column
+    $rr=[Math]::Min($rows,400); $cc=[Math]::Min($cols,80); if($rr -lt $rows -or $cc -lt $cols){ $ur=$ur.Resize($rr,$cc) }; $rows=$rr; $cols=$cc
+    $act=""; $sel=""; try{ $act=$xl.ActiveCell.Address($false,$false) }catch{}; try{ $sel=$xl.Selection.Address($false,$false) }catch{}
+    $sb=New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine("Workbook '"+$wb.Name+"' sheet '"+$sh.Name+"'. Active cell "+$act+", selection "+$sel+".")
+    [void]$sb.AppendLine("Non-empty cells (ADDRESS = value   [formula if any]):")
+    $n=0; $cap=300
+    if($rows*$cols -eq 1){
+      $v=$ur.Value2; $fm=[string]$ur.Formula; $addr=(ColLetter $c0)+$r0
+      if($null -ne $v -or $fm){ $ln=$addr+" = "+([string]$v); if($fm.StartsWith("=")){ $ln+="   "+$fm }; [void]$sb.AppendLine($ln); $n=1 }
+    } else {
+      $vals=$ur.Value2; $forms=$ur.Formula
+      for($i=1;$i -le $rows -and $n -lt $cap;$i++){ for($j=1;$j -le $cols -and $n -lt $cap;$j++){
+        $v=$vals.GetValue($i,$j); $fm=$forms.GetValue($i,$j)
+        if($null -eq $v -and [string]::IsNullOrEmpty([string]$fm)){ continue }
+        $addr=(ColLetter ($c0+$j-1))+($r0+$i-1)
+        $vs=$(if($v -is [double]){ $v.ToString("0.######") }else{ [string]$v })
+        $ln=$addr+" = "+$vs; if(($fm -is [string]) -and $fm.StartsWith("=")){ $ln+="   "+$fm }
+        [void]$sb.AppendLine($ln); $n++
+      }}
+      if($n -ge $cap){ [void]$sb.AppendLine("...(more cells not shown)") }
+    }
+    $out=$sb.ToString()
+  } catch { $out=$null } finally { foreach($o in @($ur,$sh,$wb,$xl)){ try{ if($o){ [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($o) } }catch{} } }
+  return $out
+}

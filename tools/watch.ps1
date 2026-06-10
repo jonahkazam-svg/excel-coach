@@ -77,15 +77,16 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$processed=-1; $rolling=New-Object System.Collections.ArrayList
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList
 while(-not $sync.stop){
   if($sync.paused){ Start-Sleep -Milliseconds 400; continue }
   try {
     $segs=@(Get-ChildItem $sync.segdir -Filter "seg_*.wav" -ErrorAction SilentlyContinue | Sort-Object Name)
     if($segs.Count -ge 2){
-      $idx=$segs.Count-2
-      if($idx -gt $processed){
-        $processed=$idx; $seg=$segs[$idx].FullName
+      $newest=$segs[$segs.Count-2]; $segN=-1; try{ $segN=[int]($newest.BaseName.Substring(4)) }catch{}
+      if($segN -lt $lastSeg){ $lastSeg=-1 }
+      if($segN -gt $lastSeg){
+        $lastSeg=$segN; $seg=$newest.FullName
         $e="$env:TEMP\watch_vol.txt"; & $sync.ff -hide_banner -i $seg -af volumedetect -f null NUL 2>$e
         $ln=Get-Content $e | Where-Object { $_ -match 'mean_volume' } | Select-Object -First 1
         $level=if($ln -match '(-?[0-9.]+) dB'){ [double]$Matches[1] } else { -100 }
@@ -99,17 +100,20 @@ while(-not $sync.stop){
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
         $fbB=$null; if(-not $exB -and -not $coB){ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }
+        $xlLive=$null; if(($asked -or $paused) -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
         if($asked){
           $u="The student spoke to you and asked: '"+$txt+"'. What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'. You are given up to two labeled images: MY Excel sheet (my own work) and the course/lesson. Read the exact question carefully, work it out step by step and double-check any arithmetic, then answer clearly and helpfully in 1 to 4 sentences - explain it so they understand, like a good tutor. Use my Excel, the course image, this lesson context, and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
           $useModel=$sync.model; $det="high"; $maxtok=2500; $effort="medium"
         } else {
-          if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). You are given up to two labeled images: MY Excel sheet and the course/lesson. Compare my Excel to what the lesson is teaching. ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences), referring to cells/labels you can actually see. If it looks fine or you're unsure, reply EXACTLY: OK." }
+          if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). You are given up to two labeled images: MY Excel sheet and the course/lesson. Compare my Excel to what the lesson is teaching. ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences), citing exact cell addresses ONLY from the EXACT live-Excel data block if one is provided (never guess a cell from the image). If it looks fine or you're unsure, reply EXACTLY: OK." }
           else { $u="Recent lesson audio: '"+$lessonCtx+"'. You are given up to two labeled images: MY Excel sheet and the course/lesson. ONLY if you can clearly see a real, specific mistake in MY Excel versus what the lesson is teaching, point it out (1-2 sentences). If it looks fine or you're not sure, reply EXACTLY: OK - do not guess or nitpick." }
           $u+=" Do NOT try to compute or answer quiz/test calculation questions yourself; reply OK for those (the student can ask for that)."
           if($sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat it." }
-          $useModel=$sync.model; $det="auto"; $maxtok=120; $effort="none"
+          $useModel=$sync.model; $det="auto"; $maxtok=$(if($paused){220}else{120}); $effort=$(if($paused){"low"}else{"none"})
         }
         $content=@(@{type='text';text=$u})
+        if($xlLive){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative; use these cell addresses, values and formulas; never guess a cell from the image]:`n"+$xlLive)} }
+        if($asked -or $paused){ $content+=@{type='text';text="Identify the SPECIFIC skill the lesson is teaching right now and what I am trying to BUILD in my Excel, then connect them. When you help or flag something, cite the exact cell/formula from the data above (never a guessed cell) and give the precise next step toward that goal."} }
         if($exB){ $content+=@{type='text';text='[Image: MY Excel sheet (my own work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail=$det}} }
         if($coB){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail=$det}} }
         if($fbB){ $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail=$det}} }
@@ -121,23 +125,23 @@ while(-not $sync.stop){
         $vj=$null; try{ $vj=$vr|ConvertFrom-Json }catch{}
         $sync.text=if($vj.choices){ ([string]$vj.choices[0].message.content).Trim() } else { "OK" }
         $sync.lesson=$lessonCtx; $sync.isPaused=$paused; $sync.isAnswer=$asked; $sync.stamp=$sync.stamp+1
-        if($segs.Count -gt 6){ for($i=0;$i -lt ($segs.Count-6);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
+        if($segs.Count -gt 20){ for($i=0;$i -lt ($segs.Count-20);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
         if(-not $asked -and $txt){ $sync.distillbuf=($sync.distillbuf+" "+$txt).Trim(); $sync.distillCount=$sync.distillCount+1 }
         if($sync.distillCount -ge 18 -and $sync.distillbuf.Length -gt 120){
           $dp=@{ model="gpt-4o-mini"; max_tokens=220; temperature=0; messages=@(@{role="system";content="Extract the 1-3 most important finance/Excel concepts or facts taught in this lesson excerpt as concise one-line bullets starting with '- '. No preamble; skip trivial chatter."},@{role="user";content=$sync.distillbuf}) } | ConvertTo-Json -Depth 6
           $dbf="$env:TEMP\xc_distill.json"; [IO.File]::WriteAllText($dbf,$dp,(New-Object System.Text.UTF8Encoding($false)))
-          $dr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
+          $dr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
           $dj=$null; try{ $dj=$dr|ConvertFrom-Json }catch{}
           if($dj.choices){ $kf=Join-Path $sync.coaching "Knowledge.md"; if(-not(Test-Path $kf)){ [IO.File]::AppendAllText($kf,"# Knowledge - concepts from the lessons`n",(New-Object System.Text.UTF8Encoding($false))) }; [IO.File]::AppendAllText($kf,"`n"+([string]$dj.choices[0].message.content).Trim()+"`n",(New-Object System.Text.UTF8Encoding($false))) }
           $wp=@{ model="gpt-4o-mini"; max_tokens=160; temperature=0; messages=@(@{role="system";content="This is a transcript of a study session: an instructor teaching, plus the STUDENT reacting and thinking aloud. Output ONLY genuine signs the STUDENT was confused, unsure, guessed, or struggled, as 1-2 short bullets starting with '- ' (quote the student's words if useful). Ignore the instructor's explanations. If there are no real struggle signs, reply exactly: NONE"},@{role="user";content=$sync.distillbuf}) } | ConvertTo-Json -Depth 6
           $wbf="$env:TEMP\xc_wp.json"; [IO.File]::WriteAllText($wbf,$wp,(New-Object System.Text.UTF8Encoding($false)))
-          $wr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$wbf)
+          $wr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$wbf)
           $wj=$null; try{ $wj=$wr|ConvertFrom-Json }catch{}
           if($wj.choices){ $wpt=([string]$wj.choices[0].message.content).Trim(); if($wpt -and ($wpt -match '(?m)^\s*-\s') -and ($wpt -notmatch '(?i)\bnone\b')){ $wpf2=Join-Path $sync.coaching "Weak Points.md"; if(-not(Test-Path $wpf2)){ [IO.File]::AppendAllText($wpf2,"# Weak Points (accumulating across sessions)`n",(New-Object System.Text.UTF8Encoding($false))) }; [IO.File]::AppendAllText($wpf2,"`n## (live) "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"`n"+$wpt+"`n",(New-Object System.Text.UTF8Encoding($false))) } }
           if($sync.curr){
             $cp=@{ model="gpt-4o-mini"; max_tokens=180; temperature=0; messages=@(@{role="system";content="You map a study-session transcript to a finance curriculum. Given the CURRICULUM (lines 'ID: topic') and a TRANSCRIPT EXCERPT, output one line per relevant node: '<ID>|COVERED|HIGH' if the excerpt clearly teaches or practices it (HIGH only if unambiguous, else use LOW), or '<ID>|STRUGGLED' if the STUDENT seemed confused or unsure about it. Only list nodes with real evidence. If none, reply exactly: NONE"},@{role="user";content=("CURRICULUM:`n"+$sync.curr+"`n`nTRANSCRIPT EXCERPT:`n"+$sync.distillbuf)}) } | ConvertTo-Json -Depth 6
             $cbf="$env:TEMP\xc_curr.json"; [IO.File]::WriteAllText($cbf,$cp,(New-Object System.Text.UTF8Encoding($false)))
-            $cr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf)
+            $cr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf)
             $cj=$null; try{ $cj=$cr|ConvertFrom-Json }catch{}
             if($cj.choices){ $ct=([string]$cj.choices[0].message.content).Trim(); foreach($cl in ($ct -split "`n")){ $cpp=$cl.Trim() -split '\|'; if($cpp.Count -ge 2){ $nid=$cpp[0].Trim(); $kind=$cpp[1].Trim().ToUpper(); if($kind -eq 'COVERED' -and $cpp.Count -ge 3 -and $cpp[2].Trim().ToUpper() -eq 'HIGH'){ try{ Bump-Mastery $nid 'exposed' 'covered in lesson' }catch{} } elseif($kind -eq 'STRUGGLED'){ try{ Bump-Mastery $nid 'shaky' 'struggled in lesson' }catch{} } } } }
           }
@@ -223,6 +227,7 @@ function Get-Help($question){
   $uh=if($question){ "The student asks: "+$question }else{ "Help me with my work right now." }; if($sync.lessonlog){ $uh+=" (What the instructor has recently been teaching: '"+$sync.lessonlog+"'.)" }
   $content=@(@{type='text';text=$uh})
   if($xlData){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative, use these cell addresses/values/formulas; do not guess cells from the image]:`n"+$xlData)} }
+  $content+=@{type='text';text="Identify the SPECIFIC skill the lesson is teaching and what I am trying to BUILD in my Excel, then connect them: cite the exact cell/formula from the data above (never a guessed cell) and give the precise next step toward that goal."}
   if($ex){ $content+=@{type='text';text='[Image: MY Excel sheet (visual context only)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$ex);detail='high'}} }
   if($co){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$co);detail='high'}} }
   $msgs=@(@{role='system';content=($sysH+$sync.brain)},@{role='user';content=$content})
@@ -246,10 +251,10 @@ function Show-HelpPopup($text){
   $body.Text=(($text -replace "`r`n","`n") -replace "`n","`r`n")
   $pad=New-Object System.Windows.Forms.Panel; $pad.Dock='Fill'; $pad.Padding='18,4,18,8'; $pad.BackColor=[System.Drawing.Color]::FromArgb(28,31,38); $pad.Controls.Add($body)
   $hint=New-Object System.Windows.Forms.Label; $hint.Text="Esc to close   "; $hint.Dock='Bottom'; $hint.Height=24; $hint.ForeColor=[System.Drawing.Color]::FromArgb(120,126,140); $hint.TextAlign='MiddleRight'; $hint.BackColor=[System.Drawing.Color]::FromArgb(28,31,38)
-  $bClose=New-Object System.Windows.Forms.Button; $bClose.Text=([char]0xE711); $bClose.Font=New-Object System.Drawing.Font("Segoe MDL2 Assets",10); $bClose.Width=36; $bClose.Height=28; $bClose.FlatStyle='Flat'; $bClose.FlatAppearance.BorderSize=0; $bClose.BackColor=[System.Drawing.Color]::FromArgb(24,26,32); $bClose.ForeColor=[System.Drawing.Color]::FromArgb(200,205,214); $bClose.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(210,70,70); $bClose.Cursor='Hand'; $bClose.Left=$f.Width-46; $bClose.Top=7; $bClose.Add_Click({ $f.Close() })
+  $bClose=New-Object System.Windows.Forms.Button; $bClose.Text=([char]0xE711); $bClose.Font=New-Object System.Drawing.Font("Segoe MDL2 Assets",10); $bClose.Width=36; $bClose.Height=28; $bClose.FlatStyle='Flat'; $bClose.FlatAppearance.BorderSize=0; $bClose.BackColor=[System.Drawing.Color]::FromArgb(24,26,32); $bClose.ForeColor=[System.Drawing.Color]::FromArgb(200,205,214); $bClose.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(210,70,70); $bClose.Cursor='Hand'; $bClose.Left=$f.Width-46; $bClose.Top=7; $bClose.Add_Click({ $script:helpPopup.Close() })
   $f.Controls.Add($head); $f.Controls.Add($hint); $f.Controls.Add($pad); $f.Controls.Add($bClose); $pad.BringToFront(); $bClose.BringToFront()
-  $f.KeyPreview=$true; $f.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $f.Close() } })
-  $head.Add_MouseDown({ $script:dragP=$_.Location; $script:dragOn=$true }); $head.Add_MouseUp({ $script:dragOn=$false }); $head.Add_MouseMove({ if($script:dragOn){ $f.Left += ($_.X-$script:dragP.X); $f.Top += ($_.Y-$script:dragP.Y) } })
+  $f.KeyPreview=$true; $f.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $script:helpPopup.Close() } })
+  $head.Add_MouseDown({ $script:dragP=$_.Location; $script:dragOn=$true }); $head.Add_MouseUp({ $script:dragOn=$false }); $head.Add_MouseMove({ if($script:dragOn){ $script:helpPopup.Left += ($_.X-$script:dragP.X); $script:helpPopup.Top += ($_.Y-$script:dragP.Y) } })
   $f.Add_Shown({ try{ $body.SelectionStart=0; $body.SelectionLength=0 }catch{} })
   $script:helpPopup=$f; $f.Show()
 }
@@ -275,10 +280,16 @@ $ask=New-Object System.Windows.Forms.TextBox; $ask.Left=16; $ask.Top=44; $ask.Wi
 $bAsk=New-Object System.Windows.Forms.Button; $bAsk.Text="Ask"; $bAsk.Left=540; $bAsk.Top=43; $bAsk.Width=46; $bAsk.Height=26; $bAsk.FlatStyle='Flat'; $bAsk.FlatAppearance.BorderSize=0; $bAsk.ForeColor=[System.Drawing.Color]::White; $bAsk.BackColor=[System.Drawing.Color]::FromArgb(56,120,236); $bAsk.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(74,140,255); $bAsk.Font=New-Object System.Drawing.Font("Segoe UI Semibold",9); $bAsk.Cursor='Hand'; Set-Round $bAsk 7
 $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
 $strip.Controls.AddRange(@($script:msg,$dot,$bPause,$bMute,$bHelp,$bX,$ask,$bAsk)); $dot.BringToFront()
-$script:seen=0; $script:lastFull=""; $script:pulse=0; $script:idle=$true; $script:baseStatus="Listening to the lesson"
+$script:seen=0; $script:lastFull=""; $script:pulse=0; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date)
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
-  if(-not (Get-Process -Id $sync.ffpid -ErrorAction SilentlyContinue)){ try{ $rp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru; $sync.ffpid=$rp.Id }catch{} }
+  if(-not (Get-Process -Id $sync.ffpid -ErrorAction SilentlyContinue)){
+    if(((Get-Date)-$script:ffLastTry).TotalSeconds -ge 10){
+      $script:ffLastTry=(Get-Date); $script:ffFails++
+      if($script:ffFails -le 3){ try{ $rp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru; $sync.ffpid=$rp.Id }catch{} }
+      elseif($script:ffFails -eq 4){ $script:idle=$false; $script:msg.Text="Mic capture failed - check MIC_DEVICE in .env"; $dot.BackColor=[System.Drawing.Color]::FromArgb(210,80,80) }
+    }
+  } elseif($script:ffFails -ne 0){ $script:ffFails=0 }
   $script:pulse=($script:pulse+1)%4
   if($script:idle){ $script:msg.Text=$script:baseStatus+("." * $script:pulse) }
   if($sync.stamp -gt $script:seen){
