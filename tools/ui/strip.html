@@ -9,7 +9,7 @@
      hover rgba(255,255,255,0.08), text #fff / rgba(255,255,255,0.6).
      Real desktop blur = Win11 dark acrylic behind this transparent page. */
   :root{
-    --fill: rgba(20,20,24,0.72);
+    --fill: rgba(20,20,24,0.83);
     --hairline: rgba(255,255,255,0.10);
     --inner-top: rgba(255,255,255,0.06);
     --text: #ffffff;
@@ -57,10 +57,10 @@
     height:30px; min-width:30px; padding:0 6px; border-radius:9px; flex:0 0 auto;
     display:flex; align-items:center; justify-content:center; cursor:pointer;
     color:rgba(255,255,255,0.72); background:transparent;
-    transition:background .16s ease, color .16s ease;
+    transition:background .16s ease, color .16s ease, transform .18s ease;
   }
-  .ghost:hover{ background:var(--hover); color:rgba(255,255,255,0.95); }
-  .ghost:active{ background:rgba(255,255,255,0.12); }
+  .ghost:hover{ background:var(--hover); color:rgba(255,255,255,0.95); transform:scale(1.1); }
+  .ghost:active{ background:rgba(255,255,255,0.12); transform:scale(0.94); }
   .ghost svg{ display:block; transition:transform .18s ease; }
   .ghost:hover svg{ transform:scale(1.22); }
   .ghost:active svg{ transform:scale(1.05); }
