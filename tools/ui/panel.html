@@ -79,15 +79,17 @@
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
   /* ---------- footer: action-row style ---------- */
-  #ftr{ flex:0 0 auto; display:flex; align-items:center; margin-top:8px; margin-left:-10px; }
-  #explain{
-    display:flex; align-items:center; gap:9px;
+  #ftr{ flex:0 0 auto; display:flex; align-items:center; gap:2px; margin-top:8px; margin-left:-10px; }
+  .fbtn{
+    display:flex; align-items:center; gap:9px; min-width:0;
     padding:7px 10px; border-radius:10px; border:none; background:transparent;
     color:rgba(255,255,255,0.88); font-size:13px; font-family:inherit; cursor:pointer;
-    transition:background .16s ease;
+    transition:background .16s ease; white-space:nowrap;
   }
-  #explain:hover{ background:var(--hover); }
-  #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.38); }
+  .fbtn:hover{ background:var(--hover); }
+  .fbtn.hidden{ display:none; }
+  .fbtn .lbl{ overflow:hidden; text-overflow:ellipsis; }
+  #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.38); flex:0 0 auto; }
 </style>
 </head>
 <body>
@@ -111,8 +113,14 @@
     <div id="body"></div>
     <div id="spinWrap"><div class="ring"></div></div>
     <div id="ftr">
-      <button id="explain" title="Re-answer with the full reasoning and steps">
-        <span>&#10024;</span><span>Explain in detail</span>
+      <button id="explain" class="fbtn" title="Re-answer with the full reasoning and steps">
+        <span>&#10024;</span><span class="lbl">Explain in detail</span>
+      </button>
+      <button id="defineBtn" class="fbtn hidden" title="Define this term in the context of what you're working on">
+        <span>&#128214;</span><span class="lbl" id="defineLbl">Define</span>
+      </button>
+      <button id="simplifyBtn" class="fbtn" title="Re-explain the answer in plain, simple language">
+        <span>&#129668;</span><span class="lbl">Simplify</span>
       </button>
       <span id="esc">Esc to close</span>
     </div>
@@ -150,11 +158,31 @@
     return out.join('');
   }
 
+  /* pick a key term from the answer's bold spans for the Define follow-up */
+  let defineTerm = '';
+  function pickTerm(md){
+    const bolds = [...String(md).matchAll(/\*\*(.+?)\*\*/g)].map(m => m[1].trim());
+    const ok = bolds.filter(t =>
+      t.length >= 3 && t.length <= 28 &&
+      !/^[A-Z]{1,3}\d{1,4}$/.test(t) &&            // skip cell refs like C39
+      !/^[\d.,%$\s()-]+$/.test(t));                 // skip pure numbers
+    if (!ok.length) return '';
+    ok.sort((a,b) => b.length - a.length);          // most substantial term
+    return ok[0].replace(/[.,:;!?]+$/,'');
+  }
+
   window.XC = {
     setAnswer(md){
       document.body.classList.remove('loading');
       $('body').innerHTML = mdToHtml(md);
       $('body').scrollTop = 0;
+      defineTerm = pickTerm(md);
+      $('defineBtn').classList.toggle('hidden', !defineTerm);
+      if (defineTerm){
+        const short = defineTerm.length > 18 ? defineTerm.slice(0,17) + '…' : defineTerm;
+        $('defineLbl').textContent = 'Define ' + short;
+        $('defineBtn').title = 'Define "' + defineTerm + '" in the context of what you\'re working on';
+      }
     },
     setAnswerLoading(){ document.body.classList.add('loading'); },
     setTime(t){ $('clock').textContent = t; },
@@ -168,10 +196,12 @@
   $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));
   $('closeBtn').addEventListener('click', () => post({type:'panel', k:'close'}));
   $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
+  $('defineBtn').addEventListener('click', () => { if (defineTerm) post({type:'panel', k:'define', term: defineTerm}); });
+  $('simplifyBtn').addEventListener('click', () => post({type:'panel', k:'simplify'}));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({type:'panel', k:'close'}); });
 
   let dragOn = false, lx = 0, ly = 0;
-  const interactive = (t) => t.closest('.ghost, #explain, #body, .chip');
+  const interactive = (t) => t.closest('.ghost, .fbtn, #body, .chip');
   document.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || interactive(e.target)) return;
     dragOn = true; lx = e.screenX; ly = e.screenY;

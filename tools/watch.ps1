@@ -452,6 +452,15 @@ function Show-PanelLoading {
   if(-not $panel.Visible){ $panel.Show() }
   if($script:panelReady){ JS $script:wvP ("XC.setAnswerLoading()") } else { $script:pendingLoad=$true }
 }
+function Simplify-Answer($text){
+  $sysS="You simplify finance/Excel explanations for a beginner. Keep all cell references and numbers exactly. Use the same markdown style (optional ## header, - bullets, **bold** for key terms) but plainer words and shorter sentences. Output only the simplified explanation."
+  $payload=@{ model="gpt-4o-mini"; max_tokens=450; temperature=0.2; messages=@(@{role="system";content=$sysS},@{role="user";content=("Simplify this explanation:`n`n"+$text)}) } | ConvertTo-Json -Depth 8
+  $bf="$env:TEMP\xc_simplify.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
+  $r=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $j=$null; try{ $j=$r|ConvertFrom-Json }catch{}
+  if($j.choices){ $a=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $a=Clean-Answer $a }; return $a }
+  return "Could not simplify right now (connection issue) - the original answer is unchanged."
+}
 function Set-Query($q){ if($script:panelReady){ JS $script:wvP ("XC.setQuery("+(ConvertTo-Json ([string]$q))+")") } else { $script:pendingQ=[string]$q } }
 function Shutdown-Coach {
   $sync.stop=$true; try{ $ui.Stop() }catch{}; Start-Sleep -Milliseconds 300; Kill-FF
@@ -498,7 +507,7 @@ function Handle-Act($k){
     'close'    { Shutdown-Coach }
   }
 }
-function Handle-Panel($k){
+function Handle-Panel($k,$term){
   $script:lastActive=(Get-Date)
   switch($k){
     'close'   { try{ $panel.Hide() }catch{} }
@@ -509,6 +518,31 @@ function Handle-Panel($k){
       JS $script:wvP ("XC.setAnswerLoading()")
       [System.Windows.Forms.Application]::DoEvents()
       try{ $dd=Get-Help $script:lastHelpQ $true; $script:lastFull=$dd; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $dd)+")") }catch{}
+      $script:askBusy=$false
+    }
+    'define'  {
+      if($script:askBusy -or -not $term){ return }
+      $script:askBusy=$true
+      JS $script:wvP ("XC.setAnswerLoading()"); Set-Query ("Define "+$term)
+      [System.Windows.Forms.Application]::DoEvents()
+      try{
+        $q2="Define '"+$term+"' clearly and simply in the context of my course and what I am building in Excel. 2 to 4 sentences, with a tiny concrete example if useful."
+        $script:lastHelpQ=$q2
+        $dd=Get-Help $q2 $false; $script:lastFull=$dd; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $dd)+")")
+        if(-not $sync.mute){ $sync.ttsText=$dd }
+      }catch{}
+      $script:askBusy=$false
+    }
+    'simplify' {
+      if($script:askBusy -or -not $script:lastFull){ return }
+      $script:askBusy=$true
+      JS $script:wvP ("XC.setAnswerLoading()"); Set-Query "Simplify"
+      [System.Windows.Forms.Application]::DoEvents()
+      try{
+        $src=$script:lastFull; if($src.Length -gt 1600){ $src=$src.Substring(0,1600) }
+        $dd=Simplify-Answer $src; $script:lastFull=$dd; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $dd)+")")
+        if(-not $sync.mute){ $sync.ttsText=$dd }
+      }catch{}
       $script:askBusy=$false
     }
   }
@@ -545,7 +579,7 @@ $wvP.add_WebMessageReceived({
       if($script:pendingAns){ $a=$script:pendingAns; $script:pendingAns=$null; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $a)+")") }
       if($null -ne $script:pendingQ){ JS $script:wvP ("XC.setQuery("+(ConvertTo-Json $script:pendingQ)+")"); $script:pendingQ=$null }
     }
-    'panel' { Handle-Panel ([string]$m.k) }
+    'panel' { Handle-Panel ([string]$m.k) ([string]$m.term) }
     'drag'  { $script:lastActive=(Get-Date); $script:panel.Left+=[int]([double]$m.dx*$script:S); $script:panel.Top+=[int]([double]$m.dy*$script:S) }
   }
 })
