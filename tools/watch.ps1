@@ -166,13 +166,49 @@ function Cap-Win($proc){
   $f=Join-Path $env:TEMP ("cap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
+function ColLetter($n){ $r=""; do { $n--; $r=[string][char]([int][char]'A'+($n%26))+$r; $n=[int][math]::Floor($n/26) } while($n -gt 0); return $r }
+function Read-ExcelLive {
+  $xl=$null; try { $xl=[System.Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") } catch { return $null }
+  if(-not $xl){ return $null }
+  $out=$null
+  try {
+    $wb=$xl.ActiveWorkbook; if(-not $wb){ return $null }
+    $sh=$xl.ActiveSheet; $ur=$sh.UsedRange
+    $rows=[int]$ur.Rows.Count; $cols=[int]$ur.Columns.Count; $r0=[int]$ur.Row; $c0=[int]$ur.Column
+    $rr=[Math]::Min($rows,400); $cc=[Math]::Min($cols,80); if($rr -lt $rows -or $cc -lt $cols){ $ur=$ur.Resize($rr,$cc) }; $rows=$rr; $cols=$cc
+    $act=""; $sel=""; try{ $act=$xl.ActiveCell.Address($false,$false) }catch{}; try{ $sel=$xl.Selection.Address($false,$false) }catch{}
+    $sb=New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine("Workbook '"+$wb.Name+"' sheet '"+$sh.Name+"'. Active cell "+$act+", selection "+$sel+".")
+    [void]$sb.AppendLine("Non-empty cells (ADDRESS = value   [formula if any]):")
+    $n=0; $cap=300
+    if($rows*$cols -eq 1){
+      $v=$ur.Value2; $fm=[string]$ur.Formula; $addr=(ColLetter $c0)+$r0
+      if($null -ne $v -or $fm){ $ln=$addr+" = "+([string]$v); if($fm.StartsWith("=")){ $ln+="   "+$fm }; [void]$sb.AppendLine($ln); $n=1 }
+    } else {
+      $vals=$ur.Value2; $forms=$ur.Formula
+      for($i=1;$i -le $rows -and $n -lt $cap;$i++){ for($j=1;$j -le $cols -and $n -lt $cap;$j++){
+        $v=$vals.GetValue($i,$j); $fm=$forms.GetValue($i,$j)
+        if($null -eq $v -and [string]::IsNullOrEmpty([string]$fm)){ continue }
+        $addr=(ColLetter ($c0+$j-1))+($r0+$i-1)
+        $vs=if($v -is [double]){ $v.ToString("0.######") }else{ [string]$v }
+        $ln=$addr+" = "+$vs; if(($fm -is [string]) -and $fm.StartsWith("=")){ $ln+="   "+$fm }
+        [void]$sb.AppendLine($ln); $n++
+      }}
+      if($n -ge $cap){ [void]$sb.AppendLine("...(more cells not shown)") }
+    }
+    $out=$sb.ToString()
+  } catch { $out=$null } finally { try{ [System.Runtime.InteropServices.Marshal]::ReleaseComObject($xl)|Out-Null }catch{} }
+  return $out
+}
 function Get-Help($question){
+  $xlData=Read-ExcelLive
   $ex=Cap-Win "EXCEL"; $co=Cap-Win "chrome"; if(-not $co){ $co=Cap-Win "msedge" }; if(-not $co){ $co=Cap-Win "firefox" }
-  if(-not $ex -and -not $co){ return "Couldn't find your Excel or browser window to read." }
-  $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). The student follows a course and rebuilds it in Excel. You are given an image of THEIR Excel sheet and/or an image of the course/lesson (each labeled). METHOD for getting it right: (1) first read the exact question or task carefully and be sure you understand precisely what is being asked; (2) work it out step by step using the actual numbers and cells you can see; (3) double-check your arithmetic and logic; (4) then give the correct answer with a brief clear explanation, referring to cells by their visible labels. If there is a quiz/question, work out the correct answer and, if it is multiple choice, state exactly which option to pick. If it is an Excel exercise, give the specific next step or fix for THEIR sheet. If the student typed a specific question, answer THAT directly. Accuracy above all - if you are not sure, say what you would check rather than guessing."
+  if(-not $ex -and -not $co -and -not $xlData){ return "Couldn't find your Excel or browser window to read." }
+  $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). The student follows a course and rebuilds it in Excel. You may be given: the EXACT live contents of their Excel (every non-empty cell's address, value and formula, read straight from the workbook), an image of their Excel, and/or an image of the course/lesson. When the exact Excel data is present, treat it as the ground truth for ALL cell references, values and formulas - never guess a cell address from the image. METHOD for getting it right: (1) first read the exact question or task carefully and be sure you understand precisely what is being asked; (2) work it out step by step using the actual cell values and formulas; (3) double-check your arithmetic and logic; (4) then give the correct answer with a brief clear explanation, citing exact cell addresses (e.g. C39). If there is a quiz/question, work out the correct answer and, if it is multiple choice, state exactly which option to pick. If it is an Excel exercise, give the specific next step or fix and the exact cell(s) and formula to use. If the student typed a specific question, answer THAT directly. Accuracy above all - if you are not sure, say what you would check rather than guessing."
   $uh=if($question){ "The student asks: "+$question }else{ "Help me with my work right now." }; if($sync.lessonlog){ $uh+=" (What the instructor has recently been teaching: '"+$sync.lessonlog+"'.)" }
   $content=@(@{type='text';text=$uh})
-  if($ex){ $content+=@{type='text';text='[Image: MY Excel sheet (my work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$ex);detail='high'}} }
+  if($xlData){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative, use these cell addresses/values/formulas; do not guess cells from the image]:`n"+$xlData)} }
+  if($ex){ $content+=@{type='text';text='[Image: MY Excel sheet (visual context only)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$ex);detail='high'}} }
   if($co){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$co);detail='high'}} }
   $msgs=@(@{role='system';content=($sysH+$sync.brain)},@{role='user';content=$content})
   if($sync.model -match '^gpt-5'){ $payload=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=$msgs } | ConvertTo-Json -Depth 14 }
