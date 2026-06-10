@@ -98,14 +98,15 @@
   .fbtn .lbl{ overflow:hidden; text-overflow:ellipsis; }
   #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.38); flex:0 0 auto; }
 
-  /* ---------- formulas drop ---------- */
+  /* ---------- formulas + identifiers drops ---------- */
   #fxBtn .fx{ font:italic 600 13.5px Georgia,'Times New Roman',serif; color:inherit; }
-  #fxDrop{ position:absolute; top:52px; left:16px; right:16px; max-height:68%; overflow-y:auto; z-index:6;
+  #fxDrop, #idDrop{ position:absolute; top:52px; left:16px; right:16px; max-height:68%; overflow-y:auto; z-index:6;
     background:rgba(26,26,32,0.97); border:1px solid var(--hairline); border-radius:14px; padding:8px;
     box-shadow:0 14px 44px rgba(0,0,0,0.55); }
-  #fxDrop.hidden{ display:none; }
-  #fxDrop::-webkit-scrollbar{ width:7px; }
-  #fxDrop::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); border-radius:4px; }
+  #fxDrop.hidden, #idDrop.hidden{ display:none; }
+  #fxDrop::-webkit-scrollbar, #idDrop::-webkit-scrollbar{ width:7px; }
+  #fxDrop::-webkit-scrollbar-thumb, #idDrop::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); border-radius:4px; }
+  .idcat{ font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:var(--accent); padding:9px 10px 3px; }
   .fxhead{ font-size:11.5px; color:var(--text-2); padding:4px 10px 7px; }
   .fxrow{ padding:8px 10px; border-radius:9px; cursor:pointer; transition:background .14s ease; }
   .fxrow:hover{ background:var(--hover); }
@@ -127,6 +128,9 @@
         <div class="ghost" id="fxBtn" title="Formulas - the relevant formulas for what you're doing right now (tap one to copy)">
           <span class="fx">fx</span>
         </div>
+        <div class="ghost" id="idBtn" title="Identifiers - categorize what's on your sheet (what contributes to what)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M11.2 3.5H5.5a2 2 0 0 0-2 2v5.7a2 2 0 0 0 .59 1.42l7.79 7.79a2 2 0 0 0 2.83 0l5.69-5.69a2 2 0 0 0 0-2.83l-7.79-7.79a2 2 0 0 0-1.41-.6z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/></svg>
+        </div>
         <span id="clock">--:--</span>
         <div class="ghost" id="copyBtn" title="Copy answer">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -138,6 +142,7 @@
     </div>
     <div id="body"></div>
     <div id="fxDrop" class="hidden"><div id="fxList"></div></div>
+    <div id="idDrop" class="hidden"><div id="idList"></div></div>
     <div id="spinWrap"><div class="ring"></div></div>
     <div id="ftr">
       <button id="explain" class="fbtn" title="Re-answer with the full reasoning and steps">
@@ -222,10 +227,22 @@
       nm.textContent = 'Copied!'; setTimeout(() => { try{ nm.textContent = old; }catch(e){} }, 900);
     }));
   }
+  let idItems = [];
+  function renderId(items){
+    idItems = items || [];
+    if (!idItems.length){ $('idList').innerHTML = '<div class="fxhead">Nothing to categorize yet - open a practice sheet first.</div>'; return; }
+    let html = '<div class="fxhead">What contributes to what on this sheet</div>'; let lastCat = '';
+    idItems.forEach(it => {
+      if ((it.c||'') !== lastCat){ lastCat = it.c||''; html += '<div class="idcat">'+esc(lastCat)+'</div>'; }
+      html += '<div class="fxrow"><div class="fxname">'+esc(it.n||'')+'</div>'+(it.d?'<div class="fxnote">'+esc(it.d)+'</div>':'')+'</div>';
+    });
+    $('idList').innerHTML = html;
+  }
   window.XC = {
     setAnswer(md){
       document.body.classList.remove('loading');
       $('fxDrop').classList.add('hidden');
+      $('idDrop').classList.add('hidden');
       $('body').innerHTML = mdToHtml(md);
       $('body').scrollTop = 0;
       defineTerm = pickTerm(md);
@@ -244,15 +261,27 @@
       if (has) $('qtext').textContent = q;
     },
     setFormulas(items){ renderFx(items); },
-    setFormulasLoading(){ $('fxList').innerHTML = '<div class="fxhead">Looking at what you\'re working on...</div>'; }
+    setFormulasLoading(){ $('fxList').innerHTML = '<div class="fxhead">Looking at what you\'re working on...</div>'; },
+    setIdents(items){ renderId(items); },
+    setIdentsLoading(){ $('idList').innerHTML = '<div class="fxhead">Categorizing what\'s on your sheet...</div>'; }
   };
 
   $('fxBtn').addEventListener('click', () => {
     const d = $('fxDrop');
+    $('idDrop').classList.add('hidden');
     if (d.classList.contains('hidden')){
       d.classList.remove('hidden');
       if (!fxItems.length){ XC.setFormulasLoading(); }
       post({type:'panel', k:'formulas'});
+    } else { d.classList.add('hidden'); }
+  });
+  $('idBtn').addEventListener('click', () => {
+    const d = $('idDrop');
+    $('fxDrop').classList.add('hidden');
+    if (d.classList.contains('hidden')){
+      d.classList.remove('hidden');
+      XC.setIdentsLoading();
+      post({type:'panel', k:'idents'});
     } else { d.classList.add('hidden'); }
   });
   $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));

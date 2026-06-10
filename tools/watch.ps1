@@ -27,6 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -167,6 +168,24 @@ while(-not $sync.stop){
       if($fj.choices){ $ft=([string]$fj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ft=Clean-Answer $ft }; $sync.formText=$ft } else { $sync.formText="" }
     }catch{ $sync.formText="" }
     $sync.formStamp=$sync.formStamp+1
+    continue
+  }
+  if($sync.idReq){
+    $sync.idReq=$false
+    try{
+      $il=[string]$sync.lessonlog; if($il.Length -gt 400){ $il=$il.Substring($il.Length-400) }
+      $ixl=[string]$sync.lastXl; if($ixl.Length -gt 3500){ $ixl=$ixl.Substring(0,3500) }
+      $ic=@(@{type='text';text="Below is the EXACT data from my Excel practice sheet. Categorize the line items I am looking at into the buckets that actually fit THIS exercise (for example: current assets vs current liabilities vs long-term items; or operating vs investing vs financing flows; or debt vs cash vs equity in an EV bridge; or inputs vs calculations vs outputs - whichever categories genuinely apply). Reply ONE item per line, EXACTLY in this format: Category | Item name (cell) | very short note on what it contributes to. Put lines of the same category together, most important category first. Plain ASCII. No preamble, nothing else."})
+      if($sync.sheetPurpose){ $ic+=@{type='text';text=("What I am practicing: "+$sync.sheetPurpose)} }
+      if($il){ $ic+=@{type='text';text=("Recent lesson: "+$il)} }
+      if($ixl){ $ic+=@{type='text';text=("EXACT Excel data:`n"+$ixl)} }
+      $ipay=@{ model=$sync.model; max_completion_tokens=1100; reasoning_effort='low'; messages=@(@{role='system';content="You are a finance/Excel tutor. Output exactly the requested lines and nothing else."},@{role='user';content=$ic}) } | ConvertTo-Json -Depth 10
+      $ibf="$env:TEMP\xc_ident.json"; [IO.File]::WriteAllText($ibf,$ipay,(New-Object System.Text.UTF8Encoding($false)))
+      $ir=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$ibf)
+      $ij=$null; try{ $ij=$ir|ConvertFrom-Json }catch{}
+      if($ij.choices){ $it=([string]$ij.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $it=Clean-Answer $it }; $sync.idText=$it } else { $sync.idText="" }
+    }catch{ $sync.idText="" }
+    $sync.idStamp=$sync.idStamp+1
     continue
   }
   if($sync.paused){ Start-Sleep -Milliseconds 400; continue }
@@ -624,7 +643,7 @@ function Tune-WebView($wv){
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
 $script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date)
-$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}
+$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
 $strip=$mkS.f; $wvS=$mkS.wv; $script:strip=$strip; $script:wvS=$wvS
@@ -746,6 +765,11 @@ function Handle-Panel($k,$term){
       if($fxKey -and $script:fxCache.ContainsKey($fxKey)){ JS $script:wvP ("XC.setFormulas("+$script:fxCache[$fxKey]+")") }
       else { $sync.formReq=$true }
     }
+    'idents' {
+      $idKey=([string]$sync.sheetPurpose)+"|"+([string]$sync.lastXl).GetHashCode()
+      if($script:idCache.key -eq $idKey -and $script:idCache.json){ JS $script:wvP ("XC.setIdents("+$script:idCache.json+")") }
+      else { $script:idPendingKey=$idKey; $sync.idReq=$true }
+    }
     'explain' {
       if($script:askBusy){ return }
       $script:askBusy=$true
@@ -848,6 +872,17 @@ $ui.Add_Tick({
     $fxJson=$(if($fxItems.Count -gt 0){ ConvertTo-Json @($fxItems) -Compress -Depth 4 }else{ "[]" })
     if($fxItems.Count -gt 0 -and $sync.sheetPurpose){ $script:fxCache[[string]$sync.sheetPurpose]=$fxJson }
     JS $script:wvP ("XC.setFormulas("+$fxJson+")")
+  }
+  if($sync.idStamp -gt $script:seenId){
+    $script:seenId=$sync.idStamp
+    $idItems=@()
+    foreach($ln in ([string]$sync.idText -split "`r?`n")){
+      $ip=$ln -split '\|'
+      if($ip.Count -ge 2 -and $ip[0].Trim() -and $ip[1].Trim()){ $idItems+=@{ c=$ip[0].Trim(); n=$ip[1].Trim(); d=$(if($ip.Count -ge 3){ $ip[2].Trim() }else{ "" }) } }
+    }
+    $idJson=$(if($idItems.Count -gt 0){ ConvertTo-Json @($idItems) -Compress -Depth 4 }else{ "[]" })
+    if($idItems.Count -gt 0){ $script:idCache=@{ key=$script:idPendingKey; json=$idJson } }
+    JS $script:wvP ("XC.setIdents("+$idJson+")")
   }
   if($sync.xlStamp -gt $script:seenXl){
     $script:seenXl=$sync.xlStamp; $rx=[string]$sync.xlText
