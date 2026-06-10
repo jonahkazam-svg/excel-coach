@@ -41,6 +41,8 @@ function Load-Brain {
   if(Test-Path $wp){ $t=(Get-Content $wp -Raw); if($t.Length -gt 2500){ $t=$t.Substring($t.Length-2500) }; $parts+=("KNOWN WEAK POINTS (recurring):`n"+$t) }
   $today=Join-Path $Coaching ((Get-Date).ToString("yyyy-MM-dd")+".md")
   if(Test-Path $today){ $t=(Get-Content $today -Raw); if($t.Length -gt 1400){ $t=$t.Substring($t.Length-1400) }; $parts+=("RECENT COACHING TODAY:`n"+$t) }
+  $kf=Join-Path $Coaching "Knowledge.md"
+  if(Test-Path $kf){ $t=(Get-Content $kf -Raw); if($t.Length -gt 2500){ $t=$t.Substring($t.Length-2500) }; $parts+=("CONCEPTS COVERED FROM LESSONS:`n"+$t) }
   if($parts.Count -eq 0){ return "" }
   return ("`n`nMEMORY - what you know about this student from past sessions (reference recurring weaknesses by name):`n"+($parts -join "`n`n"))
 }
