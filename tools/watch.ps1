@@ -320,24 +320,6 @@ while(-not $sync.stop){
         } else { XLog "suppressed by 20s cooldown" }
       }
     } elseif($jj.error){ XLog ("API error: "+$jj.error.message) } else { XLog "no API response (timeout?)" }
-  } else {
-    if((-not $stuck) -and (((Get-Date)-$lastChange).TotalSeconds -ge 240)){
-      $fg=$false; try{ $fgh=[WinX]::GetForegroundWindow(); $fg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
-      if($fg){
-        $stuck=$true
-        try{
-          $les3=[string]$sync.lessonlog; if($les3.Length -gt 400){ $les3=$les3.Substring($les3.Length-400) }
-          $hc=@(@{type='text';text="I have been stuck on this sheet for a few minutes without making changes. Give ONE simple, helpful hint for my very next step: point me at the right cell/row or the concept/method to apply. Do NOT give the full answer or the finished formula - just the nudge I need to get moving. 1-2 short sentences."},@{type='text';text=("[EXACT live data from MY Excel]:`n"+$xl)})
-          if($sync.sheetPurpose){ $hc+=@{type='text';text=("What this sheet is for: "+$sync.sheetPurpose)} }
-          if($les3){ $hc+=@{type='text';text=("Recent lesson: "+$les3)} }
-          $hpay=@{ model=$sync.model; max_completion_tokens=400; reasoning_effort="low"; messages=@(@{role='system';content="You are a finance/Excel tutor giving a stuck student one gentle hint. Look at where their work stops or goes wrong and nudge the very next step. Never reveal the full solution or finished formula."},@{role='user';content=$hc}) } | ConvertTo-Json -Depth 12
-          $hbf="$env:TEMP\xc_hint.json"; [IO.File]::WriteAllText($hbf,$hpay,(New-Object System.Text.UTF8Encoding($false)))
-          $hr=& curl.exe -s --max-time 45 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$hbf)
-          $hj=$null; try{ $hj=$hr|ConvertFrom-Json }catch{}
-          if($hj.choices){ $ht=([string]$hj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ht=Clean-Answer $ht }; if($ht){ $sync.xlText=("Hint: "+$ht); $sync.xlStamp=$sync.xlStamp+1; XLog "stuck hint published" } }
-        }catch{}
-      }
-    }
   }
   Start-Sleep -Seconds 4
  }catch{ XLog ("LOOP ERROR: "+$_.Exception.Message); Start-Sleep -Seconds 5 }
