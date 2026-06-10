@@ -11,7 +11,6 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Speech
 Add-Type @'
 using System; using System.Runtime.InteropServices;
 public class Win {
-  [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr h, uint a);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
@@ -23,7 +22,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK."
@@ -33,6 +32,12 @@ $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
 if(Test-Path $wpf){ $bt=(Get-Content $wpf -Raw); if($bt.Length -gt 1600){ $bt=$bt.Substring($bt.Length-1600) }; $sync.brain=" The student's known recurring weak points (call out by name if one recurs): "+$bt }
 $kfb=Join-Path $Coaching "Knowledge.md"
 if(Test-Path $kfb){ $kt=(Get-Content $kfb -Raw); if($kt.Length -gt 2000){ $kt=$kt.Substring($kt.Length-2000) }; $sync.brain=$sync.brain+" Concepts the student has already covered in lessons: "+$kt }
+
+# audio source: microphone. (Capturing system/PC audio via loopback makes the tool
+# look like spyware to Windows Defender, which hard-blocks it; the mic hears the lesson
+# through the speakers anyway.) Override the device name with MIC_DEVICE in .env.
+$sync.micMode=$true; $sync.srcLabel="Microphone ("+$sync.mic+")"
+Write-Host ("Audio source: "+$sync.srcLabel)
 
 # start NONSTOP segmented audio capture
 if(Test-Path $sync.segdir){ Remove-Item $sync.segdir -Recurse -Force -ErrorAction SilentlyContinue }
@@ -86,7 +91,7 @@ while(-not $sync.stop){
           $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/audio/transcriptions" -H ("Authorization: Bearer "+$sync.key) -F ("file=@"+$seg) -F "model=whisper-1" -F "response_format=json"
           $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}; if($jj.text){ $txt=([string]$jj.text).Trim() }
         }
-        $asked=((-not $sync.muteMe) -and ($txt -match '(?i)\bcoach\b'))
+        $asked=($sync.micMode -and (-not $sync.muteMe) -and ($txt -match '(?i)\bcoach\b'))
         if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 3){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{} }
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
@@ -177,25 +182,46 @@ function Get-Help {
   $j=$null; try{ $j=$resp|ConvertFrom-Json }catch{}
   if($j.choices){ return [string]$j.choices[0].message.content } elseif($j.error){ return "Error: "+$j.error.message } else { return "No response (check connection)." }
 }
+function Set-Round($ctl,$rad){ $d=$rad*2; $w=$ctl.Width; $h=$ctl.Height; $gp=New-Object System.Drawing.Drawing2D.GraphicsPath; $gp.AddArc(0,0,$d,$d,180,90); $gp.AddArc($w-$d-1,0,$d,$d,270,90); $gp.AddArc($w-$d-1,$h-$d-1,$d,$d,0,90); $gp.AddArc(0,$h-$d-1,$d,$d,90,90); $gp.CloseAllFigures(); $ctl.Region=New-Object System.Drawing.Region($gp) }
+function Draw-Border($g,$w,$h,$rad,$col){ $g.SmoothingMode='AntiAlias'; $pen=New-Object System.Drawing.Pen($col,1); $d=$rad*2; $gp=New-Object System.Drawing.Drawing2D.GraphicsPath; $gp.AddArc(0,0,$d,$d,180,90); $gp.AddArc($w-$d-1,0,$d,$d,270,90); $gp.AddArc($w-$d-1,$h-$d-1,$d,$d,0,90); $gp.AddArc(0,$h-$d-1,$d,$d,90,90); $gp.CloseAllFigures(); $g.DrawPath($pen,$gp); $pen.Dispose(); $gp.Dispose() }
 function Show-HelpPopup($text){
-  $f=New-Object System.Windows.Forms.Form; $f.Text="Coach"; $f.FormBorderStyle='Sizable'; $f.TopMost=$true; $f.ShowInTaskbar=$false; $f.Width=560; $f.Height=360; $f.StartPosition='Manual'
-  $wa2=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $f.Left=$wa2.Right-$f.Width-20; $f.Top=$wa2.Bottom-$f.Height-80; $f.BackColor=[System.Drawing.Color]::FromArgb(22,24,30)
-  $tb=New-Object System.Windows.Forms.TextBox; $tb.Multiline=$true; $tb.ReadOnly=$true; $tb.Dock='Fill'; $tb.BorderStyle='None'; $tb.BackColor=[System.Drawing.Color]::FromArgb(22,24,30); $tb.ForeColor=[System.Drawing.Color]::White; $tb.Font=New-Object System.Drawing.Font("Segoe UI",12); $tb.ScrollBars='Vertical'
-  $tb.Text=(($text -replace "`r`n","`n") -replace "`n","`r`n")
-  $hint=New-Object System.Windows.Forms.Label; $hint.Text="Esc to close"; $hint.Dock='Bottom'; $hint.Height=20; $hint.ForeColor=[System.Drawing.Color]::Gray; $hint.Padding='8,0,0,0'
-  $f.Controls.Add($tb); $f.Controls.Add($hint); $f.KeyPreview=$true; $f.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $f.Close() } })
-  $script:helpPopup=$f; $f.Show(); try{ [Win]::SetWindowDisplayAffinity($f.Handle,0x11)|Out-Null }catch{}
+  if($script:helpPopup -and -not $script:helpPopup.IsDisposed){ try{ $script:helpPopup.Close() }catch{} }
+  $f=New-Object System.Windows.Forms.Form; $f.Text="Coach"; $f.FormBorderStyle='None'; $f.TopMost=$true; $f.ShowInTaskbar=$false; $f.Width=600; $f.Height=400; $f.StartPosition='Manual'
+  $wa2=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $f.Left=$wa2.Right-$f.Width-24; $f.Top=$wa2.Bottom-$f.Height-72; $f.BackColor=[System.Drawing.Color]::FromArgb(24,26,32)
+  Set-Round $f 16
+  $f.Add_Paint({ param($s,$e); Draw-Border $e.Graphics $s.ClientSize.Width $s.ClientSize.Height 16 ([System.Drawing.Color]::FromArgb(58,64,78)) })
+  $head=New-Object System.Windows.Forms.Label; $head.Text="  COACH"; $head.Dock='Top'; $head.Height=42; $head.ForeColor=[System.Drawing.Color]::FromArgb(120,170,255); $head.Font=New-Object System.Drawing.Font("Segoe UI Semibold",11); $head.TextAlign='MiddleLeft'; $head.BackColor=[System.Drawing.Color]::FromArgb(24,26,32)
+  $body=New-Object System.Windows.Forms.TextBox; $body.Multiline=$true; $body.ReadOnly=$true; $body.Dock='Fill'; $body.BorderStyle='None'; $body.BackColor=[System.Drawing.Color]::FromArgb(28,31,38); $body.ForeColor=[System.Drawing.Color]::FromArgb(232,236,242); $body.Font=New-Object System.Drawing.Font("Segoe UI",12); $body.ScrollBars='Vertical'; $body.TabStop=$false
+  $body.Text=(($text -replace "`r`n","`n") -replace "`n","`r`n")
+  $pad=New-Object System.Windows.Forms.Panel; $pad.Dock='Fill'; $pad.Padding='18,4,18,8'; $pad.BackColor=[System.Drawing.Color]::FromArgb(28,31,38); $pad.Controls.Add($body)
+  $hint=New-Object System.Windows.Forms.Label; $hint.Text="Esc to close   "; $hint.Dock='Bottom'; $hint.Height=24; $hint.ForeColor=[System.Drawing.Color]::FromArgb(120,126,140); $hint.TextAlign='MiddleRight'; $hint.BackColor=[System.Drawing.Color]::FromArgb(28,31,38)
+  $bClose=New-Object System.Windows.Forms.Button; $bClose.Text=([char]0xE711); $bClose.Font=New-Object System.Drawing.Font("Segoe MDL2 Assets",10); $bClose.Width=36; $bClose.Height=28; $bClose.FlatStyle='Flat'; $bClose.FlatAppearance.BorderSize=0; $bClose.BackColor=[System.Drawing.Color]::FromArgb(24,26,32); $bClose.ForeColor=[System.Drawing.Color]::FromArgb(200,205,214); $bClose.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(210,70,70); $bClose.Cursor='Hand'; $bClose.Left=$f.Width-46; $bClose.Top=7; $bClose.Add_Click({ $f.Close() })
+  $f.Controls.Add($head); $f.Controls.Add($hint); $f.Controls.Add($pad); $f.Controls.Add($bClose); $pad.BringToFront(); $bClose.BringToFront()
+  $f.KeyPreview=$true; $f.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $f.Close() } })
+  $head.Add_MouseDown({ $script:dragP=$_.Location; $script:dragOn=$true }); $head.Add_MouseUp({ $script:dragOn=$false }); $head.Add_MouseMove({ if($script:dragOn){ $f.Left += ($_.X-$script:dragP.X); $f.Top += ($_.Y-$script:dragP.Y) } })
+  $f.Add_Shown({ try{ $body.SelectionStart=0; $body.SelectionLength=0 }catch{} })
+  $script:helpPopup=$f; $f.Show()
 }
 $strip=New-Object System.Windows.Forms.Form
-$strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=720; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
-$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-12
-$status=New-Object System.Windows.Forms.Panel; $status.Dock='Left'; $status.Width=8; $status.BackColor=[System.Drawing.Color]::FromArgb(120,130,140)
-$script:msg=New-Object System.Windows.Forms.Label; $script:msg.Dock='Fill'; $script:msg.ForeColor=[System.Drawing.Color]::White; $script:msg.Font=New-Object System.Drawing.Font("Segoe UI",10); $script:msg.TextAlign='MiddleLeft'; $script:msg.Padding='12,0,0,0'; $script:msg.Text="Live coach starting (listening)..."
-$btns=New-Object System.Windows.Forms.Panel; $btns.Dock='Right'; $btns.Width=294; $btns.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
-function Mini($t,$x,$w){ $b=New-Object System.Windows.Forms.Button; $b.Text=$t; $b.Left=$x; $b.Top=12; $b.Width=$w; $b.Height=28; $b.FlatStyle='Flat'; $b.FlatAppearance.BorderSize=0; $b.ForeColor=[System.Drawing.Color]::White; $b.BackColor=[System.Drawing.Color]::FromArgb(40,44,54); $b.Font=New-Object System.Drawing.Font("Segoe UI",9); return $b }
-$bPause=Mini "Pause" 6 52; $bMute=Mini "Mute" 60 50; $bMuteMe=Mini "Mute me" 112 66; $bHelp=Mini "Help" 180 44; $bX=Mini "X" 226 34; $btns.Controls.AddRange(@($bPause,$bMute,$bMuteMe,$bHelp,$bX))
+$strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=560; $strip.Height=46; $strip.Opacity=0.97; $strip.BackColor=[System.Drawing.Color]::FromArgb(24,26,32)
+$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-14
+Set-Round $strip 16
+$strip.Add_Paint({ param($s,$e); Draw-Border $e.Graphics $s.ClientSize.Width $s.ClientSize.Height 16 ([System.Drawing.Color]::FromArgb(58,64,78)) })
+$dot=New-Object System.Windows.Forms.Panel; $dot.Width=12; $dot.Height=12; $dot.Left=18; $dot.Top=[int](($strip.Height-12)/2); $dot.BackColor=[System.Drawing.Color]::FromArgb(120,130,145)
+$dgp=New-Object System.Drawing.Drawing2D.GraphicsPath; $dgp.AddEllipse(0,0,12,12); $dot.Region=New-Object System.Drawing.Region($dgp)
+$script:msg=New-Object System.Windows.Forms.Label; $script:msg.Left=40; $script:msg.Top=0; $script:msg.Width=344; $script:msg.Height=$strip.Height; $script:msg.ForeColor=[System.Drawing.Color]::FromArgb(236,239,244); $script:msg.Font=New-Object System.Drawing.Font("Segoe UI Semibold",10); $script:msg.TextAlign='MiddleLeft'; $script:msg.BackColor=[System.Drawing.Color]::FromArgb(24,26,32)
+$tip=New-Object System.Windows.Forms.ToolTip; $tip.InitialDelay=350
+function Mini($glyph,$fontName,$fsize,$x,$accent){ $b=New-Object System.Windows.Forms.Button; $b.Text=$glyph; $b.Left=$x; $b.Top=6; $b.Width=34; $b.Height=34; $b.FlatStyle='Flat'; $b.FlatAppearance.BorderSize=0; $b.Font=New-Object System.Drawing.Font($fontName,$fsize); $b.Cursor='Hand'; if($accent){ $b.ForeColor=[System.Drawing.Color]::White; $b.BackColor=[System.Drawing.Color]::FromArgb(56,120,236); $b.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(74,140,255); $b.FlatAppearance.MouseDownBackColor=[System.Drawing.Color]::FromArgb(44,104,214) } else { $b.ForeColor=[System.Drawing.Color]::FromArgb(222,227,235); $b.BackColor=[System.Drawing.Color]::FromArgb(34,37,46); $b.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(50,55,68); $b.FlatAppearance.MouseDownBackColor=[System.Drawing.Color]::FromArgb(40,44,54) }; return $b }
+$mdl="Segoe MDL2 Assets"
+$bPause=Mini ([char]0xE769) $mdl 12 392 $false
+$bMute=Mini ([char]0xE767) $mdl 12 432 $false
+$bHelp=Mini "?" "Segoe UI Semibold" 14 472 $true
+$bX=Mini ([char]0xE711) $mdl 10 512 $false
+foreach($bb in @($bPause,$bMute,$bHelp,$bX)){ Set-Round $bb 9 }
+$tip.SetToolTip($bPause,"Pause coaching"); $tip.SetToolTip($bMute,"Mute coach voice"); $tip.SetToolTip($bHelp,"Get help right now"); $tip.SetToolTip($bX,"Close coach")
 $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
-$strip.Controls.Add($script:msg); $strip.Controls.Add($status); $strip.Controls.Add($btns)
+$strip.Controls.AddRange(@($script:msg,$dot,$bPause,$bMute,$bHelp,$bX)); $dot.BringToFront()
+$script:msg.Text="Listening to the lesson..."
 $script:seen=0; $script:lastFull=""
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
@@ -203,28 +229,27 @@ $ui.Add_Tick({
   if($sync.stamp -gt $script:seen){
     $script:seen=$sync.stamp; $r=$sync.text
     if($sync.isAnswer){
-      if($r -ne "" -and $r -ne "OK"){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); $script:msg.Text="Answer ready - click bar to read"; $script:lastFull=$r; Show-HelpPopup $r; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } }
+      if($r -ne "" -and $r -ne "OK"){ $dot.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); $script:msg.Text="Answer ready - click to read"; $script:lastFull=$r; Show-HelpPopup $r; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } }
     }
-    elseif($r -eq "OK" -or $r -eq ""){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:msg.Text=$(if($sync.isPaused){"Working - looks fine"}else{"On track"}) }
+    elseif($r -eq "OK" -or $r -eq ""){ $dot.BackColor=[System.Drawing.Color]::FromArgb(76,180,120); $script:msg.Text=$(if($sync.isPaused){"Working - looks fine"}else{"On track"}) }
     else {
-      $status.BackColor=[System.Drawing.Color]::FromArgb(220,170,60); $script:msg.Text=$r; $script:lastFull=$r
+      $dot.BackColor=[System.Drawing.Color]::FromArgb(235,180,70); $script:msg.Text=$r; $script:lastFull=$r
       if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; if($sync.isPaused -and -not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } else { [System.Media.SystemSounds]::Asterisk.Play() } }
       $sync.lastNudge=$r
     }
   }
 })
-$bPause.Add_Click({ $sync.paused=-not $sync.paused; $bPause.Text=$(if($sync.paused){"Resume"}else{"Pause"}); if($sync.paused){ $script:msg.Text="Paused"; $status.BackColor=[System.Drawing.Color]::FromArgb(120,130,140) } })
-$bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){"Unmute"}else{"Mute"}); if($sync.mute){ try{ $speaker.SpeakAsyncCancelAll() }catch{} } })
-$bMuteMe.Add_Click({ $sync.muteMe=-not $sync.muteMe; $bMuteMe.Text=$(if($sync.muteMe){"Unmute me"}else{"Mute me"}) })
+$bPause.Add_Click({ $sync.paused=-not $sync.paused; $bPause.Text=$(if($sync.paused){[char]0xE768}else{[char]0xE769}); $tip.SetToolTip($bPause,$(if($sync.paused){"Resume coaching"}else{"Pause coaching"})); if($sync.paused){ $script:msg.Text="Paused"; $dot.BackColor=[System.Drawing.Color]::FromArgb(120,130,145) } })
+$bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){[char]0xE74F}else{[char]0xE767}); $tip.SetToolTip($bMute,$(if($sync.mute){"Unmute coach voice"}else{"Mute coach voice"})); if($sync.mute){ try{ $speaker.SpeakAsyncCancelAll() }catch{} } })
 $bHelp.Add_Click({
-  $script:msg.Text="Reading your Excel + the lesson, thinking (~30-40s)..."; $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
+  $script:msg.Text="Reading your Excel + the lesson (~30-40s)..."; $dot.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
   $ans=Get-Help; $script:lastFull=$ans
   Show-HelpPopup $ans; Log-Watch ("[help] "+$ans) ""
   if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($ans)|Out-Null }catch{} }
-  $script:msg.Text="On track"; $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:seen=$sync.stamp
+  $script:msg.Text="On track"; $dot.BackColor=[System.Drawing.Color]::FromArgb(76,180,120); $script:seen=$sync.stamp
 })
 $bX.Add_Click({ $sync.stop=$true; $ui.Stop(); Start-Sleep -Milliseconds 300; Kill-FF; try{ $rs.Close() }catch{}; $strip.Close() })
-$script:msg.Add_Click({ if($script:lastFull){ Show-HelpPopup $script:lastFull } })
-$strip.Add_Shown({ try{ [Win]::SetWindowDisplayAffinity($strip.Handle,0x11)|Out-Null }catch{}; $ui.Start() })
+$script:msg.Cursor='Hand'; $script:msg.Add_Click({ if($script:lastFull){ Show-HelpPopup $script:lastFull } })
+$strip.Add_Shown({ $ui.Start() })
 [void]$strip.ShowDialog()
 try{ $sync.stop=$true; Kill-FF; $rs.Close() }catch{}
