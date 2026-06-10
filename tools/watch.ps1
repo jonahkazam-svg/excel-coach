@@ -10,7 +10,12 @@ $Vault="C:\Users\jonah\Projects\excel-coach"; $Coaching=Join-Path $Vault "Coachi
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Speech
 Add-Type @'
 using System; using System.Runtime.InteropServices;
-public class Win { [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr h, uint a); }
+public class Win {
+  [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr h, uint a);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+}
 '@
 function Read-EnvVal($name,$default){ $l=Get-Content $EnvFile | Where-Object { $_ -match ("^\s*"+$name+"\s*=") } | Select-Object -First 1; if($l){ return ($l -replace ("^\s*"+$name+"\s*=\s*"),'').Trim().Trim('"') } else { return $default } }
 $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
@@ -117,6 +122,35 @@ function Log-Watch($text,$lesson){
   $ctx=if($lesson){ "_lesson: "+$lesson+"_`n`n" } else { "_(paused / working)_`n`n" }
   W-Append $daily ("`n### "+$time+"  [WATCH]`n"+$ctx+$text+"`n`n---`n")
 }
+function Capture-Focused($path){
+  $h=[Win]::GetForegroundWindow(); $r=New-Object Win+RECT; [void][Win]::GetWindowRect($h,[ref]$r); $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
+  if($w -lt 300 -or $ht -lt 200){ $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $r=$b; $w=$b.Width; $ht=$b.Height }
+  $cap=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($cap); try{ $g.CopyFromScreen($r.Left,$r.Top,0,0,(New-Object System.Drawing.Size($w,$ht))) }catch{}; $g.Dispose()
+  $mw=2000.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
+  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($cap,0,0,$nw,$nh); $g2.Dispose()
+  $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $cap.Dispose(); $sm.Dispose()
+}
+function Get-Help {
+  $p=Join-Path $env:TEMP "help_shot.png"; Capture-Focused $p
+  $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
+  $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). Look at the student's screen and HELP with whatever is there now: if it is a quiz/test question, work out the correct answer and explain briefly why; if it is Excel, point out the issue or the next step; otherwise give the single most useful next step. Reason it through; be accurate and clear."
+  $msgs=@(@{role='system';content=($sysH+$sync.brain)},@{role='user';content=@(@{type='text';text="Help me with what is on my screen right now."},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail='high'}})})
+  if($sync.model -match '^gpt-5'){ $payload=@{ model=$sync.model; max_completion_tokens=3000; reasoning_effort='medium'; messages=$msgs } | ConvertTo-Json -Depth 12 }
+  else { $payload=@{ model=$sync.model; max_tokens=600; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
+  $bf="$env:TEMP\help_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
+  $resp=& curl.exe -s --max-time 120 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $j=$null; try{ $j=$resp|ConvertFrom-Json }catch{}
+  if($j.choices){ return [string]$j.choices[0].message.content } elseif($j.error){ return "Error: "+$j.error.message } else { return "No response (check connection)." }
+}
+function Show-HelpPopup($text){
+  $f=New-Object System.Windows.Forms.Form; $f.Text="Coach"; $f.FormBorderStyle='Sizable'; $f.TopMost=$true; $f.ShowInTaskbar=$false; $f.Width=560; $f.Height=360; $f.StartPosition='Manual'
+  $wa2=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $f.Left=$wa2.Right-$f.Width-20; $f.Top=$wa2.Bottom-$f.Height-80; $f.BackColor=[System.Drawing.Color]::FromArgb(22,24,30)
+  $tb=New-Object System.Windows.Forms.TextBox; $tb.Multiline=$true; $tb.ReadOnly=$true; $tb.Dock='Fill'; $tb.BorderStyle='None'; $tb.BackColor=[System.Drawing.Color]::FromArgb(22,24,30); $tb.ForeColor=[System.Drawing.Color]::White; $tb.Font=New-Object System.Drawing.Font("Segoe UI",12); $tb.ScrollBars='Vertical'
+  $tb.Text=(($text -replace "`r`n","`n") -replace "`n","`r`n")
+  $hint=New-Object System.Windows.Forms.Label; $hint.Text="Esc to close"; $hint.Dock='Bottom'; $hint.Height=20; $hint.ForeColor=[System.Drawing.Color]::Gray; $hint.Padding='8,0,0,0'
+  $f.Controls.Add($tb); $f.Controls.Add($hint); $f.KeyPreview=$true; $f.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $f.Close() } })
+  $script:helpPopup=$f; $f.Show(); try{ [Win]::SetWindowDisplayAffinity($f.Handle,0x11)|Out-Null }catch{}
+}
 $strip=New-Object System.Windows.Forms.Form
 $strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=720; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 $wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-12
@@ -124,7 +158,7 @@ $status=New-Object System.Windows.Forms.Panel; $status.Dock='Left'; $status.Widt
 $script:msg=New-Object System.Windows.Forms.Label; $script:msg.Dock='Fill'; $script:msg.ForeColor=[System.Drawing.Color]::White; $script:msg.Font=New-Object System.Drawing.Font("Segoe UI",10); $script:msg.TextAlign='MiddleLeft'; $script:msg.Padding='12,0,0,0'; $script:msg.Text="Live coach starting (listening)..."
 $btns=New-Object System.Windows.Forms.Panel; $btns.Dock='Right'; $btns.Width=294; $btns.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 function Mini($t,$x,$w){ $b=New-Object System.Windows.Forms.Button; $b.Text=$t; $b.Left=$x; $b.Top=12; $b.Width=$w; $b.Height=28; $b.FlatStyle='Flat'; $b.FlatAppearance.BorderSize=0; $b.ForeColor=[System.Drawing.Color]::White; $b.BackColor=[System.Drawing.Color]::FromArgb(40,44,54); $b.Font=New-Object System.Drawing.Font("Segoe UI",9); return $b }
-$bPause=Mini "Pause" 6 52; $bMute=Mini "Mute" 60 50; $bMuteMe=Mini "Mute me" 112 66; $bAsk=Mini "Ask" 180 44; $bX=Mini "X" 226 34; $btns.Controls.AddRange(@($bPause,$bMute,$bMuteMe,$bAsk,$bX))
+$bPause=Mini "Pause" 6 52; $bMute=Mini "Mute" 60 50; $bMuteMe=Mini "Mute me" 112 66; $bHelp=Mini "Help" 180 44; $bX=Mini "X" 226 34; $btns.Controls.AddRange(@($bPause,$bMute,$bMuteMe,$bHelp,$bX))
 $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
 $strip.Controls.Add($script:msg); $strip.Controls.Add($status); $strip.Controls.Add($btns)
 $script:seen=0
@@ -147,7 +181,13 @@ $ui.Add_Tick({
 $bPause.Add_Click({ $sync.paused=-not $sync.paused; $bPause.Text=$(if($sync.paused){"Resume"}else{"Pause"}); if($sync.paused){ $script:msg.Text="Paused"; $status.BackColor=[System.Drawing.Color]::FromArgb(120,130,140) } })
 $bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){"Unmute"}else{"Mute"}); if($sync.mute){ try{ $speaker.SpeakAsyncCancelAll() }catch{} } })
 $bMuteMe.Add_Click({ $sync.muteMe=-not $sync.muteMe; $bMuteMe.Text=$(if($sync.muteMe){"Unmute me"}else{"Mute me"}) })
-$bAsk.Add_Click({ Start-Process "C:\Users\jonah\Projects\excel-coach\tools\Coach me now.lnk" -ErrorAction SilentlyContinue })
+$bHelp.Add_Click({
+  $script:msg.Text="Thinking about your screen..."; $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
+  $ans=Get-Help
+  Show-HelpPopup $ans; Log-Watch ("[help] "+$ans) ""
+  if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($ans)|Out-Null }catch{} }
+  $script:msg.Text="On track"; $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:seen=$sync.stamp
+})
 $bX.Add_Click({ $sync.stop=$true; $ui.Stop(); Start-Sleep -Milliseconds 300; Kill-FF; try{ $rs.Close() }catch{}; $strip.Close() })
 $strip.Add_Shown({ try{ [Win]::SetWindowDisplayAffinity($strip.Handle,0x11)|Out-Null }catch{}; $ui.Start() })
 [void]$strip.ShowDialog()
