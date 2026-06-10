@@ -170,13 +170,24 @@
   let defineTerm = '';
   function pickTerm(md){
     const bolds = [...String(md).matchAll(/\*\*(.+?)\*\*/g)].map(m => m[1].trim());
-    const ok = bolds.filter(t =>
-      t.length >= 3 && t.length <= 28 &&
-      !/^[A-Z]{1,3}\d{1,4}$/.test(t) &&            // skip cell refs like C39
-      !/^[\d.,%$\s()-]+$/.test(t));                 // skip pure numbers
-    if (!ok.length) return '';
-    ok.sort((a,b) => b.length - a.length);          // most substantial term
-    return ok[0].replace(/[.,:;!?]+$/,'');
+    // never offer to define generic answer-phrasing ("current focus", "final answer"...)
+    const stop = /^(current focus|focus|final answer|correct answer|the answer|answer|next step|next steps?|key terms?|important|note|tips?|remember|warning|step \d+|option [a-d]|[a-d]\)|yes|no|true|false|right|wrong|correct|incorrect|the fix|fix|goal|summary|result|results|in short|bottom line|takeaway|conclusion|why|how|what|done|good|this|that)$/i;
+    // real course vocabulary beats whatever happens to be longest
+    const fin = /(deprecia|amortiz|retained|earnings|ebitda|ebit|revenue|income|equity|asset|liabilit|cash flow|capex|opex|goodwill|interest|margin|accrual|wacc|dcf\b|irr\b|moic|npv\b|fcf|valuation|multiple|dividend|working capital|inventory|receivable|payable|gross profit|net income|balance sheet|statement|expense|tax|debt|salvage|book value|carrying|impair|leverage|enterprise value|equity value|terminal value|discount|yield|principal|covenant|tranche|synerg|accretion|dilut|roll[- ]?forward|nwc\b|pp&?e\b|capital|circular|sensitivit|scenario|comps?\b|precedent|lbo\b|merger|acquisition|share|stock|bond|coupon|cogs|sg&a|d&a\b)/i;
+    const cand = bolds.filter(t =>
+      t.length >= 3 && t.length <= 34 &&
+      t.split(/\s+/).length <= 4 &&                 // a term, not a bolded sentence
+      !/^[A-Z]{1,3}\d{1,4}$/.test(t) &&             // skip cell refs like C39
+      !/^[\d.,%$\s()-]+$/.test(t) &&                // skip pure numbers
+      !/[=]/.test(t) &&                             // skip formulas
+      !/^(alt|ctrl|shift|win|fn|f\d{1,2})\b[-+ ]/i.test(t) &&  // skip keyboard shortcuts
+      !/^([a-z\d][-+]){2,}[a-z\d]$/i.test(t) &&     // skip key sequences like Alt-H-F-S
+      !stop.test(t.replace(/[.,:;!?]+$/,'')));
+    if (!cand.length) return '';
+    const hits = cand.filter(t => fin.test(t));
+    const pool = hits.length ? hits : cand;
+    pool.sort((a,b) => b.length - a.length);
+    return pool[0].replace(/[.,:;!?]+$/,'');
   }
 
   window.XC = {

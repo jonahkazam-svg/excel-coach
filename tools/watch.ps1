@@ -25,7 +25,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
@@ -475,13 +475,8 @@ function Handle-Ask($q){
   Set-Dot '#2563eb' $false
   [System.Windows.Forms.Application]::DoEvents()
   $det=$false; if($q){ $det=[bool]($q -match '(?i)explain|in detail|elaborate|\bwhy\b') }
-  $qq=$null; if($q){ $qq=$q }
-  $ans=Get-Help $qq $det; $script:lastFull=$ans
-  Show-Answer $ans; Set-Query $(if($q){ $q }else{ "" }); Log-Watch $(if($q){ "[you asked: "+$q+"] "+$ans }else{ "[help] "+$ans }) ""
-  if(-not $sync.mute){ $sync.ttsText=$ans }
-  $script:baseStatus="On track"; $script:idle=$true; Set-Dot '#22c55e' $true
-  JS $script:wvS ("XC.busy(false)")
-  $script:seen=$sync.stamp; $script:askBusy=$false
+  $sync.askLabel=$(if($q){ $q }else{ "Help with my screen" })
+  $sync.typedDetail=$det; $sync.typedAsk=$(if($q){ $q }else{ "__ASSIST__" })
 }
 function Handle-Act($k){
   $script:lastActive=(Get-Date)
@@ -515,22 +510,15 @@ function Handle-Panel($k,$term){
       if($script:askBusy){ return }
       $script:askBusy=$true
       JS $script:wvP ("XC.setAnswerLoading()")
-      [System.Windows.Forms.Application]::DoEvents()
-      try{ $dd=Get-Help $script:lastHelpQ $true; $script:lastFull=$dd; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $dd)+")") }catch{}
-      $script:askBusy=$false
+      $sync.askLabel="Explain in detail"; $sync.typedDetail=$true; $sync.typedAsk=$(if($script:lastHelpQ){ $script:lastHelpQ }else{ "__ASSIST__" })
     }
     'define'  {
       if($script:askBusy -or -not $term){ return }
       $script:askBusy=$true
-      JS $script:wvP ("XC.setAnswerLoading()"); Set-Query ("Define "+$term)
-      [System.Windows.Forms.Application]::DoEvents()
-      try{
-        $q2="Define '"+$term+"' clearly and simply in the context of my course and what I am building in Excel. 2 to 4 sentences, with a tiny concrete example if useful."
-        $script:lastHelpQ=$q2
-        $dd=Get-Help $q2 $false; $script:lastFull=$dd; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $dd)+")")
-        if(-not $sync.mute){ $sync.ttsText=$dd }
-      }catch{}
-      $script:askBusy=$false
+      JS $script:wvP ("XC.setAnswerLoading()")
+      $q2="Define '"+$term+"' clearly and simply in the context of my course and what I am working on. 2 to 4 sentences, with a tiny concrete example if useful."
+      $script:lastHelpQ=$q2
+      $sync.askLabel="Define "+$term; $sync.typedDetail=$false; $sync.typedAsk=$q2
     }
     'simplify' {
       if($script:askBusy -or -not $script:lastFull){ return }
@@ -606,7 +594,10 @@ $ui.Add_Tick({
     $script:seen=$sync.stamp; $r=$sync.text
     if($r -ne "OK" -and $r -ne ""){ $script:lastActive=(Get-Date) }
     if($sync.isAnswer){
-      if($r -ne "" -and $r -ne "OK"){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; Set-Dot '#2563eb' $false; Set-Msg "Answer ready - click to read"; Show-Answer $r; Set-Query "Voice question"; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ $sync.ttsText=$r } }
+      $script:askBusy=$false; JS $script:wvS ("XC.busy(false)")
+      $lbl=[string]$sync.askLabel; $sync.askLabel=""
+      if($r -ne "" -and $r -ne "OK"){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; Set-Dot '#2563eb' $false; Set-Msg "Answer ready"; Show-Answer $r; Set-Query $(if($lbl){ $lbl }else{ "Voice question" }); Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ $sync.ttsText=$r }; $script:baseStatus="On track" }
+      else { $script:idle=$true; Set-Dot '#22c55e' $true }
     }
     elseif($r -eq "OK" -or $r -eq ""){
       Set-Dot '#22c55e' $true; $script:idle=$true
