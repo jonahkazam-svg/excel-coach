@@ -475,7 +475,7 @@ function Handle-Ask($q){
   $det=$false; if($q){ $det=[bool]($q -match '(?i)explain|in detail|elaborate|\bwhy\b') }
   $qq=$null; if($q){ $qq=$q }
   $ans=Get-Help $qq $det; $script:lastFull=$ans
-  Show-Answer $ans; Set-Query $(if($q){ $q }else{ "Read my screen" }); Log-Watch $(if($q){ "[you asked: "+$q+"] "+$ans }else{ "[help] "+$ans }) ""
+  Show-Answer $ans; Set-Query $(if($q){ $q }else{ "" }); Log-Watch $(if($q){ "[you asked: "+$q+"] "+$ans }else{ "[help] "+$ans }) ""
   if(-not $sync.mute){ $sync.ttsText=$ans }
   $script:baseStatus="On track"; $script:idle=$true; Set-Dot '#22c55e' $true
   JS $script:wvS ("XC.busy(false)")

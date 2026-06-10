@@ -7,7 +7,7 @@
      fill rgba(20,20,24,0.55), hairline + inner top highlight, radius 20,
      24px padding, ghost icons, query chip, hover rgba(255,255,255,0.08) r10. */
   :root{
-    --fill: rgba(20,20,24,0.55);
+    --fill: rgba(20,20,24,0.48);
     --hairline: rgba(255,255,255,0.10);
     --inner-top: rgba(255,255,255,0.06);
     --text: rgba(255,255,255,0.92);
@@ -96,8 +96,6 @@
   .fbtn:hover{ background:var(--hover); }
   .fbtn.hidden{ display:none; }
   .fbtn .lbl{ overflow:hidden; text-overflow:ellipsis; }
-  .fbtn span:first-child{ transition:transform .18s ease; }
-  .fbtn:hover span:first-child{ transform:scale(1.25); }
   #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.38); flex:0 0 auto; }
 </style>
 </head>
@@ -124,13 +122,13 @@
     <div id="spinWrap"><div class="ring"></div></div>
     <div id="ftr">
       <button id="explain" class="fbtn" title="Re-answer with the full reasoning and steps">
-        <span>&#10024;</span><span class="lbl">Explain in detail</span>
+        <span class="lbl">Explain in detail</span>
       </button>
       <button id="defineBtn" class="fbtn hidden" title="Define this term in the context of what you're working on">
-        <span>&#128214;</span><span class="lbl" id="defineLbl">Define</span>
+        <span class="lbl" id="defineLbl">Define</span>
       </button>
       <button id="simplifyBtn" class="fbtn" title="Re-explain the answer in plain, simple language">
-        <span>&#129668;</span><span class="lbl">Simplify</span>
+        <span class="lbl">Simplify</span>
       </button>
       <span id="esc">Esc to close</span>
     </div>
