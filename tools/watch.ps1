@@ -23,7 +23,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
@@ -81,6 +81,34 @@ function CapWin2($proc){
 }
 $lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1)
 while(-not $sync.stop){
+  if($sync.typedAsk){
+    try{
+      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__")
+      $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
+      $afgh=[Win2]::GetForegroundWindow(); $aexFg=$false; try{ $aexFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $afgh }) }catch{}
+      $fbB=$null; if(-not $aexFg){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
+      $xlA=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xlA=Read-ExcelLive }catch{} }
+      $sysA="You are a sharp, accurate finance and Excel tutor at Breaking Into Wall Street / investment-banking level. Answer the student's question or help with whatever they are doing right now. Work carefully and double-check before answering. Format cleanly with ## headers, **bold** for key terms and the final answer, - bullets, and thousands-separated numbers when useful."
+      $ua=$(if($isAssist){ "Help me with whatever I am working on right now." }else{ "I ask: "+$tq })
+      $ua+=" My practice is NOT always an Excel build. Right now it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF) with no Excel involved. Use the images of what I am actually looking at and help with THAT. If there is no real Excel work in progress, read the question or exercise on my screen and answer or explain it directly - do not dismiss the other window as irrelevant. Cite exact Excel cells only when there is real Excel data. "+$(if($tdet){ "Explain in detail with the full reasoning and steps." }else{ "Be concise: the direct answer or fix in 1 to 3 short sentences." })
+      $ca=@(@{type='text';text=$ua})
+      if($xlA){ $ca+=@{type='text';text=("[EXACT live Excel data, if relevant - authoritative]:`n"+$xlA)} }
+      if($sync.sheetPurpose){ $ca+=@{type='text';text=("Excel sheet context: "+$sync.sheetPurpose)} }
+      if($sync.lessonlog){ $les2=$sync.lessonlog; if($les2.Length -gt 600){ $les2=$les2.Substring($les2.Length-600) }; $ca+=@{type='text';text=("Recent lesson context: "+$les2)} }
+      if($exB){ $ca+=@{type='text';text='[Image: Excel window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail='high'}} }
+      if($coB){ $ca+=@{type='text';text='[Image: browser window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail='high'}} }
+      if($fbB){ $ca+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail='high'}} }
+      $ma=@(@{role='system';content=($sysA+$sync.brain)},@{role='user';content=$ca})
+      $pa=@{ model=$sync.model; max_completion_tokens=$(if($tdet){3500}else{900}); reasoning_effort='medium'; messages=$ma } | ConvertTo-Json -Depth 12
+      $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
+      $ar=& curl.exe -s --max-time 150 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
+      $aj=$null; try{ $aj=$ar|ConvertFrom-Json }catch{}
+      $ans=if($aj.choices){ ([string]$aj.choices[0].message.content).Trim() }elseif($aj.error){ "Error: "+$aj.error.message }else{ "No response - check your connection." }
+      if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ans=Clean-Answer $ans }
+      $sync.text=$ans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+    }catch{ $sync.text="Sorry - that question failed. Try again."; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1 }
+    continue
+  }
   if($sync.paused){ Start-Sleep -Milliseconds 400; continue }
   try {
     $segs=@(Get-ChildItem $sync.segdir -Filter "seg_*.wav" -ErrorAction SilentlyContinue | Sort-Object Name)
@@ -103,7 +131,7 @@ while(-not $sync.stop){
         $fgh=[Win2]::GetForegroundWindow(); $excelFg=$false; try{ $excelFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
         $working=($excelFg -or $paused)
         $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
-        $fbB=$null; if(-not $exB -and -not $coB){ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }
+        $fbB=$null; if((-not $exB -and -not $coB) -or (-not $excelFg)){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
         $xlLive=$null; if(($asked -or $working) -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
         if($xlLive -and ($xlLive -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
           $sync.lastWb=$Matches[1]
@@ -130,9 +158,10 @@ while(-not $sync.stop){
         if($xlLive){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative; use these cell addresses, values and formulas; never guess a cell from the image]:`n"+$xlLive)} }
         if($sync.sheetPurpose){ $content+=@{type='text';text=("What this practice sheet is for (already understood): "+$sync.sheetPurpose)} }
         if($asked -or $working){ $content+=@{type='text';text="Identify the SPECIFIC skill the lesson is teaching right now and what I am trying to BUILD in my Excel, then connect them. When you help or flag something, cite the exact cell/formula from the data above (never a guessed cell) and give the precise next step toward that goal."} }
+        $content+=@{type='text';text="My practice is NOT always an Excel build - it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF). Consider what I am ACTUALLY looking at in the images; never dismiss the other window as irrelevant just because it is not Excel."}
         if($exB){ $content+=@{type='text';text='[Image: MY Excel sheet (my own work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail=$det}} }
         if($coB){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail=$det}} }
-        if($fbB){ $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail=$det}} }
+        if($fbB){ $content+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail=$det}} }
         $msgs=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=$content})
         if($useModel -match '^gpt-5'){ $payload=@{ model=$useModel; max_completion_tokens=$maxtok; reasoning_effort=$effort; messages=$msgs } | ConvertTo-Json -Depth 12 }
         else { $payload=@{ model=$useModel; max_tokens=$maxtok; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
@@ -501,7 +530,7 @@ function Show-HelpPopup($text){
     $script:pDrag=$false
     if($script:pHover -eq 'pclose'){ $script:helpPopup.Close() }
     elseif($script:pHover -eq 'copy'){ try{ if($script:lastFull){ [System.Windows.Forms.Clipboard]::SetText($script:lastFull) } }catch{} }
-    elseif($script:pHover -eq 'expl'){ try{ Set-Answer "Explaining in detail..."; [System.Windows.Forms.Application]::DoEvents(); $dd=Get-Help $script:lastHelpQ $true; $script:lastFull=$dd; Set-Answer $dd }catch{} }
+    elseif($script:pHover -eq 'expl'){ try{ Set-Answer "Explaining in detail..."; $sync.typedDetail=$true; $sync.typedAsk=$(if($script:lastHelpQ){ $script:lastHelpQ }else{ "__ASSIST__" }) }catch{} }
   })
   $f.KeyPreview=$true; $f.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $script:helpPopup.Close() } })
   $f.Add_Shown({ Glass-On $script:helpPopup; Set-Answer $script:pendingAns })
@@ -608,11 +637,7 @@ $submitAsk={
   if($q -eq ""){ Set-Msg "Reading your Excel + the lesson..."; $script:lastHelpQ="" } else { Set-Msg ("Thinking: "+$q); $script:lastHelpQ=$q }
   $script:dotColor=$C.Accent; $strip.Invalidate($script:rDot); [System.Windows.Forms.Application]::DoEvents()
   $det=$false; if($q){ $det=[bool]($q -match '(?i)explain|in detail|elaborate|\bwhy\b') }
-  $qq=$null; if($q){ $qq=$q }
-  $ans=Get-Help $qq $det; $script:lastFull=$ans
-  Show-HelpPopup $ans; Log-Watch $(if($q){ "[you asked: "+$q+"] "+$ans }else{ "[help] "+$ans }) ""
-  if(-not $sync.mute){ $sync.ttsText=$ans }
-  $script:baseStatus="On track"; $script:idle=$true; $script:dotColor=$script:dotBase; $script:seen=$sync.stamp; $script:askBusy=$false
+  $sync.typedDetail=$det; $sync.typedAsk=$(if($q){ $q }else{ "__ASSIST__" }); $script:askBusy=$false
 }
 function Invoke-El($k){
   $script:lastActive=(Get-Date)
