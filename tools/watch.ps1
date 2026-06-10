@@ -97,13 +97,15 @@ $lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
-      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__")
+      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__")
       $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
       $afgh=[Win2]::GetForegroundWindow(); $aexFg=$false; try{ $aexFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $afgh }) }catch{}
       $fbB=$null; if(-not $aexFg){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
       $xlA=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xlA=Read-ExcelLive }catch{} }
       $sysA="You are a sharp, accurate finance and Excel tutor at Breaking Into Wall Street / investment-banking level. Answer the student's question or help with whatever they are doing right now. Work carefully and double-check before answering. Format cleanly with ## headers, **bold** for key terms and the final answer, - bullets, and thousands-separated numbers when useful."
-      if($isAudit){
+      if($isKick){
+        $ua="I want a kick-start on the sheet I have open. Look at my Excel and tell me, briefly and directly: what this sheet is asking me to do and the FIRST concrete step to get moving (name the actual starting cell or row from the data). If I have clearly already started, point me at the NEXT step instead. 2-3 sentences, direct and encouraging - do not solve it for me, just get me going."
+      } elseif($isAudit){
         $ua="Do a THOROUGH final audit of my Excel work, using the EXACT cell data below as the ground truth. Check EVERY cell that holds a formula or entered value against what this sheet is meant to practice and the standard investment-banking method: verify each formula's logic, references, and signs, and recompute the numbers to confirm them. Then report with these sections: '## Verdict' - one line, either correct and complete, or how many issues; '## Issues' - each one as the exact cell, what is wrong, and the exact fix (the correct formula or value); '## Still to do' - only if parts are unfinished; '## Done right' - one short line. Be rigorous; do not wave anything through."
       } else {
         $ua=$(if($isAssist){ "Help me with whatever I am working on right now." }else{ "I ask: "+$tq })
@@ -118,7 +120,7 @@ while(-not $sync.stop){
       if($fbB){ $ca+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail='high'}} }
       $hm=@(); foreach($h in $askHist){ $hm+=@{role='user';content=[string]$h.q}; $hm+=@{role='assistant';content=[string]$h.a} }
       $ma=@(@{role='system';content=($sysA+$sync.brain)})+$hm+@(@{role='user';content=$ca})
-      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){2800}elseif($tdet){3500}else{900}); reasoning_effort=$(if($isAudit){'high'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
+      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){2800}elseif($tdet){3500}elseif($isKick){600}else{900}); reasoning_effort=$(if($isAudit){'high'}elseif($isKick){'low'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
       $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
       $ar=& curl.exe -s --max-time 150 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
       $aj=$null; try{ $aj=$ar|ConvertFrom-Json }catch{}
@@ -126,7 +128,7 @@ while(-not $sync.stop){
       if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ans=Clean-Answer $ans }
       $sync.text=$ans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
       if($ans -and ($ans -notmatch '^(Error|No response|Sorry)')){
-        $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
+        $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isKick){ "(kick-start on this sheet)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
         $arec=$(if($ans.Length -gt 1200){ $ans.Substring(0,1200) }else{ $ans })
         [void]$askHist.Add(@{q=$qrec;a=$arec}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
       }
@@ -175,7 +177,6 @@ while(-not $sync.stop){
         $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
         $fbB=$null; if((-not $exB -and -not $coB) -or (-not $excelFg)){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
         $xlLive=$null; if(($asked -or $working) -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
-        $orientMsg=$null
         if($xlLive -and ($xlLive -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
           $sync.lastWb=$Matches[1]
           if($seenWb.ContainsKey($sync.lastWb)){
@@ -183,18 +184,14 @@ while(-not $sync.stop){
           } else {
             try{
               $les=$sync.lessonlog; if($les.Length -gt 700){ $les=$les.Substring($les.Length-700) }
-              $sp=@{ model=$sync.model; max_completion_tokens=420; reasoning_effort="low"; messages=@(@{role="system";content="You orient a finance student who just opened a practice Excel sheet. Infer from its cells, labels, any visible question, and the recent lesson. Reply with EXACTLY two lines:`nPURPOSE: Practicing <topic> via <method>; goal: <goal>`nORIENT: <2-3 short sentences - what this sheet asks and the concrete first step, naming the actual starting cell or row from the data>"},@{role="user";content=("Recent lesson: "+$les+"`n`nThe Excel sheet:`n"+$xlLive)}) } | ConvertTo-Json -Depth 8
+              $sp=@{ model="gpt-4o-mini"; max_tokens=110; temperature=0; messages=@(@{role="system";content="In ONE concise line, state what this Excel sheet is for the student to practice and the method/goal, inferred from its cells, labels, any visible question or prompt, and the recent lesson. Format exactly: 'Practicing <topic> via <method>; goal: <goal>'. Be specific; no preamble."},@{role="user";content=("Recent lesson: "+$les+"`n`nThe Excel sheet:`n"+$xlLive)}) } | ConvertTo-Json -Depth 8
               $spbf="$env:TEMP\xc_sheet.json"; [IO.File]::WriteAllText($spbf,$sp,(New-Object System.Text.UTF8Encoding($false)))
-              $spr=& curl.exe -s --max-time 35 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$spbf)
+              $spr=& curl.exe -s --max-time 20 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$spbf)
               $spj=$null; try{ $spj=$spr|ConvertFrom-Json }catch{}
               if($spj.choices){
-                $full=([string]$spj.choices[0].message.content).Trim()
-                $pi=$full.IndexOf("PURPOSE:"); $oi=$full.IndexOf("ORIENT:")
-                $purp=$full; $orient=""
-                if($pi -ge 0 -and $oi -gt $pi){ $purp=$full.Substring($pi+8,$oi-($pi+8)).Trim(); $orient=$full.Substring($oi+7).Trim() }
-                if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $purp=Clean-Answer $purp; if($orient){ $orient=Clean-Answer $orient } }
+                $purp=([string]$spj.choices[0].message.content).Trim()
+                if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $purp=Clean-Answer $purp }
                 $sync.sheetPurpose=$purp; $seenWb[$sync.lastWb]=$purp
-                if($orient){ $orientMsg="New sheet. "+$orient }
                 $sf=Join-Path $sync.coaching "Sheets.md"; if(-not(Test-Path $sf)){ [IO.File]::AppendAllText($sf,"# Sheets - what each practice workbook is for`r`n",(New-Object System.Text.UTF8Encoding($false))) }
                 [IO.File]::AppendAllText($sf,"`r`n- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"  '"+$sync.lastWb+"': "+$sync.sheetPurpose,(New-Object System.Text.UTF8Encoding($false)))
               }
@@ -239,7 +236,6 @@ while(-not $sync.stop){
         }
         if((-not $asked) -and $sync.text -ne "OK" -and $sync.text -ne ""){ if(((Get-Date)-$lastNudgeT).TotalSeconds -lt 25){ $sync.text="OK" } else { $lastNudgeT=(Get-Date) } }
         if((-not $asked) -and $working -and $sync.text -ne "OK" -and $sync.text -ne ""){ $newStr=$true; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $newStr=(-not (XC-SameIssue $sync.text $lastStruggleLogged)) }; if($newStr){ $lastStruggleLogged=$sync.text; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $sync.text }catch{} } } }
-        if($orientMsg -and (-not $asked) -and ($sync.text -eq "OK" -or $sync.text -eq "")){ $sync.text=$orientMsg }
         if($xlLive){
           $xh=$xlLive.GetHashCode()
           if($xh -ne $lastXlHash){ $lastXlHash=$xh; $lastXlChange=(Get-Date); $stuckOffered=$false }
@@ -587,6 +583,14 @@ function Handle-Act($k){
       Set-Msg "Deep-checking your sheet..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Deep-checking"
       Show-PanelLoading
       $sync.askLabel="Sheet audit"; $sync.typedDetail=$true; $sync.typedAsk="__AUDIT__"
+    }
+    'kick'     {
+      if($script:askBusy){ return }
+      $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
+      JS $script:wvS ("XC.busy(true)")
+      Set-Msg "Getting you going..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Kick incoming"
+      Show-PanelLoading
+      $sync.askLabel="Kick-start"; $sync.typedDetail=$false; $sync.typedAsk="__KICK__"
     }
     'close'    { Shutdown-Coach }
   }
