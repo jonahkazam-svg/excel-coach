@@ -19,8 +19,8 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
-$sync.ff=$ff; $sync.model="gpt-4o-mini"; $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
-$sync.sys="You are a LIVE ambient tutor watching a student's full screen while they follow a Breaking Into Wall Street Excel lesson and rebuild it in their own Excel. You are given the most recent lesson audio (or that it's paused) and the screen. If the student is on track and nothing needs saying, reply EXACTLY: OK . Otherwise reply ONE short specific nudge, max 22 words, start with the fix."
+$sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-4o"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
+$sync.sys="You are a PRECISE live tutor. The student is following a Breaking Into Wall Street Excel lesson and rebuilding it in their OWN Excel. The screenshot shows their whole screen, which contains BOTH the instructor's lesson (a video, or the instructor's own example/Excel) AND the student's own Excel that they are actively editing. FIRST silently work out which region is the student's work and which is the instructor's example - do NOT mix them up. THEN compare the student's work to the lesson precisely: specific cells, row/column labels, values, formulas, signs (+/-), and structure. If the student's work differs from the lesson, is behind, or has an error, reply with ONE nudge naming the exact cell/label/value that is off and what it should be (max 24 words). If their work matches the lesson and looks correct, reply EXACTLY: OK"
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
@@ -38,7 +38,7 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 function Cap($path){
   $b=[System.Windows.Forms.SystemInformation]::VirtualScreen
   $full=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($full); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
-  $mw=1280.0; $s=[Math]::Min(1.0,$mw/$b.Width); $nw=[int]($b.Width*$s); $nh=[int]($b.Height*$s)
+  $mw=1536.0; $s=[Math]::Min(1.0,$mw/$b.Width); $nw=[int]($b.Width*$s); $nh=[int]($b.Height*$s)
   $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($full,0,0,$nw,$nh); $g2.Dispose()
   $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $full.Dispose(); $sm.Dispose()
 }
@@ -65,8 +65,8 @@ while(-not $sync.stop){
         Cap $sync.png; $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png))
         $maxtok=80
         if($asked){ $u="The student just spoke to you directly (they said 'coach'). They asked: '"+$txt+"'. Answer their question specifically and concisely using their screen and your memory of their weak points. If it was not actually a question for you, reply EXACTLY: OK"; $maxtok=170 }
-        elseif($paused){ $u="The lesson is PAUSED/silent - I'm doing the activity or stuck. Look at my Excel + the on-screen lesson example and give the specific next step or fix." }
-        else { $u="Live lesson audio (most recent ~30s): '"+$lessonCtx+"'. Compare my Excel to the lesson; nudge only if I've clearly diverged or fallen behind." }
+        elseif($paused){ $u="The lesson video is PAUSED/silent - I'm doing the hands-on activity or I'm stuck. Find MY Excel (the one I'm editing, NOT the instructor's example) and compare it to the lesson example on screen. Name the specific cell/value/formula I should fix or do next." }
+        else { $u="Live lesson audio (most recent ~30s): '"+$lessonCtx+"'. The screen shows the instructor's example AND my own Excel - compare MINE to theirs and flag the exact cell/value where they differ. Stay silent (OK) unless there is a real, specific difference." }
         if(-not $asked -and $sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat unless still unaddressed." }
         $payload=@{ model=$sync.model; max_tokens=$maxtok; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64)}})}) } | ConvertTo-Json -Depth 12
         $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
