@@ -40,7 +40,7 @@ function Load-Brain {
   return ("`n`nMEMORY - what you know about this student from past sessions (reference recurring weaknesses by name):`n"+($parts -join "`n`n"))
 }
 function Stream-Chat($messages,$onToken){
-  $payload=@{ model=$Model; max_tokens=600; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14
+  $payload=@{ model=$Model; max_tokens=600; temperature=0; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14
   $client=New-Object System.Net.Http.HttpClient; $client.Timeout=[TimeSpan]::FromSeconds(120)
   $req=New-Object System.Net.Http.HttpRequestMessage('Post','https://api.openai.com/v1/chat/completions')
   $req.Headers.Authorization=New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer',$script:key)

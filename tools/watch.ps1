@@ -35,12 +35,20 @@ $sync.ffpid=$ffp.Id
 
 $work=@'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type 'using System; using System.Runtime.InteropServices; public class Win2 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); }'
 function Cap($path){
-  $b=[System.Windows.Forms.SystemInformation]::VirtualScreen
-  $full=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($full); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
-  $mw=1792.0; $s=[Math]::Min(1.0,$mw/$b.Width); $nw=[int]($b.Width*$s); $nh=[int]($b.Height*$s)
-  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($full,0,0,$nw,$nh); $g2.Dispose()
-  $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $full.Dispose(); $sm.Dispose()
+  $h=[Win2]::GetForegroundWindow(); $r=New-Object Win2+RECT; [void][Win2]::GetWindowRect($h,[ref]$r)
+  $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
+  if($w -gt 300 -and $ht -gt 200){
+    $cap=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($cap)
+    try{ $g.CopyFromScreen($r.Left,$r.Top,0,0,(New-Object System.Drawing.Size($w,$ht))) }catch{}; $g.Dispose()
+  } else {
+    $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; $w=$b.Width; $ht=$b.Height
+    $cap=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($cap); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
+  }
+  $mw=1700.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
+  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($cap,0,0,$nw,$nh); $g2.Dispose()
+  $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $cap.Dispose(); $sm.Dispose()
 }
 $processed=-1; $rolling=New-Object System.Collections.ArrayList
 while(-not $sync.stop){
@@ -72,7 +80,7 @@ while(-not $sync.stop){
           if($sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat it." }
           $useModel=$sync.model; $det="auto"; $maxtok=120
         }
-        $payload=@{ model=$useModel; max_tokens=$maxtok; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail=$det}})}) } | ConvertTo-Json -Depth 12
+        $payload=@{ model=$useModel; max_tokens=$maxtok; temperature=0; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail=$det}})}) } | ConvertTo-Json -Depth 12
         $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
         $vr=& curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
         $vj=$null; try{ $vj=$vr|ConvertFrom-Json }catch{}
