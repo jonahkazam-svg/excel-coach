@@ -17,7 +17,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model="gpt-4o-mini"; $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a LIVE ambient tutor watching a student's full screen while they follow a Breaking Into Wall Street Excel lesson and rebuild it in their own Excel. You are given the most recent lesson audio (or that it's paused) and the screen. If the student is on track and nothing needs saying, reply EXACTLY: OK . Otherwise reply ONE short specific nudge, max 22 words, start with the fix."
@@ -59,18 +59,21 @@ while(-not $sync.stop){
           $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/audio/transcriptions" -H ("Authorization: Bearer "+$sync.key) -F ("file=@"+$seg) -F "model=whisper-1" -F "response_format=json"
           $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}; if($jj.text){ $txt=([string]$jj.text).Trim() }
         }
-        if($txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 3){ $rolling.RemoveAt(0) } }
+        $asked=((-not $sync.muteMe) -and ($txt -match '(?i)\bcoach\b'))
+        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 3){ $rolling.RemoveAt(0) } }
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         Cap $sync.png; $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png))
-        if($paused){ $u="The lesson is PAUSED/silent - I'm doing the activity or stuck. Look at my Excel + the on-screen lesson example and give the specific next step or fix." }
+        $maxtok=80
+        if($asked){ $u="The student just spoke to you directly (they said 'coach'). They asked: '"+$txt+"'. Answer their question specifically and concisely using their screen and your memory of their weak points. If it was not actually a question for you, reply EXACTLY: OK"; $maxtok=170 }
+        elseif($paused){ $u="The lesson is PAUSED/silent - I'm doing the activity or stuck. Look at my Excel + the on-screen lesson example and give the specific next step or fix." }
         else { $u="Live lesson audio (most recent ~30s): '"+$lessonCtx+"'. Compare my Excel to the lesson; nudge only if I've clearly diverged or fallen behind." }
-        if($sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat unless still unaddressed." }
-        $payload=@{ model=$sync.model; max_tokens=80; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64)}})}) } | ConvertTo-Json -Depth 12
+        if(-not $asked -and $sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat unless still unaddressed." }
+        $payload=@{ model=$sync.model; max_tokens=$maxtok; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64)}})}) } | ConvertTo-Json -Depth 12
         $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
         $vr=& curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
         $vj=$null; try{ $vj=$vr|ConvertFrom-Json }catch{}
         $sync.text=if($vj.choices){ ([string]$vj.choices[0].message.content).Trim() } else { "OK" }
-        $sync.lesson=$lessonCtx; $sync.isPaused=$paused; $sync.stamp=$sync.stamp+1
+        $sync.lesson=$lessonCtx; $sync.isPaused=$paused; $sync.isAnswer=$asked; $sync.stamp=$sync.stamp+1
         if($segs.Count -gt 6){ for($i=0;$i -lt ($segs.Count-6);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
       }
     }
@@ -100,13 +103,13 @@ function Log-Watch($text,$lesson){
   W-Append $daily ("`n### "+$time+"  [WATCH]`n"+$ctx+$text+"`n`n---`n")
 }
 $strip=New-Object System.Windows.Forms.Form
-$strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=680; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
+$strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=720; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 $wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-12
 $status=New-Object System.Windows.Forms.Panel; $status.Dock='Left'; $status.Width=8; $status.BackColor=[System.Drawing.Color]::FromArgb(120,130,140)
 $script:msg=New-Object System.Windows.Forms.Label; $script:msg.Dock='Fill'; $script:msg.ForeColor=[System.Drawing.Color]::White; $script:msg.Font=New-Object System.Drawing.Font("Segoe UI",10); $script:msg.TextAlign='MiddleLeft'; $script:msg.Padding='12,0,0,0'; $script:msg.Text="Live coach starting (listening)..."
-$btns=New-Object System.Windows.Forms.Panel; $btns.Dock='Right'; $btns.Width=256; $btns.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
+$btns=New-Object System.Windows.Forms.Panel; $btns.Dock='Right'; $btns.Width=294; $btns.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 function Mini($t,$x,$w){ $b=New-Object System.Windows.Forms.Button; $b.Text=$t; $b.Left=$x; $b.Top=12; $b.Width=$w; $b.Height=28; $b.FlatStyle='Flat'; $b.FlatAppearance.BorderSize=0; $b.ForeColor=[System.Drawing.Color]::White; $b.BackColor=[System.Drawing.Color]::FromArgb(40,44,54); $b.Font=New-Object System.Drawing.Font("Segoe UI",9); return $b }
-$bPause=Mini "Pause" 6 64; $bMute=Mini "Mute" 74 58; $bAsk=Mini "Ask" 136 48; $bX=Mini "X" 188 40; $btns.Controls.AddRange(@($bPause,$bMute,$bAsk,$bX))
+$bPause=Mini "Pause" 6 52; $bMute=Mini "Mute" 60 50; $bMuteMe=Mini "Mute me" 112 66; $bAsk=Mini "Ask" 180 44; $bX=Mini "X" 226 34; $btns.Controls.AddRange(@($bPause,$bMute,$bMuteMe,$bAsk,$bX))
 $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
 $strip.Controls.Add($script:msg); $strip.Controls.Add($status); $strip.Controls.Add($btns)
 $script:seen=0
@@ -115,7 +118,10 @@ $ui.Add_Tick({
   if(-not (Get-Process -Id $sync.ffpid -ErrorAction SilentlyContinue)){ try{ $rp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru; $sync.ffpid=$rp.Id }catch{} }
   if($sync.stamp -gt $script:seen){
     $script:seen=$sync.stamp; $r=$sync.text
-    if($r -eq "OK" -or $r -eq ""){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:msg.Text=$(if($sync.isPaused){"Working - looks fine"}else{"On track"}) }
+    if($sync.isAnswer){
+      if($r -ne "" -and $r -ne "OK"){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); $script:msg.Text="A: "+$r; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } }
+    }
+    elseif($r -eq "OK" -or $r -eq ""){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:msg.Text=$(if($sync.isPaused){"Working - looks fine"}else{"On track"}) }
     else {
       $status.BackColor=[System.Drawing.Color]::FromArgb(220,170,60); $script:msg.Text=$r
       if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; if($sync.isPaused -and -not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } else { [System.Media.SystemSounds]::Asterisk.Play() } }
@@ -125,6 +131,7 @@ $ui.Add_Tick({
 })
 $bPause.Add_Click({ $sync.paused=-not $sync.paused; $bPause.Text=$(if($sync.paused){"Resume"}else{"Pause"}); if($sync.paused){ $script:msg.Text="Paused"; $status.BackColor=[System.Drawing.Color]::FromArgb(120,130,140) } })
 $bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){"Unmute"}else{"Mute"}); if($sync.mute){ try{ $speaker.SpeakAsyncCancelAll() }catch{} } })
+$bMuteMe.Add_Click({ $sync.muteMe=-not $sync.muteMe; $bMuteMe.Text=$(if($sync.muteMe){"Unmute me"}else{"Mute me"}) })
 $bAsk.Add_Click({ Start-Process "C:\Users\jonah\Projects\excel-coach\tools\Coach me now.lnk" -ErrorAction SilentlyContinue })
 $bX.Add_Click({ $sync.stop=$true; $ui.Stop(); Start-Sleep -Milliseconds 300; Kill-FF; try{ $rs.Close() }catch{}; $strip.Close() })
 $strip.Add_Shown({ try{ [Win]::SetWindowDisplayAffinity($strip.Handle,0x11)|Out-Null }catch{}; $ui.Start() })
