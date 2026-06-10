@@ -108,6 +108,7 @@ function Analyze-Session {
 $script:key=Read-Key
 if(-not $script:key -or $script:key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 $script:brain=Load-Brain
+try{ . (Join-Path $PSScriptRoot "curriculum.ps1"); $script:brain=$script:brain+(Build-CurriculumBrain) }catch{}
 
 if($Test){
   Write-Host ("[memory loaded: "+$script:brain.Length+" chars]")
