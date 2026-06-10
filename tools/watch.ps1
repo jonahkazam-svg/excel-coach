@@ -191,7 +191,15 @@ while(-not $sync.stop){
           if($xh -ne $lastXlHash){ $lastXlHash=$xh; $lastXlChange=(Get-Date); $stuckOffered=$false }
           elseif($excelFg -and (-not $asked) -and (-not $stuckOffered) -and (((Get-Date)-$lastXlChange).TotalSeconds -ge 240) -and ($sync.text -eq "OK" -or $sync.text -eq "")){
             $stuckOffered=$true
-            $sync.text="You've been on "+$(if($sync.lastWb){ "'"+$sync.lastWb+"'" }else{ "this sheet" })+" a few minutes without changes - stuck? Ask me, or hit Assist for a hint."
+            $hu="I have been stuck on this sheet for a few minutes without making changes. Give ONE simple, helpful hint for my very next step: point me at the right cell/row or the concept/method to apply. Do NOT give the full answer or the finished formula - just the nudge I need to get moving. 1-2 short sentences."
+            $hc=@(@{type='text';text=$hu},@{type='text';text=("[EXACT live data from MY Excel]:`n"+$xlLive)})
+            if($sync.sheetPurpose){ $hc+=@{type='text';text=("What this sheet is for: "+$sync.sheetPurpose)} }
+            if($lessonCtx){ $hc+=@{type='text';text=("Recent lesson: "+$lessonCtx)} }
+            $hpay=@{ model=$sync.model; max_completion_tokens=400; reasoning_effort="low"; messages=@(@{role='system';content="You are a finance/Excel tutor giving a stuck student one gentle hint. Look at where their work stops or goes wrong and nudge the very next step. Never reveal the full solution or finished formula."},@{role='user';content=$hc}) } | ConvertTo-Json -Depth 12
+            $hbf="$env:TEMP\xc_hint.json"; [IO.File]::WriteAllText($hbf,$hpay,(New-Object System.Text.UTF8Encoding($false)))
+            $hr=& curl.exe -s --max-time 45 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$hbf)
+            $hj=$null; try{ $hj=$hr|ConvertFrom-Json }catch{}
+            if($hj.choices){ $ht=([string]$hj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ht=Clean-Answer $ht }; if($ht){ $sync.text="Hint: "+$ht } }
           }
         }
         if((-not $asked) -and ($sync.text -eq "OK" -or $sync.text -eq "")){
