@@ -20,6 +20,8 @@ function XC-DaysToStart {
   } catch { return 999 }
 }
 
+function XC-DaysSince($d){ if(-not $d){ return 999 }; try{ return [int]((Get-Date).Date - [datetime]::ParseExact($d,'yyyy-MM-dd',$null)).TotalDays }catch{ return 999 } }
+
 function Get-Curriculum {
   $f = Join-Path $script:XCCoaching "Curriculum.md"
   if(-not (Test-Path $f)){ return @() }
@@ -56,7 +58,7 @@ function Bump-Mastery($id,$status,$note){
   $cur = $(if($m.ContainsKey($id)){ $m[$id].status } else { "unseen" })
   $write = $false
   switch($status){
-    "exposed" { if($cur -eq "unseen"){ $write=$true } }
+    "exposed" { if($cur -eq "unseen"){ $write=$true } elseif($cur -eq "exposed" -and $m[$id].last_seen -ne (Get-Date).ToString('yyyy-MM-dd')){ $write=$true } }
     "shaky"   { if($cur -ne "shaky" -and $cur -ne "solid"){ $write=$true } }
     "solid"   { $write=$true }
     default   { if($script:XCRank[$status] -gt $script:XCRank[$cur]){ $write=$true } }
@@ -77,13 +79,15 @@ function Get-NextGap([int]$top=3){
   foreach($n in $cur){
     $st = $(if($m.ContainsKey($n.id)){ $m[$n.id].status } else { "unseen" })
     $w = $weak[$st]; if($null -eq $w){ $w=2 }
+    $rec = 1.0
+    if(($st -eq 'exposed' -or $st -eq 'solid') -and $m.ContainsKey($n.id)){ $ds = XC-DaysSince $m[$n.id].last_seen; if($ds -ge 3){ $rec = 1.0 + [Math]::Min($ds,14)/4.0 }; if($st -eq 'solid'){ $w = $(if($ds -ge 5){ [Math]::Min($ds,15)/15.0 }else{ 0 }) } }
     if($w -le 0){ continue }
     $tw = $tierW[$n.tier]; if($null -eq $tw){ $tw=2 }
     $pre = 1.0
     if($n.prereq){ $pst = $(if($m.ContainsKey($n.prereq)){ $m[$n.prereq].status } else { "unseen" }); if($pst -eq "unseen"){ $pre=0.4 } }
     $dl = 1.0
     if($n.tier -eq "must" -and $days -lt 14){ $dl = 1.0 + (14-$days)/14.0 }
-    $scored += [PSCustomObject]@{ node=$n; status=$st; score=($tw*$w*$pre*$dl) }
+    $scored += [PSCustomObject]@{ node=$n; status=$st; score=($tw*$w*$pre*$dl*$rec) }
   }
   return ($scored | Sort-Object -Property score -Descending | Select-Object -First $top)
 }
@@ -105,6 +109,11 @@ function Build-CurriculumBrain {
   }
   $nf=Join-Path $script:XCCoaching "Notes.md"
   if(Test-Path $nf){ $nt=(Get-Content $nf -Raw); if($nt.Length -gt 600){ $nt=$nt.Substring($nt.Length-600) }; $nt=(($nt -replace '(?m)^#{1,6}.*$','') -replace "\r?\n"," ").Trim(); if($nt){ [void]$sb.Append(" The student has FLAGGED these to revisit and practice (bring them up when relevant): "+$nt+".") } }
+  $stale=@()
+  foreach($n in $musts){ if($m.ContainsKey($n.id) -and ($m[$n.id].status -eq 'exposed' -or $m[$n.id].status -eq 'solid')){ $ds=XC-DaysSince $m[$n.id].last_seen; if($ds -ge 4){ $stale += [PSCustomObject]@{ topic=$n.topic; ds=$ds } } } }
+  if(@($stale).Count -gt 0){ $sr=(@($stale | Sort-Object -Property ds -Descending | Select-Object -First 3) | ForEach-Object { $_.topic+" ("+$_.ds+"d ago)" }) -join "; "; [void]$sb.Append(" REVIEW RADAR - covered a while ago and worth a quick refresh before the program: "+$sr+".") }
+  $sf=Join-Path $script:XCCoaching "Sheets.md"
+  if(Test-Path $sf){ $sl=@(Get-Content $sf | Where-Object { $_ -match '^\s*-\s' } | Select-Object -Last 3); if($sl.Count -gt 0){ [void]$sb.Append(" Recent practice sheets (cross-session memory of what each was for): "+((($sl -join " ") -replace '\s+',' ').Trim())+".") } }
   [void]$sb.Append(" When you help, be accurate and frame it against where the student stands versus what an investment-banking analyst needs to know cold; when it fits naturally, connect your help to closing these gaps. Do not lecture about the curriculum unprompted - just let it sharpen your help.")
   return $sb.ToString()
 }
