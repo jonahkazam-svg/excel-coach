@@ -156,3 +156,16 @@ function Read-ExcelLive {
   } catch { $out=$null } finally { foreach($o in @($ur,$sh,$wb,$xl)){ try{ if($o){ [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($o) } }catch{} } }
   return $out
 }
+
+# Normalize a model answer to clean, readable plain ASCII (strip markdown, convert smart punctuation, drop garbage)
+function Clean-Answer($s){
+  if(-not $s){ return $s }
+  $s=$s -replace ([char]0x2014),' - ' -replace ([char]0x2013),'-' -replace ([char]0x2018),"'" -replace ([char]0x2019),"'" -replace ([char]0x201C),'"' -replace ([char]0x201D),'"' -replace ([char]0x2026),'...' -replace ([char]0x2022),'-' -replace ([char]0x2192),'->' -replace ([char]0x00A0),' '
+  $s=$s -replace '\*\*','' -replace '__','' -replace '`',''
+  $s=$s -replace '(?m)^\s{0,3}#{1,6}\s*',''
+  $s=$s -replace '(?m)^\s*[\*\-\+]\s+','- '
+  $s=$s -replace '[^\x09\x0A\x0D\x20-\x7E]',''
+  $s=$s -replace '[ ]{2,}',' '
+  $s=$s -replace "(\r?\n){3,}","`r`n`r`n"
+  return $s.Trim()
+}
