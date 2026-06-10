@@ -440,9 +440,9 @@ function Set-Answer($text){
 function Place-Panel($f){
   $st=$script:strip; if(-not $st){ return }
   $wa3=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  $l=$st.Left+$st.Width-$f.Width
+  $l=$wa3.Right-$f.Width-(Px 16)
   if($l -lt ($wa3.Left+(Px 8))){ $l=$wa3.Left+(Px 8) }; if(($l+$f.Width) -gt ($wa3.Right-(Px 8))){ $l=$wa3.Right-(Px 8)-$f.Width }
-  $t=$st.Top-$f.Height-(Px 8); if($t -lt ($wa3.Top+(Px 8))){ $t=$st.Top+$st.Height+(Px 8) }
+  $t=$wa3.Bottom-$f.Height-(Px 14)
   $f.Left=$l; $f.Top=$t
 }
 function Show-HelpPopup($text){
@@ -517,7 +517,7 @@ $script:glyphs=@{ col=[char]0xE921; expd=[char]0xE740; pause=[char]0xE769; mute=
 $script:tips=@{ col='Collapse to a pill'; expd='Expand the coach bar'; pause='Pause coaching'; mute='Mute coach voice'; sound='Mute the notification sound'; note='Note this - flag it to revisit and practice later'; close='Close coach'; assist='Assist - answers your question, or reads your screen if empty' }
 $strip=New-Object System.Windows.Forms.Form
 $strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=$script:stripW; $strip.Height=$script:stripH; $strip.BackColor=[System.Drawing.Color]::Black
-$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Right-$strip.Width-(Px 16); $strip.Top=$wa.Bottom-$strip.Height-(Px 14)
+$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-(Px 14)
 $script:strip=$strip
 $script:rDot=New-Object System.Drawing.Rectangle((Px 18),(Px 14),(Px 12),(Px 12))
 $script:rTime=New-Object System.Drawing.Rectangle((Px 38),(Px 6),(Px 50),(Px 28))
@@ -575,7 +575,7 @@ $script:seen=0; $script:lastFull=""; $script:pulse=0; $script:idle=$true; $scrip
 function Apply-Strip {
   if($script:collapsed){ $nw=$script:pillW; $nh=$script:pillH } else { $nw=$script:stripW; $nh=$script:stripH }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  if($script:collapsed){ $nl=$wa4.Left+[int](($wa4.Width-$nw)/2) } else { $nl=$wa4.Right-$nw-(Px 16) }
+  $nl=$wa4.Left+[int](($wa4.Width-$nw)/2)
   $nt=$wa4.Bottom-$nh-(Px 14)
   $strip.SetBounds($nl,$nt,$nw,$nh)
   if($script:collapsed){ $script:rStatus=New-Object System.Drawing.Rectangle((Px 38),(Px 5),($script:pillW-(Px 38)-(Px 42)),(Px 30)) }
