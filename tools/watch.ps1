@@ -7,7 +7,7 @@
 param([switch]$TestAsync)
 
 $Vault="C:\Users\jonah\Projects\excel-coach"; $Coaching=Join-Path $Vault "Coaching"; $EnvFile=Join-Path $Vault ".env"
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Speech
 Add-Type @'
 using System; using System.Runtime.InteropServices;
 public class Win { [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr h, uint a); }
@@ -100,24 +100,31 @@ function Log-Watch($text,$lesson){
   W-Append $daily ("`n### "+$time+"  [WATCH]`n"+$ctx+$text+"`n`n---`n")
 }
 $strip=New-Object System.Windows.Forms.Form
-$strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=640; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
+$strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=680; $strip.Height=54; $strip.Opacity=0.93; $strip.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 $wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-12
 $status=New-Object System.Windows.Forms.Panel; $status.Dock='Left'; $status.Width=8; $status.BackColor=[System.Drawing.Color]::FromArgb(120,130,140)
 $script:msg=New-Object System.Windows.Forms.Label; $script:msg.Dock='Fill'; $script:msg.ForeColor=[System.Drawing.Color]::White; $script:msg.Font=New-Object System.Drawing.Font("Segoe UI",10); $script:msg.TextAlign='MiddleLeft'; $script:msg.Padding='12,0,0,0'; $script:msg.Text="Live coach starting (listening)..."
-$btns=New-Object System.Windows.Forms.Panel; $btns.Dock='Right'; $btns.Width=180; $btns.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
+$btns=New-Object System.Windows.Forms.Panel; $btns.Dock='Right'; $btns.Width=256; $btns.BackColor=[System.Drawing.Color]::FromArgb(20,22,28)
 function Mini($t,$x,$w){ $b=New-Object System.Windows.Forms.Button; $b.Text=$t; $b.Left=$x; $b.Top=12; $b.Width=$w; $b.Height=28; $b.FlatStyle='Flat'; $b.FlatAppearance.BorderSize=0; $b.ForeColor=[System.Drawing.Color]::White; $b.BackColor=[System.Drawing.Color]::FromArgb(40,44,54); $b.Font=New-Object System.Drawing.Font("Segoe UI",9); return $b }
-$bPause=Mini "Pause" 6 70; $bAsk=Mini "Ask" 80 50; $bX=Mini "X" 134 40; $btns.Controls.AddRange(@($bPause,$bAsk,$bX))
+$bPause=Mini "Pause" 6 64; $bMute=Mini "Mute" 74 58; $bAsk=Mini "Ask" 136 48; $bX=Mini "X" 188 40; $btns.Controls.AddRange(@($bPause,$bMute,$bAsk,$bX))
+$speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
 $strip.Controls.Add($script:msg); $strip.Controls.Add($status); $strip.Controls.Add($btns)
 $script:seen=0
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
+  if(-not (Get-Process -Id $sync.ffpid -ErrorAction SilentlyContinue)){ try{ $rp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru; $sync.ffpid=$rp.Id }catch{} }
   if($sync.stamp -gt $script:seen){
     $script:seen=$sync.stamp; $r=$sync.text
     if($r -eq "OK" -or $r -eq ""){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:msg.Text=$(if($sync.isPaused){"Working - looks fine"}else{"On track"}) }
-    else { $status.BackColor=[System.Drawing.Color]::FromArgb(220,170,60); $script:msg.Text=$r; if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; [System.Media.SystemSounds]::Asterisk.Play() }; $sync.lastNudge=$r }
+    else {
+      $status.BackColor=[System.Drawing.Color]::FromArgb(220,170,60); $script:msg.Text=$r
+      if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; if($sync.isPaused -and -not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } else { [System.Media.SystemSounds]::Asterisk.Play() } }
+      $sync.lastNudge=$r
+    }
   }
 })
 $bPause.Add_Click({ $sync.paused=-not $sync.paused; $bPause.Text=$(if($sync.paused){"Resume"}else{"Pause"}); if($sync.paused){ $script:msg.Text="Paused"; $status.BackColor=[System.Drawing.Color]::FromArgb(120,130,140) } })
+$bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){"Unmute"}else{"Mute"}); if($sync.mute){ try{ $speaker.SpeakAsyncCancelAll() }catch{} } })
 $bAsk.Add_Click({ Start-Process "C:\Users\jonah\Projects\excel-coach\tools\Coach me now.lnk" -ErrorAction SilentlyContinue })
 $bX.Add_Click({ $sync.stop=$true; $ui.Stop(); Start-Sleep -Milliseconds 300; Kill-FF; try{ $rs.Close() }catch{}; $strip.Close() })
 $strip.Add_Shown({ try{ [Win]::SetWindowDisplayAffinity($strip.Handle,0x11)|Out-Null }catch{}; $ui.Start() })
