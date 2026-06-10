@@ -22,7 +22,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK."
@@ -73,11 +73,11 @@ while(-not $sync.stop){
           $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}; if($jj.text){ $txt=([string]$jj.text).Trim() }
         }
         $asked=((-not $sync.muteMe) -and ($txt -match '(?i)\bcoach\b'))
-        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 3){ $rolling.RemoveAt(0) } }
+        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 3){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{} }
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         Cap $sync.png; $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png))
         if($asked){
-          $u="The student spoke to you and asked: '"+$txt+"'. Look at their screen and answer clearly and helpfully in 1 to 4 sentences - actually explain it so they understand, like a good tutor. Use their screen and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
+          $u="The student spoke to you and asked: '"+$txt+"'. What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'. Look at their screen and answer clearly and helpfully in 1 to 4 sentences - explain it so they understand, like a good tutor. Use their screen, this lesson context, and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
           $useModel=$sync.model; $det="high"; $maxtok=2500; $effort="medium"
         } else {
           if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). Look at what I'm actually doing and, ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences). If it looks fine or you're unsure, reply EXACTLY: OK." }
@@ -134,7 +134,8 @@ function Get-Help {
   $p=Join-Path $env:TEMP "help_shot.png"; Capture-Focused $p
   $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
   $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). Look at the student's screen and HELP with whatever is there now: if it is a quiz/test question, work out the correct answer and explain briefly why; if it is Excel, point out the issue or the next step; otherwise give the single most useful next step. Reason it through; be accurate and clear."
-  $msgs=@(@{role='system';content=($sysH+$sync.brain)},@{role='user';content=@(@{type='text';text="Help me with what is on my screen right now."},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail='high'}})})
+  $uh="Help me with what is on my screen right now."; if($sync.lessonlog){ $uh="What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'.  "+$uh }
+  $msgs=@(@{role='system';content=($sysH+$sync.brain)},@{role='user';content=@(@{type='text';text=$uh},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail='high'}})})
   if($sync.model -match '^gpt-5'){ $payload=@{ model=$sync.model; max_completion_tokens=3000; reasoning_effort='medium'; messages=$msgs } | ConvertTo-Json -Depth 12 }
   else { $payload=@{ model=$sync.model; max_tokens=600; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
   $bf="$env:TEMP\help_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))

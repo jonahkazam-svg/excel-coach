@@ -70,7 +70,8 @@ function Stream-Chat($messages,$onToken){
 function Chat($userText,$onToken){
   Capture-Desktop $script:png
   $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($script:png))
-  $msgs=@(@{role="system";content=($SystemPrompt+$script:brain)})+$script:history+@(@{role="user";content=@(@{type="text";text=$userText},@{type="image_url";image_url=@{url=("data:image/png;base64,"+$b64);detail="high"}})})
+  $ut=$userText; $lf=Join-Path $env:TEMP "xc_live_lesson.txt"; if((Test-Path $lf) -and (((Get-Date)-(Get-Item $lf).LastWriteTime).TotalMinutes -lt 5)){ $ll=(Get-Content $lf -Raw).Trim(); if($ll){ $ut="[Instructor has recently been teaching: '"+$ll+"']  "+$userText } }
+  $msgs=@(@{role="system";content=($SystemPrompt+$script:brain)})+$script:history+@(@{role="user";content=@(@{type="text";text=$ut},@{type="image_url";image_url=@{url=("data:image/png;base64,"+$b64);detail="high"}})})
   $r=Stream-Chat $msgs $onToken
   $script:history+=@{role="user";content=$userText}; $script:history+=@{role="assistant";content=$r}; $script:shotLeaf=Save-Shot $script:png
   return $r
