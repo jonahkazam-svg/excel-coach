@@ -365,8 +365,8 @@ public class GlassW {
     MARGINS m = new MARGINS(); m.l = -1; m.r = -1; m.t = -1; m.b = -1;
     DwmExtendFrameIntoClientArea(hwnd, ref m);
     int dark = 1; DwmSetWindowAttribute(hwnd, 20, ref dark, 4);
-    int r = 2; DwmSetWindowAttribute(hwnd, 33, ref r, 4);
-    int v = type; return DwmSetWindowAttribute(hwnd, 38, ref v, 4);
+    int r = 1; DwmSetWindowAttribute(hwnd, 33, ref r, 4);
+    return 0;
   }
 }
 '@
@@ -411,10 +411,8 @@ $mkS=New-GlassWebForm (Px 280) (Px 40)
 $strip=$mkS.f; $wvS=$mkS.wv; $script:strip=$strip; $script:wvS=$wvS
 $wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-(Px 14)
-Set-Round $strip (Px 20)
 $mkP=New-GlassWebForm (Px 600) (Px 400)
 $panel=$mkP.f; $wvP=$mkP.wv; $script:panel=$panel; $script:wvP=$wvP
-Set-Round $panel (Px 20)
 function Place-PanelHome {
   $wa3=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
   $panel.SetBounds(($wa3.Right-$panel.Width-(Px 16)),($wa3.Bottom-$panel.Height-(Px 14)),$panel.Width,$panel.Height)
@@ -426,7 +424,6 @@ function Apply-Strip {
   if($script:collapsed){ $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 600); $nh=(Px 80) }
   $nl=$wa4.Left+[int](($wa4.Width-$nw)/2); $nt=$wa4.Bottom-$nh-(Px 14)
   $strip.SetBounds($nl,$nt,$nw,$nh)
-  Set-Round $strip $(if($script:collapsed){ (Px 20) }else{ (Px 24) })
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
 }
 function Push-StripState {

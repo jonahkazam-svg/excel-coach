@@ -34,6 +34,12 @@
   body.bar .card{ border-radius:24px; }
   body.pill .card{ border-radius:999px; }
 
+  /* cursor-tracking light shift */
+  #sheen{ position:absolute; width:280px; height:280px; border-radius:50%; pointer-events:none;
+    background:radial-gradient(circle, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.045) 45%, rgba(255,255,255,0) 70%);
+    transform:translate(-140px,-140px); opacity:0; transition:opacity .25s ease; }
+  .card:hover #sheen{ opacity:1; }
+
   /* ---------- modes ---------- */
   #barUI,#pillUI{ position:absolute; inset:0; display:none; }
   body.bar #barUI{ display:flex; flex-direction:column; }
@@ -55,7 +61,9 @@
   }
   .ghost:hover{ background:var(--hover); color:rgba(255,255,255,0.95); }
   .ghost:active{ background:rgba(255,255,255,0.12); }
-  .ghost svg{ display:block; }
+  .ghost svg{ display:block; transition:transform .18s ease; }
+  .ghost:hover svg{ transform:scale(1.22); }
+  .ghost:active svg{ transform:scale(1.05); }
   .ghost .alt-i{ display:none; }
   .ghost.alt .pri-i{ display:none; }
   .ghost.alt .alt-i{ display:block; }
@@ -77,6 +85,8 @@
   }
   #pauseBtn:hover{ transform:scale(1.07); }
   #pauseBtn:active{ transform:scale(0.93); }
+  #pauseBtn svg{ transition:transform .18s ease; }
+  #pauseBtn:hover svg{ transform:scale(1.18); }
   #pauseBtn .alt-i{ display:none; }
   #pauseBtn.alt .pri-i{ display:none; }
   #pauseBtn.alt .alt-i{ display:block; }
@@ -128,6 +138,7 @@
 </head>
 <body class="pill">
   <div class="card" id="card">
+    <div id="sheen"></div>
 
     <!-- ============ BAR ============ -->
     <div id="barUI">
@@ -235,6 +246,12 @@
     post({type:'drag', dx, dy});
   });
   document.addEventListener('pointerup', () => { dragOn = false; setTimeout(() => dragged = false, 0); });
+
+  /* cursor-tracking light shift */
+  const sheen = $('sheen');
+  document.addEventListener('mousemove', (e) => {
+    sheen.style.transform = 'translate(' + (e.clientX - 140) + 'px,' + (e.clientY - 140) + 'px)';
+  });
 
   XC.setStatus('Listening to the lesson');
   post({type:'ready'});
