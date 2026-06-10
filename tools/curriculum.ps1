@@ -22,6 +22,25 @@ function XC-DaysToStart {
 
 function XC-DaysSince($d){ if(-not $d){ return 999 }; try{ return [int]((Get-Date).Date - [datetime]::ParseExact($d,'yyyy-MM-dd',$null)).TotalDays }catch{ return 999 } }
 
+# Decide whether two proactive-nudge messages are about the SAME underlying issue,
+# so the coach flags a problem once and stays quiet until the situation actually changes.
+# Same cell address referenced -> same issue. Otherwise fall back to word overlap.
+function XC-SameIssue($a,$b){
+  if(-not $a -or -not $b){ return $false }
+  $a=[string]$a; $b=[string]$b
+  if($a -eq $b){ return $true }
+  $ca = @([regex]::Matches($a,'\b[A-Z]{1,3}[0-9]{1,4}\b') | ForEach-Object { $_.Value.ToUpper() } | Select-Object -Unique)
+  $cb = @([regex]::Matches($b,'\b[A-Z]{1,3}[0-9]{1,4}\b') | ForEach-Object { $_.Value.ToUpper() } | Select-Object -Unique)
+  if($ca.Count -gt 0 -and $cb.Count -gt 0){ foreach($c in $ca){ if($cb -contains $c){ return $true } }; return $false }
+  $wa = @(($a.ToLower() -replace '[^a-z0-9 ]',' ' -split '\s+') | Where-Object { $_.Length -gt 3 } | Select-Object -Unique)
+  $wb = @(($b.ToLower() -replace '[^a-z0-9 ]',' ' -split '\s+') | Where-Object { $_.Length -gt 3 } | Select-Object -Unique)
+  if($wa.Count -eq 0 -or $wb.Count -eq 0){ return $false }
+  $inter = @($wa | Where-Object { $wb -contains $_ }).Count
+  $union = (@($wa + $wb | Select-Object -Unique)).Count
+  if($union -eq 0){ return $false }
+  return ((($inter / [double]$union)) -ge 0.5)
+}
+
 function Get-Curriculum {
   $f = Join-Path $script:XCCoaching "Curriculum.md"
   if(-not (Test-Path $f)){ return @() }
