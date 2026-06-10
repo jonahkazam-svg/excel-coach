@@ -254,13 +254,18 @@ $psw=[powershell]::Create(); $psw.Runspace=$rs; [void]$psw.AddScript($work); [vo
 # workbook via COM (no screenshots), checks the exact cells the moment they change,
 # and is never blocked by transcription, asks, audits or distillation. ---
 $xlWork=@'
-try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{}
+function XLog($m){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_watcher.log"),((Get-Date).ToString("HH:mm:ss")+"  "+$m+"`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{} }
+try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
 try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"
+XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
+$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date)
 while(-not $sync.stop){
+ try{
+  if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
   if($sync.paused){ Start-Sleep -Milliseconds 800; continue }
-  $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive }catch{} }
-  if(-not $xl){ Start-Sleep -Seconds 5; continue }
+  $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive }catch{ XLog ("read threw: "+$_.Exception.Message) } }
+  if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 5; continue }
+  if($nullStreak){ $nullStreak=$false; XLog "Excel readable again" }
   if(($xl -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
     $sync.lastWb=$Matches[1]
     if($seen.ContainsKey($sync.lastWb)){ $sync.sheetPurpose=[string]$seen[$sync.lastWb] }
@@ -281,11 +286,13 @@ while(-not $sync.stop){
       }catch{}
     }
     $lastHash=$xl.GetHashCode(); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"
+    XLog ("workbook: '"+$sync.lastWb+"'")
     Start-Sleep -Seconds 2; continue
   }
   $h=$xl.GetHashCode()
   if($h -ne $lastHash){
     $lastHash=$h; $lastChange=(Get-Date); $stuck=$false
+    XLog "sheet changed - checking"
     Start-Sleep -Milliseconds 2500
     try{ $x2=Read-ExcelLive; if($x2){ $xl=$x2; $lastHash=$xl.GetHashCode() } }catch{}
     $les2=[string]$sync.lessonlog; if($les2.Length -gt 500){ $les2=$les2.Substring($les2.Length-500) }
@@ -301,16 +308,17 @@ while(-not $sync.stop){
     if($jj.choices){
       $t=([string]$jj.choices[0].message.content).Trim()
       if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $t=Clean-Answer $t }
+      XLog ("verdict: "+$(if($t -eq ""){ "<EMPTY>" }elseif($t.Length -gt 140){ $t.Substring(0,140) }else{ $t }))
       if(($t -match '^\s*OK') -or ($t -eq "")){
-        if($lastState -ne "OK"){ $lastState="OK"; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1 }
+        if($lastState -ne "OK"){ $lastState="OK"; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1; XLog "cleared (fixed)" }
       } else {
         if(((Get-Date)-$nudgeT).TotalSeconds -ge 20){
-          $nudgeT=(Get-Date); $lastState=$t; $sync.xlText=$t; $sync.xlStamp=$sync.xlStamp+1
+          $nudgeT=(Get-Date); $lastState=$t; $sync.xlText=$t; $sync.xlStamp=$sync.xlStamp+1; XLog "PUBLISHED nudge"
           $dupS=$false; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $dupS=(XC-SameIssue $t $lastLogged) }
           if(-not $dupS){ $lastLogged=$t; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $t }catch{} } }
-        }
+        } else { XLog "suppressed by 20s cooldown" }
       }
-    }
+    } elseif($jj.error){ XLog ("API error: "+$jj.error.message) } else { XLog "no API response (timeout?)" }
   } else {
     if((-not $stuck) -and (((Get-Date)-$lastChange).TotalSeconds -ge 240)){
       $fg=$false; try{ $fgh=[WinX]::GetForegroundWindow(); $fg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
@@ -325,12 +333,13 @@ while(-not $sync.stop){
           $hbf="$env:TEMP\xc_hint.json"; [IO.File]::WriteAllText($hbf,$hpay,(New-Object System.Text.UTF8Encoding($false)))
           $hr=& curl.exe -s --max-time 45 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$hbf)
           $hj=$null; try{ $hj=$hr|ConvertFrom-Json }catch{}
-          if($hj.choices){ $ht=([string]$hj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ht=Clean-Answer $ht }; if($ht){ $sync.xlText=("Hint: "+$ht); $sync.xlStamp=$sync.xlStamp+1 } }
+          if($hj.choices){ $ht=([string]$hj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ht=Clean-Answer $ht }; if($ht){ $sync.xlText=("Hint: "+$ht); $sync.xlStamp=$sync.xlStamp+1; XLog "stuck hint published" } }
         }catch{}
       }
     }
   }
   Start-Sleep -Seconds 4
+ }catch{ XLog ("LOOP ERROR: "+$_.Exception.Message); Start-Sleep -Seconds 5 }
 }
 '@
 $rsX=[runspacefactory]::CreateRunspace(); $rsX.ApartmentState='STA'; $rsX.ThreadOptions='ReuseThread'; $rsX.Open()
