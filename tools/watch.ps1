@@ -161,18 +161,18 @@ function Mini($t,$x,$w){ $b=New-Object System.Windows.Forms.Button; $b.Text=$t; 
 $bPause=Mini "Pause" 6 52; $bMute=Mini "Mute" 60 50; $bMuteMe=Mini "Mute me" 112 66; $bHelp=Mini "Help" 180 44; $bX=Mini "X" 226 34; $btns.Controls.AddRange(@($bPause,$bMute,$bMuteMe,$bHelp,$bX))
 $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
 $strip.Controls.Add($script:msg); $strip.Controls.Add($status); $strip.Controls.Add($btns)
-$script:seen=0
+$script:seen=0; $script:lastFull=""
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
   if(-not (Get-Process -Id $sync.ffpid -ErrorAction SilentlyContinue)){ try{ $rp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru; $sync.ffpid=$rp.Id }catch{} }
   if($sync.stamp -gt $script:seen){
     $script:seen=$sync.stamp; $r=$sync.text
     if($sync.isAnswer){
-      if($r -ne "" -and $r -ne "OK"){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); $script:msg.Text="A: "+$r; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } }
+      if($r -ne "" -and $r -ne "OK"){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); $script:msg.Text="Answer ready - click bar to read"; $script:lastFull=$r; Show-HelpPopup $r; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } }
     }
     elseif($r -eq "OK" -or $r -eq ""){ $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:msg.Text=$(if($sync.isPaused){"Working - looks fine"}else{"On track"}) }
     else {
-      $status.BackColor=[System.Drawing.Color]::FromArgb(220,170,60); $script:msg.Text=$r
+      $status.BackColor=[System.Drawing.Color]::FromArgb(220,170,60); $script:msg.Text=$r; $script:lastFull=$r
       if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; if($sync.isPaused -and -not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($r)|Out-Null }catch{} } else { [System.Media.SystemSounds]::Asterisk.Play() } }
       $sync.lastNudge=$r
     }
@@ -183,12 +183,13 @@ $bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){"Unm
 $bMuteMe.Add_Click({ $sync.muteMe=-not $sync.muteMe; $bMuteMe.Text=$(if($sync.muteMe){"Unmute me"}else{"Mute me"}) })
 $bHelp.Add_Click({
   $script:msg.Text="Thinking about your screen..."; $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
-  $ans=Get-Help
+  $ans=Get-Help; $script:lastFull=$ans
   Show-HelpPopup $ans; Log-Watch ("[help] "+$ans) ""
   if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($ans)|Out-Null }catch{} }
   $script:msg.Text="On track"; $status.BackColor=[System.Drawing.Color]::FromArgb(90,160,90); $script:seen=$sync.stamp
 })
 $bX.Add_Click({ $sync.stop=$true; $ui.Stop(); Start-Sleep -Milliseconds 300; Kill-FF; try{ $rs.Close() }catch{}; $strip.Close() })
+$script:msg.Add_Click({ if($script:lastFull){ Show-HelpPopup $script:lastFull } })
 $strip.Add_Shown({ try{ [Win]::SetWindowDisplayAffinity($strip.Handle,0x11)|Out-Null }catch{}; $ui.Start() })
 [void]$strip.ShowDialog()
 try{ $sync.stop=$true; Kill-FF; $rs.Close() }catch{}
