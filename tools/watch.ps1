@@ -364,7 +364,7 @@ public class GlassW {
   public static int Backdrop(IntPtr hwnd, int type){
     MARGINS m = new MARGINS(); m.l = -1; m.r = -1; m.t = -1; m.b = -1;
     DwmExtendFrameIntoClientArea(hwnd, ref m);
-    int dark = 0; DwmSetWindowAttribute(hwnd, 20, ref dark, 4);
+    int dark = 1; DwmSetWindowAttribute(hwnd, 20, ref dark, 4);
     int r = 2; DwmSetWindowAttribute(hwnd, 33, ref r, 4);
     int v = type; return DwmSetWindowAttribute(hwnd, 38, ref v, 4);
   }

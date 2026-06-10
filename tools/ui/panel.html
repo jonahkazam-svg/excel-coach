@@ -1,671 +1,184 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
 <meta charset="utf-8">
-<title>Excel Coach — Answer Panel</title>
 <style>
-  /* ============================================================
-     Base — transparent host (DWM acrylic provides the blur behind)
-     ============================================================ */
-  * { box-sizing: border-box; }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    background: transparent;
-    overflow: hidden;
+  /* Dark Cluely liquid glass answer panel - real blur from the Win11 acrylic behind. */
+  :root{
+    --fill: rgba(20,20,24,0.55);
+    --hairline: rgba(255,255,255,0.10);
+    --inner-top: rgba(255,255,255,0.06);
+    --text: rgba(255,255,255,0.92);
+    --text-2: rgba(255,255,255,0.6);
+    --badge: rgba(255,255,255,0.13);
+    --accent: #8ab4ff;
   }
-
-  body {
-    font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    user-select: none;
-    cursor: default;
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ width:100vw; height:100vh; background:transparent; overflow:hidden;
+    font-family:'Segoe UI Variable Text','Segoe UI',Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; color:var(--text); user-select:none; }
+  .card{
+    position:absolute; inset:0; border-radius:20px;
+    background:var(--fill);
+    backdrop-filter: blur(35px) saturate(140%);
+    -webkit-backdrop-filter: blur(35px) saturate(140%);
+    border:1px solid var(--hairline);
+    box-shadow: inset 0 1px 0 var(--inner-top);
+    overflow:hidden; display:flex; flex-direction:column;
   }
+  #sheen{ position:absolute; width:300px; height:300px; border-radius:50%; pointer-events:none;
+    background:radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 45%, rgba(255,255,255,0) 70%);
+    transform:translate(-150px,-150px); opacity:0; transition:opacity .25s ease; z-index:0; }
+  .card:hover #sheen{ opacity:1; }
 
-  /* ============================================================
-     Shared snipzy glass layer architecture
-     (.glass-filter z1 / .glass-overlay z2 / .glass-specular z3 /
-      .glass-content z4) — per CRD004 / BTN003 / ICO001 / LDR003
-     ============================================================ */
-  .glass-filter,
-  .glass-overlay,
-  .glass-specular {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
+  /* ---------- header ---------- */
+  #hdr{ height:42px; flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    padding:0 12px 0 18px; border-bottom:1px solid rgba(255,255,255,0.08); z-index:1; }
+  #hdr .title{ font-size:13.5px; font-weight:600; color:var(--text-2); }
+  #clock{ margin-left:auto; font-family:Consolas,'Cascadia Mono',monospace; font-size:12px;
+    color:rgba(255,255,255,0.45); font-variant-numeric:tabular-nums; }
+  .chip{
+    width:28px; height:28px; border-radius:8px; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    background:var(--badge); border:1px solid var(--hairline);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    color:rgba(255,255,255,0.85);
+    transition:background .15s ease, transform .15s ease;
   }
+  .chip:hover{ background:rgba(255,255,255,0.20); transform:scale(1.08); }
+  .chip:active{ transform:scale(0.94); }
+  .chip svg{ display:block; }
 
-  .glass-filter {
-    z-index: 1;
-    backdrop-filter: blur(4px);
-    filter: url(#glass-distortion) saturate(120%) brightness(1.15);
+  /* ---------- body ---------- */
+  #body{ flex:1 1 auto; overflow-y:auto; padding:16px 20px; z-index:1;
+    font-size:14.5px; line-height:1.55; color:var(--text); user-select:text; cursor:default; }
+  #body::-webkit-scrollbar{ width:8px; }
+  #body::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.18); border-radius:4px; }
+  #body::-webkit-scrollbar-track{ background:transparent; }
+  #body h1{ font-size:19px; font-weight:700; color:#fff; margin:4px 0 10px; }
+  #body h2{ font-size:16.5px; font-weight:650; color:#fff; margin:4px 0 9px; }
+  #body p{ margin:0 0 10px; }
+  #body b{ color:#fff; font-weight:650; }
+  #body .li{ display:flex; gap:9px; margin:0 0 7px; }
+  #body .li .pre{ flex:0 0 auto; color:var(--text-2); }
+  #body .li .pre.num{ color:var(--accent); font-weight:650; }
+  #body .li .cnt{ flex:1 1 auto; }
+
+  /* spinner (centered) */
+  #spinWrap{ position:absolute; inset:42px 0 36px 0; display:none; align-items:center; justify-content:center; z-index:2; }
+  body.loading #spinWrap{ display:flex; }
+  body.loading #body{ visibility:hidden; }
+  .ring{ width:40px; height:40px; border-radius:50%;
+    border:3px solid rgba(255,255,255,0.15); border-top-color:rgba(255,255,255,0.85);
+    animation:spin .9s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ---------- footer ---------- */
+  #ftr{ height:36px; flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    padding:0 14px; z-index:1; }
+  #explain{
+    height:24px; padding:0 12px; border-radius:12px; border:1px solid var(--hairline);
+    background:var(--badge); color:rgba(255,255,255,0.85);
+    font-size:12px; font-family:inherit; cursor:pointer;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    transition:background .15s ease, transform .15s ease;
   }
-
-  .glass-overlay {
-    z-index: 2;
-    background: var(--bg-color);
-    transition: background 0.3s ease;
-  }
-
-  .glass-specular {
-    z-index: 3;
-    box-shadow: inset 1px 1px 1px var(--highlight);
-  }
-
-  .glass-content {
-    position: relative;
-    z-index: 4;
-  }
-
-  /* ============================================================
-     CRD004 — the answer card (fills the 600x400 window)
-     ============================================================ */
-  .glass-card {
-    --bg-color: rgba(255, 255, 255, 0.25);
-    --highlight: rgba(255, 255, 255, 0.75);
-    --text: #1a1c22;
-    --text-secondary: #5f646e;
-    --text-body: #22252c;
-    --accent: #2563eb;
-
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
-  }
-
-  /* CRD004 floating distortion sheen */
-  .glass-distortion-overlay {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.05) 0%, transparent 80%),
-                radial-gradient(circle at 80% 70%, rgba(255,255,255,0.05) 0%, transparent 80%);
-    background-size: 300% 300%;
-    animation: floatDistort 10s infinite ease-in-out;
-    mix-blend-mode: overlay;
-    z-index: 2;
-    pointer-events: none;
-  }
-
-  @keyframes floatDistort {
-    0%   { background-position: 0% 0%; }
-    50%  { background-position: 100% 100%; }
-    100% { background-position: 0% 0%; }
-  }
-
-  .glass-card > .glass-content {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    color: var(--text);
-  }
-
-  /* ============================================================
-     Header (38px) — label, mono clock, ICO001 icon chips
-     ============================================================ */
-  .panel-header {
-    flex: 0 0 38px;
-    display: flex;
-    align-items: center;
-    padding: 0 12px 0 16px;
-    border-bottom: 1px solid rgba(26, 28, 34, 0.08);  /* hairline divider */
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);    /* glass etch under hairline */
-  }
-
-  .coach-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    letter-spacing: 0.2px;
-  }
-
-  .clock {
-    margin-left: auto;
-    margin-right: 10px;
-    font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
-    font-size: 12px;
-    color: var(--text-secondary);
-    letter-spacing: 0.5px;
-  }
-
-  .chip-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  /* ICO001 — glass icon chips (scaled small) */
-  .chip {
-    --bg-color: rgba(255, 255, 255, 0.25);
-    --highlight: rgba(255, 255, 255, 0.75);
-    --icon-color: #454a55;
-
-    position: relative;
-    width: 26px;
-    height: 26px;
-    border: none;
-    border-radius: 9px;
-    overflow: hidden;
-    background: transparent;
-    padding: 0;
-    cursor: pointer;
-    transition: transform 0.2s ease;
-    outline: none;
-  }
-
-  .chip:hover  { transform: scale(1.1); }
-  .chip:active { transform: scale(0.95); }
-  .chip:hover .glass-overlay { background: rgba(255, 255, 255, 0.3); }
-
-  .chip .glass-content {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .chip svg {
-    width: 14px;
-    height: 14px;
-    color: var(--icon-color);
-    transition: transform 0.2s ease;
-  }
-
-  .chip:hover svg { transform: scale(0.9); }
-
-  /* ============================================================
-     Body — scrollable markdown answer area
-     ============================================================ */
-  .panel-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 14px 18px 6px 18px;
-  }
-
-  .panel-body::-webkit-scrollbar { width: 6px; }
-  .panel-body::-webkit-scrollbar-track { background: transparent; }
-  .panel-body::-webkit-scrollbar-thumb {
-    background: rgba(26, 28, 34, 0.18);
-    border-radius: 3px;
-  }
-  .panel-body::-webkit-scrollbar-thumb:hover { background: rgba(26, 28, 34, 0.32); }
-
-  .answer {
-    color: var(--text-body);
-    font-size: 15px;
-    line-height: 1.55;
-    animation: contentIn 0.25s ease;
-  }
-
-  @keyframes contentIn {
-    from { opacity: 0; transform: translateY(4px); }
-    to   { opacity: 1; transform: none; }
-  }
-
-  .answer > :first-child { margin-top: 0; }
-
-  .answer h1 {
-    margin: 16px 0 6px;
-    font-size: 19px;
-    font-weight: 600;
-    color: var(--text);
-    line-height: 1.3;
-  }
-
-  .answer h2 {
-    margin: 14px 0 5px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-    line-height: 1.3;
-  }
-
-  .answer p  { margin: 0 0 10px; }
-
-  .answer ul {
-    margin: 0 0 10px;
-    padding-left: 22px;
-  }
-  .answer li { margin: 3px 0; }
-
-  .answer strong {
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .olist { margin: 0 0 10px; }
-  .oli {
-    display: flex;
-    gap: 8px;
-    margin: 3px 0;
-  }
-  .oli-num {
-    flex: 0 0 auto;
-    min-width: 18px;
-    color: var(--accent);
-    font-weight: 700;
-  }
-  .oli-text { flex: 1 1 auto; }
-
-  /* ============================================================
-     LDR003 — liquid glass spinner (scaled ~40px), loading state
-     ============================================================ */
-  .loading-wrap {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: contentIn 0.25s ease;
-  }
-
-  .glass-spinner {
-    --bg-color: rgba(255, 255, 255, 0.25);
-    --highlight: rgba(255, 255, 255, 0.75);
-    --spinner-size: 40px;
-    --ring-size: 30px;
-    --core-size: 12px;
-
-    position: relative;
-    width: var(--spinner-size);
-    height: var(--spinner-size);
-    border-radius: 50%;
-    overflow: hidden;
-    background: transparent;
-  }
-
-  .glass-spinner .glass-content {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-
-  .spinner-ring {
-    position: absolute;
-    width: var(--ring-size);
-    height: var(--ring-size);
-    border: 2px solid transparent;
-    border-top-color: rgba(37, 99, 235, 0.9);   /* accent-tinted for light theme */
-    border-right-color: rgba(37, 99, 235, 0.45);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  .spinner-core {
-    width: var(--core-size);
-    height: var(--core-size);
-    background: rgba(37, 99, 235, 0.8);
-    border-radius: 50%;
-    animation: pulse 1s ease-in-out infinite alternate;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
-  }
-
-  @keyframes pulse {
-    from { transform: scale(0.8); opacity: 0.5; }
-    to   { transform: scale(1);   opacity: 0.8; }
-  }
-
-  /* ============================================================
-     Footer — BTN003 'Explain in detail' chip + Esc hint
-     ============================================================ */
-  .panel-footer {
-    flex: 0 0 44px;
-    display: flex;
-    align-items: center;
-    padding: 0 16px 0 14px;
-    gap: 10px;
-  }
-
-  .btn-explain {
-    --bg-color: rgba(255, 255, 255, 0.22);
-    --highlight: rgba(255, 255, 255, 0.75);
-
-    position: relative;
-    padding: 6px 14px;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    overflow: hidden;
-    background: transparent;
-    transition: transform 0.2s ease;
-    outline: none;
-  }
-
-  .btn-explain:hover  { transform: scale(1.05); }
-  .btn-explain:active { transform: scale(0.95); }
-  .btn-explain:hover .glass-overlay { background: rgba(255, 255, 255, 0.3); }
-
-  .btn-explain .glass-content {
-    color: var(--text);
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
-  .esc-hint {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--text-secondary);
-    opacity: 0.75;
-  }
+  #explain:hover{ background:rgba(255,255,255,0.20); transform:scale(1.04); }
+  #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.4); }
 </style>
 </head>
 <body>
-
-<!-- SVG Filter for Glass Distortion (snipzy shared filter) -->
-<svg style="display: none" xmlns="http://www.w3.org/2000/svg">
-  <filter id="glass-distortion">
-    <feTurbulence type="turbulence" baseFrequency="0.008" numOctaves="2" result="noise" />
-    <feDisplacementMap in="SourceGraphic" in2="noise" scale="77" />
-  </filter>
-</svg>
-
-<div class="glass-card" id="card">
-  <div class="glass-filter"></div>
-  <div class="glass-overlay"></div>
-  <div class="glass-distortion-overlay"></div>
-  <div class="glass-specular" id="cardSpecular"></div>
-  <div class="glass-content">
-
-    <header class="panel-header">
-      <span class="coach-label">Coach</span>
-      <span class="clock" id="clock">--:--</span>
-      <div class="chip-row">
-        <button class="chip" id="chipCopy" type="button" aria-label="Copy answer" title="Copy">
-          <div class="glass-filter"></div>
-          <div class="glass-overlay"></div>
-          <div class="glass-specular"></div>
-          <div class="glass-content">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-          </div>
-        </button>
-        <button class="chip" id="chipClose" type="button" aria-label="Close panel" title="Close">
-          <div class="glass-filter"></div>
-          <div class="glass-overlay"></div>
-          <div class="glass-specular"></div>
-          <div class="glass-content">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M18 6 6 18M6 6l12 12"/>
-            </svg>
-          </div>
-        </button>
+  <div class="card">
+    <div id="sheen"></div>
+    <div id="hdr">
+      <span class="title">Coach</span>
+      <span id="clock">--:--</span>
+      <div class="chip" id="copyBtn" title="Copy answer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
       </div>
-    </header>
-
-    <main class="panel-body" id="panelBody">
-      <div class="answer" id="answer"></div>
-    </main>
-
-    <footer class="panel-footer">
-      <button class="glass-button btn-explain" id="btnExplain" type="button">
-        <div class="glass-filter"></div>
-        <div class="glass-overlay"></div>
-        <div class="glass-specular"></div>
-        <div class="glass-content"><span>Explain in detail</span></div>
-      </button>
-      <span class="esc-hint">Esc to close</span>
-    </footer>
-
+      <div class="chip" id="closeBtn" title="Close (Esc)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+    <div id="body"></div>
+    <div id="spinWrap"><div class="ring"></div></div>
+    <div id="ftr">
+      <button id="explain" title="Re-answer with the full reasoning and steps">Explain in detail</button>
+      <span id="esc">Esc to close</span>
+    </div>
   </div>
-</div>
 
 <script>
-(function () {
-  'use strict';
+  const post = (o) => { try { window.chrome.webview.postMessage(JSON.stringify(o)); } catch(e){} };
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const bold = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 
-  /* ---------- bridge: JS -> PowerShell ---------- */
-  function post(o) {
-    try {
-      if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(JSON.stringify(o));
+  function mdToHtml(md){
+    const out = [];
+    let para = [];
+    const flush = () => { if (para.length){ out.push('<p>' + para.join('<br>') + '</p>'); para = []; } };
+    for (const raw of String(md).replace(/\r\n/g,'\n').split('\n')){
+      const line = raw;
+      const t = line.trim();
+      if (t === ''){ flush(); continue; }
+      let m;
+      if ((m = t.match(/^(#{1,6})\s+(.*)$/))){
+        flush();
+        const tag = m[1].length <= 1 ? 'h1' : 'h2';
+        out.push('<' + tag + '>' + bold(esc(m[2].replace(/\*\*/g,''))) + '</' + tag + '>');
+      } else if ((m = t.match(/^[-*+]\s+(.*)$/))){
+        flush();
+        out.push('<div class="li"><span class="pre">&#8226;</span><span class="cnt">' + bold(esc(m[1])) + '</span></div>');
+      } else if ((m = t.match(/^(\d+)\.\s+(.*)$/))){
+        flush();
+        out.push('<div class="li"><span class="pre num">' + m[1] + '.</span><span class="cnt">' + bold(esc(m[2])) + '</span></div>');
+      } else {
+        para.push(bold(esc(t)));
       }
-    } catch (e) { /* host not attached yet — ignore */ }
-  }
-
-  function $(id) { return document.getElementById(id); }
-
-  var card = null, panelBody = null, clock = null;
-
-  /* ---------- LDR003 spinner markup (loading state) ---------- */
-  var SPINNER_HTML =
-    '<div class="loading-wrap">' +
-      '<div class="glass-spinner" role="status" aria-label="Loading">' +
-        '<div class="glass-filter"></div>' +
-        '<div class="glass-overlay"></div>' +
-        '<div class="glass-specular"></div>' +
-        '<div class="glass-content">' +
-          '<div class="spinner-ring"></div>' +
-          '<div class="spinner-core"></div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-
-  /* ---------- tiny markdown renderer ---------- */
-  function escHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function inline(s) {
-    return escHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  }
-
-  function mdToHtml(md) {
-    var lines = String(md == null ? '' : md).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-    var out = [], i = 0, m;
-
-    while (i < lines.length) {
-      var line = lines[i];
-
-      if (!line.trim()) { i++; continue; }                       /* blank line */
-
-      m = line.match(/^##\s+(.*)$/);                             /* ## header */
-      if (m) { out.push('<h2>' + inline(m[1]) + '</h2>'); i++; continue; }
-
-      m = line.match(/^#\s+(.*)$/);                              /* # header */
-      if (m) { out.push('<h1>' + inline(m[1]) + '</h1>'); i++; continue; }
-
-      if (/^-\s+/.test(line)) {                                  /* - bullets */
-        var ul = ['<ul>'];
-        while (i < lines.length && /^-\s+/.test(lines[i])) {
-          ul.push('<li>' + inline(lines[i].replace(/^-\s+/, '')) + '</li>');
-          i++;
-        }
-        ul.push('</ul>');
-        out.push(ul.join(''));
-        continue;
-      }
-
-      if (/^\d+\.\s+/.test(line)) {                              /* N. numbered */
-        var ol = ['<div class="olist">'];
-        while (i < lines.length && (m = lines[i].match(/^(\d+)\.\s+(.*)$/))) {
-          ol.push(
-            '<div class="oli">' +
-              '<span class="oli-num">' + m[1] + '.</span>' +
-              '<span class="oli-text">' + inline(m[2]) + '</span>' +
-            '</div>'
-          );
-          i++;
-        }
-        ol.push('</div>');
-        out.push(ol.join(''));
-        continue;
-      }
-
-      /* plain paragraph — gather consecutive plain lines */
-      var para = [inline(line)];
-      i++;
-      while (i < lines.length && lines[i].trim() &&
-             !/^(#{1,2}\s|-\s|\d+\.\s)/.test(lines[i])) {
-        para.push(inline(lines[i]));
-        i++;
-      }
-      out.push('<p>' + para.join('<br>') + '</p>');
     }
+    flush();
     return out.join('');
   }
 
-  /* ---------- bridge: PowerShell -> JS (window.XC) ---------- */
   window.XC = {
-    setAnswer: function (md) {
-      var body = panelBody || $('panelBody');
-      if (!body) return;
-      body.innerHTML = '<div class="answer">' + mdToHtml(md) + '</div>';
-      body.scrollTop = 0;
+    setAnswer(md){
+      document.body.classList.remove('loading');
+      $('body').innerHTML = mdToHtml(md);
+      $('body').scrollTop = 0;
     },
-    setAnswerLoading: function () {
-      var body = panelBody || $('panelBody');
-      if (!body) return;
-      if (body.querySelector('.loading-wrap')) return;   /* idempotent */
-      body.innerHTML = SPINNER_HTML;
-    },
-    setTime: function (t) {
-      var c = clock || $('clock');
-      if (c) c.textContent = String(t == null ? '' : t);
-    }
+    setAnswerLoading(){ document.body.classList.add('loading'); },
+    setTime(t){ $('clock').textContent = t; }
   };
 
-  /* ---------- cursor-tracking radial highlight (CRD004 JS) ---------- */
-  function handleMouseMove(e) {
-    var rect = this.getBoundingClientRect();
-    var x = e.clientX - rect.left;
-    var y = e.clientY - rect.top;
+  $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));
+  $('closeBtn').addEventListener('click', () => post({type:'panel', k:'close'}));
+  $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({type:'panel', k:'close'}); });
 
-    /* Update filter turbulence based on mouse position (card only) */
-    if (this === card) {
-      var disp = document.querySelector('#glass-distortion feDisplacementMap');
-      if (disp) {
-        var scaleX = (x / rect.width) * 100;
-        var scaleY = (y / rect.height) * 100;
-        disp.setAttribute('scale', Math.min(scaleX, scaleY));
-      }
-    }
+  /* drag on non-interactive background */
+  let dragOn = false, lx = 0, ly = 0;
+  const interactive = (t) => t.closest('.chip, #explain, #body');
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || interactive(e.target)) return;
+    dragOn = true; lx = e.screenX; ly = e.screenY;
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!dragOn) return;
+    const dx = e.screenX - lx, dy = e.screenY - ly;
+    if (dx === 0 && dy === 0) return;
+    lx = e.screenX; ly = e.screenY;
+    post({type:'drag', dx, dy});
+  });
+  document.addEventListener('pointerup', () => { dragOn = false; });
 
-    /* Add highlight effect */
-    var specular = this.querySelector('.glass-specular');
-    if (specular) {
-      specular.style.background = 'radial-gradient(' +
-        'circle at ' + x + 'px ' + y + 'px, ' +
-        'rgba(255,255,255,0.15) 0%, ' +
-        'rgba(255,255,255,0.05) 30%, ' +
-        'rgba(255,255,255,0) 60%)';
-    }
-  }
+  const sheen = $('sheen');
+  document.addEventListener('mousemove', (e) => {
+    sheen.style.transform = 'translate(' + (e.clientX - 150) + 'px,' + (e.clientY - 150) + 'px)';
+  });
 
-  function handleMouseLeave() {
-    if (this === card) {
-      var disp = document.querySelector('#glass-distortion feDisplacementMap');
-      if (disp) disp.setAttribute('scale', '77');
-    }
-    var specular = this.querySelector('.glass-specular');
-    if (specular) specular.style.background = 'none';
-  }
-
-  /* ---------- drag-to-move (background only) ---------- */
-  function wireDrag() {
-    var dragging = false, lastX = 0, lastY = 0, pid = null;
-
-    card.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0) return;
-      if (e.target.closest && e.target.closest('button, input, textarea, select, a')) return;
-      /* ignore pointerdown on the scrollbar of the body area */
-      if (panelBody && e.target === panelBody &&
-          (e.offsetX >= panelBody.clientWidth || e.offsetY >= panelBody.clientHeight)) return;
-
-      dragging = true;
-      pid = e.pointerId;
-      lastX = e.screenX;
-      lastY = e.screenY;
-      try { card.setPointerCapture(pid); } catch (err) { /* noop */ }
-    });
-
-    card.addEventListener('pointermove', function (e) {
-      if (!dragging || e.pointerId !== pid) return;
-      var dx = e.screenX - lastX;
-      var dy = e.screenY - lastY;
-      if (dx !== 0 || dy !== 0) {
-        lastX = e.screenX;
-        lastY = e.screenY;
-        post({ type: 'drag', dx: dx, dy: dy });
-      }
-    });
-
-    function endDrag(e) {
-      if (!dragging || (e && e.pointerId !== pid)) return;
-      dragging = false;
-      try { card.releasePointerCapture(pid); } catch (err) { /* noop */ }
-      pid = null;
-    }
-    card.addEventListener('pointerup', endDrag);
-    card.addEventListener('pointercancel', endDrag);
-  }
-
-  /* ---------- init ---------- */
-  function bindTap(id, k) {
-    var el = $(id);
-    if (el) el.addEventListener('click', function () { post({ type: 'panel', k: k }); });
-  }
-
-  function init() {
-    card = $('card');
-    panelBody = $('panelBody');
-    clock = $('clock');
-
-    /* seed the clock with local time until XC.setTime drives it */
-    var d = new Date();
-    if (clock) {
-      clock.textContent =
-        ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-    }
-
-    /* panel buttons */
-    bindTap('chipCopy', 'copy');
-    bindTap('chipClose', 'close');
-    bindTap('btnExplain', 'explain');
-
-    /* Escape closes the panel */
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        post({ type: 'panel', k: 'close' });
-      }
-    });
-
-    /* mousemove highlight on every glass element (CRD004 / BTN003 / ICO001) */
-    var glassElements = document.querySelectorAll('.glass-card, .glass-button, .chip');
-    Array.prototype.forEach.call(glassElements, function (element) {
-      element.addEventListener('mousemove', handleMouseMove);
-      element.addEventListener('mouseleave', handleMouseLeave);
-    });
-
-    wireDrag();
-
-    post({ type: 'ready' });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-})();
+  XC.setTime(new Date().toTimeString().slice(0,5));
+  post({type:'ready'});
 </script>
 </body>
 </html>
