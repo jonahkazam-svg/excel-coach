@@ -26,6 +26,8 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0
+$sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
+if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
@@ -59,7 +61,7 @@ try{
 # start NONSTOP segmented audio capture
 if(Test-Path $sync.segdir){ Remove-Item $sync.segdir -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force -Path $sync.segdir | Out-Null
-$ffArgs='-hide_banner -loglevel error -f dshow -i audio="'+$sync.mic+'" -f segment -segment_time 10 -ac 1 -ar 16000 -reset_timestamps 1 -y "'+(Join-Path $sync.segdir "seg_%03d.wav")+'"'
+$ffArgs='-hide_banner -loglevel error -f dshow -i audio="'+$sync.mic+'" -f segment -segment_time 5 -ac 1 -ar 16000 -reset_timestamps 1 -y "'+(Join-Path $sync.segdir "seg_%03d.wav")+'"'
 $ffp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru
 $sync.chime=Join-Path $env:TEMP "xc_chime.wav"; try{ & $ff -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=659:duration=0.10" -f lavfi -i "sine=frequency=988:duration=0.17" -filter_complex "[0]volume=0.15,afade=t=in:st=0:d=0.01,afade=t=out:st=0.05:d=0.05[a];[1]volume=0.17,afade=t=in:st=0:d=0.01,afade=t=out:st=0.10:d=0.07[b];[a][b]concat=n=2:v=0:a=1,aecho=0.8:0.9:40:0.2" -ar 44100 -ac 2 $sync.chime 2>$null }catch{}
 $sync.ffpid=$ffp.Id
@@ -93,7 +95,7 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1)
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1); $chatUntil=(Get-Date).AddDays(-1)
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
@@ -183,10 +185,52 @@ while(-not $sync.stop){
           $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/audio/transcriptions" -H ("Authorization: Bearer "+$sync.key) -F ("file=@"+$seg) -F "model=whisper-1" -F "response_format=json"
           $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}; if($jj.text){ $txt=([string]$jj.text).Trim() }
         }
-        $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
-        $asked=($sync.micMode -and (-not $sync.muteMe) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
+        $heyHit=($txt -and ($txt -match '(?i)\bhey,?\s*coach\b'))
+        $inChatWin=((Get-Date) -lt $chatUntil); $sync.chatOn=$inChatWin
+        $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and (-not $inChatWin) -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
+        $asked=($sync.micMode -and (-not $sync.muteMe) -and (-not $heyHit) -and (-not $inChatWin) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
         if($asked){ $sync.ackPing=$true }
-        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 3){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{} }
+        $isChat=$false; $chatQ=""
+        if($sync.micMode -and (-not $sync.muteMe) -and $txt -and ($segT -gt $sync.ttsBusyUntil) -and (-not $asked)){
+          if($heyHit){
+            $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
+            $cq=($txt -replace '(?i)^.*?\bhey,?\s*coach\b[\s,.!?]*','').Trim()
+            if($cq.Length -gt 3){ $isChat=$true; $chatQ=$cq }
+            else{
+              $sync.askLabel="Chat"; $sync.text="I'm here - what's up?"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+              continue
+            }
+          }
+          elseif($inChatWin -and $txt.Trim().Length -ge 3){
+            if($txt -match '(?i)(thanks,?\s*coach|thank you,?\s*coach|that.s all|i.m good|\bim good\b|never ?mind|back to work)'){
+              $chatUntil=(Get-Date).AddDays(-1); $sync.chatOn=$false
+              $sync.askLabel="Chat"; $sync.text="Got it - back to watching."; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+              continue
+            }
+            $isChat=$true; $chatQ=$txt.Trim()
+          }
+        }
+        if($isChat){
+          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
+          $hm3=@(); foreach($h in $askHist){ $hm3+=@{role='user';content=[string]$h.q}; $hm3+=@{role='assistant';content=[string]$h.a} }
+          $cctx="You are a sharp, friendly finance and Excel tutor having a QUICK spoken conversation with a student mid-study. Answer in 1-3 short conversational sentences - direct and natural, like speech. No markdown, no lists, no headers. If they ask about their sheet, use the Excel data provided."
+          $cxl=[string]$sync.lastXl; if($cxl.Length -gt 1500){ $cxl=$cxl.Substring(0,1500) }
+          $cmsg=$chatQ
+          if($sync.sheetPurpose){ $cmsg=$cmsg+"`n(Context - what I am practicing: "+$sync.sheetPurpose+")" }
+          if($cxl){ $cmsg=$cmsg+"`n(My Excel right now:`n"+$cxl+")" }
+          $cmsgs=@(@{role='system';content=$cctx})+$hm3+@(@{role='user';content=$cmsg})
+          if($sync.chatModel -match '^gpt-5'){ $cpay=@{ model=$sync.chatModel; max_completion_tokens=600; reasoning_effort='none'; messages=$cmsgs } | ConvertTo-Json -Depth 10 }
+          else { $cpay=@{ model=$sync.chatModel; max_tokens=220; temperature=0.5; messages=$cmsgs } | ConvertTo-Json -Depth 10 }
+          $cbf="$env:TEMP\xc_chat.json"; [IO.File]::WriteAllText($cbf,$cpay,(New-Object System.Text.UTF8Encoding($false)))
+          $crr=& curl.exe -s --max-time 25 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf)
+          $cjj=$null; try{ $cjj=$crr|ConvertFrom-Json }catch{}
+          $cans=if($cjj.choices){ ([string]$cjj.choices[0].message.content).Trim() }else{ "Sorry - say that again?" }
+          if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $cans=Clean-Answer $cans }
+          if($cans){ [void]$askHist.Add(@{q=$chatQ;a=$cans}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) } }
+          $sync.askLabel="Chat"; $sync.text=$cans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+          continue
+        }
+        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 6){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{} }
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         $fgh=[Win2]::GetForegroundWindow(); $excelFg=$false; try{ $excelFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
         $working=($excelFg -or $paused)
@@ -242,9 +286,9 @@ while(-not $sync.stop){
           }
         }
         $sync.lesson=$lessonCtx; $sync.isPaused=$working; $sync.isAnswer=$asked; $sync.stamp=$sync.stamp+1
-        if($segs.Count -gt 20){ for($i=0;$i -lt ($segs.Count-20);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
+        if($segs.Count -gt 40){ for($i=0;$i -lt ($segs.Count-40);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
         if(-not $asked -and $txt){ $sync.distillbuf=($sync.distillbuf+" "+$txt).Trim(); $sync.distillCount=$sync.distillCount+1 }
-        if($sync.distillCount -ge 18 -and $sync.distillbuf.Length -gt 120){
+        if($sync.distillCount -ge 36 -and $sync.distillbuf.Length -gt 120){
           $dp=@{ model="gpt-4o-mini"; max_tokens=220; temperature=0; messages=@(@{role="system";content="Extract the 1-3 most important finance/Excel concepts or facts taught in this lesson excerpt as concise one-line bullets starting with '- '. No preamble; skip trivial chatter."},@{role="user";content=$sync.distillbuf}) } | ConvertTo-Json -Depth 6
           $dbf="$env:TEMP\xc_distill.json"; [IO.File]::WriteAllText($dbf,$dp,(New-Object System.Text.UTF8Encoding($false)))
           $dr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
@@ -293,6 +337,7 @@ while(-not $sync.stop){
   if($xl -and $xl.Length -lt 130){ $xl=$null }
   if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 3; continue }
   if($nullStreak){ $nullStreak=$false; XLog "Excel readable again" }
+  $sync.lastXl=$xl
   if(($xl -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
     $sync.lastWb=$Matches[1]
     if($seen.ContainsKey($sync.lastWb)){ $sync.sheetPurpose=[string]$seen[$sync.lastWb] }
@@ -386,7 +431,22 @@ while(-not $sync.stop){
     $t=$t -replace '\*\*','' -replace '__','' -replace '`','' -replace '(?m)^\s{0,3}#{1,6}\s*','' -replace '(?m)^\s*[\*\-\+]\s+',''
     if($cur){ try{ $cur.Stop() }catch{} }; try{ $sp.SpeakAsyncCancelAll() }catch{}
     $spoke=$false
-    if($sync.ttsMode -eq 'openai' -and $sync.key){
+    if($sync.ttsMode -eq 'fish' -and $sync.fishKey){
+      try{
+        $fb=@{ text=$t; format="mp3" }
+        if($sync.fishVoice){ $fb.reference_id=$sync.fishVoice }
+        $fbody=$fb | ConvertTo-Json -Compress
+        $fbf="$env:TEMP\xc_fish_body.json"; [IO.File]::WriteAllText($fbf,$fbody,(New-Object System.Text.UTF8Encoding($false)))
+        $fraw="$env:TEMP\xc_fish_raw.mp3"; if(Test-Path $fraw){ Remove-Item $fraw -Force -ErrorAction SilentlyContinue }
+        & curl.exe -s --max-time 30 "https://api.fish.audio/v1/tts" -H ("Authorization: Bearer "+$sync.fishKey) -H "Content-Type: application/json" -d ("@"+$fbf) -o $fraw 2>$null
+        if((Test-Path $fraw) -and ((Get-Item $fraw).Length -gt 800)){
+          $pcm="$env:TEMP\xc_tts_pcm.wav"; if(Test-Path $pcm){ Remove-Item $pcm -Force -ErrorAction SilentlyContinue }
+          & $sync.ff -hide_banner -loglevel error -y -i $fraw -ar 44100 -ac 2 -c:a pcm_s16le $pcm 2>$null
+          if((Test-Path $pcm) -and ((Get-Item $pcm).Length -gt 1000) -and (-not $sync.mute)){ $cur=New-Object System.Media.SoundPlayer $pcm; try{ $cur.Play(); $spoke=$true; $sync.ttsBusyUntil=(Get-Date).AddSeconds(((Get-Item $pcm).Length/176400.0)+1.5) }catch{} }
+        }
+      }catch{}
+    }
+    if((-not $spoke) -and $sync.key){
       try{
         $body=@{ model="gpt-4o-mini-tts"; voice=$sync.ttsVoice; input=$t; response_format="wav"; instructions="Speak like a warm, confident investment-banking tutor: clear, encouraging, natural pacing." } | ConvertTo-Json -Compress
         $bf="$env:TEMP\xc_tts_body.json"; [IO.File]::WriteAllText($bf,$body,(New-Object System.Text.UTF8Encoding($false)))
@@ -815,7 +875,8 @@ $ui.Add_Tick({
     elseif($r -eq "OK" -or $r -eq ""){
       if(-not $script:xlNudgeShown){
         Set-Dot '#22c55e' $true; $script:idle=$true
-        if($sync.isPaused){ $script:baseStatus="Watching your work" }
+        if($sync.chatOn){ $script:baseStatus="Chat - just talk (say 'thanks coach' to end)" }
+        elseif($sync.isPaused){ $script:baseStatus="Watching your work" }
         else { $lt=[string]$sync.lesson; if($lt.Length -gt 52){ $lt=$lt.Substring($lt.Length-52) }; $lt=$lt.Trim(); $script:baseStatus=if($lt){ "Hearing: ..."+$lt }else{ "Listening to the lesson" } }
       }
     }
