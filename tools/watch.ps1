@@ -25,7 +25,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
@@ -149,6 +149,22 @@ while(-not $sync.stop){
         }catch{}
       }
     }catch{ $sync.text="Sorry - that question failed. Try again."; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1 }
+    continue
+  }
+  if($sync.formReq){
+    $sync.formReq=$false
+    try{
+      $fl=[string]$sync.lessonlog; if($fl.Length -gt 500){ $fl=$fl.Substring($fl.Length-500) }
+      $fc=@(@{type='text';text="List the 6 to 8 most relevant Excel formulas for what I am practicing right now, most useful first. Reply with ONE formula per line, each line EXACTLY in this format: Name | =FORMULA(example cell refs) | very short when-to-use. Plain ASCII. No preamble, no numbering, nothing else."})
+      if($sync.sheetPurpose){ $fc+=@{type='text';text=("What I am practicing: "+$sync.sheetPurpose)} }
+      if($fl){ $fc+=@{type='text';text=("Recent lesson: "+$fl)} }
+      $fpay=@{ model=$sync.model; max_completion_tokens=900; reasoning_effort='low'; messages=@(@{role='system';content="You are a finance/Excel tutor. Output exactly the requested lines and nothing else."},@{role='user';content=$fc}) } | ConvertTo-Json -Depth 10
+      $fbf="$env:TEMP\xc_form.json"; [IO.File]::WriteAllText($fbf,$fpay,(New-Object System.Text.UTF8Encoding($false)))
+      $fr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$fbf)
+      $fj=$null; try{ $fj=$fr|ConvertFrom-Json }catch{}
+      if($fj.choices){ $ft=([string]$fj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ft=Clean-Answer $ft }; $sync.formText=$ft } else { $sync.formText="" }
+    }catch{ $sync.formText="" }
+    $sync.formStamp=$sync.formStamp+1
     continue
   }
   if($sync.paused){ Start-Sleep -Milliseconds 400; continue }
@@ -548,7 +564,7 @@ function Tune-WebView($wv){
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
 $script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date)
-$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false
+$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
 $strip=$mkS.f; $wvS=$mkS.wv; $script:strip=$strip; $script:wvS=$wvS
@@ -664,6 +680,12 @@ function Handle-Panel($k,$term){
   switch($k){
     'close'   { try{ $panel.Hide() }catch{} }
     'copy'    { try{ if($script:lastFull){ [System.Windows.Forms.Clipboard]::SetText($script:lastFull) } }catch{} }
+    'copytext' { try{ if($term){ [System.Windows.Forms.Clipboard]::SetText([string]$term) } }catch{} }
+    'formulas' {
+      $fxKey=[string]$sync.sheetPurpose
+      if($fxKey -and $script:fxCache.ContainsKey($fxKey)){ JS $script:wvP ("XC.setFormulas("+$script:fxCache[$fxKey]+")") }
+      else { $sync.formReq=$true }
+    }
     'explain' {
       if($script:askBusy){ return }
       $script:askBusy=$true
@@ -756,6 +778,17 @@ $ui.Add_Tick({
     if(-not $sync.muteSound){ try{ (New-Object System.Media.SoundPlayer $sync.chime).Play() }catch{} }
   }
   if($script:askBusy -and $script:busySince){ $es=[int]((Get-Date)-$script:busySince).TotalSeconds; if($es -ge 4){ Set-Msg ($script:busyLabel+"... "+$es+"s") } }
+  if($sync.formStamp -gt $script:seenForm){
+    $script:seenForm=$sync.formStamp
+    $fxItems=@()
+    foreach($ln in ([string]$sync.formText -split "`r?`n")){
+      $fp=$ln -split '\|'
+      if($fp.Count -ge 2 -and $fp[0].Trim() -and $fp[1].Trim()){ $fxItems+=@{ n=$fp[0].Trim(); f=$fp[1].Trim(); d=$(if($fp.Count -ge 3){ $fp[2].Trim() }else{ "" }) } }
+    }
+    $fxJson=$(if($fxItems.Count -gt 0){ ConvertTo-Json @($fxItems) -Compress -Depth 4 }else{ "[]" })
+    if($fxItems.Count -gt 0 -and $sync.sheetPurpose){ $script:fxCache[[string]$sync.sheetPurpose]=$fxJson }
+    JS $script:wvP ("XC.setFormulas("+$fxJson+")")
+  }
   if($sync.xlStamp -gt $script:seenXl){
     $script:seenXl=$sync.xlStamp; $rx=[string]$sync.xlText
     if($rx -eq "OK"){

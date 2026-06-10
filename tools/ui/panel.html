@@ -97,6 +97,21 @@
   .fbtn.hidden{ display:none; }
   .fbtn .lbl{ overflow:hidden; text-overflow:ellipsis; }
   #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.38); flex:0 0 auto; }
+
+  /* ---------- formulas drop ---------- */
+  #fxBtn .fx{ font:italic 600 13.5px Georgia,'Times New Roman',serif; color:inherit; }
+  #fxDrop{ position:absolute; top:52px; left:16px; right:16px; max-height:68%; overflow-y:auto; z-index:6;
+    background:rgba(26,26,32,0.97); border:1px solid var(--hairline); border-radius:14px; padding:8px;
+    box-shadow:0 14px 44px rgba(0,0,0,0.55); }
+  #fxDrop.hidden{ display:none; }
+  #fxDrop::-webkit-scrollbar{ width:7px; }
+  #fxDrop::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); border-radius:4px; }
+  .fxhead{ font-size:11.5px; color:var(--text-2); padding:4px 10px 7px; }
+  .fxrow{ padding:8px 10px; border-radius:9px; cursor:pointer; transition:background .14s ease; }
+  .fxrow:hover{ background:var(--hover); }
+  .fxname{ font-size:12.5px; font-weight:650; color:#fff; }
+  .fxformula{ font:12px Consolas,monospace; color:var(--accent); margin-top:2px; word-break:break-all; }
+  .fxnote{ font-size:11.5px; color:var(--text-2); margin-top:1px; }
 </style>
 </head>
 <body>
@@ -109,6 +124,9 @@
         <span class="q" id="qtext"></span>
       </div>
       <div id="hdrIcons">
+        <div class="ghost" id="fxBtn" title="Formulas - the relevant formulas for what you're doing right now (tap one to copy)">
+          <span class="fx">fx</span>
+        </div>
         <span id="clock">--:--</span>
         <div class="ghost" id="copyBtn" title="Copy answer">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -119,6 +137,7 @@
       </div>
     </div>
     <div id="body"></div>
+    <div id="fxDrop" class="hidden"><div id="fxList"></div></div>
     <div id="spinWrap"><div class="ring"></div></div>
     <div id="ftr">
       <button id="explain" class="fbtn" title="Re-answer with the full reasoning and steps">
@@ -190,9 +209,23 @@
     return pool[0].replace(/[.,:;!?]+$/,'');
   }
 
+  let fxItems = [];
+  function renderFx(items){
+    fxItems = items || [];
+    if (!fxItems.length){ $('fxList').innerHTML = '<div class="fxhead">No formulas yet - open a practice sheet first.</div>'; return; }
+    $('fxList').innerHTML = '<div class="fxhead">Relevant to what you\'re doing - tap to copy</div>' + fxItems.map((it,i) =>
+      '<div class="fxrow" data-i="'+i+'"><div class="fxname">'+esc(it.n||'')+'</div><div class="fxformula">'+esc(it.f||'')+'</div>'+(it.d?'<div class="fxnote">'+esc(it.d)+'</div>':'')+'</div>').join('');
+    [...document.querySelectorAll('.fxrow')].forEach(r => r.addEventListener('click', () => {
+      const it = fxItems[+r.dataset.i]; if(!it) return;
+      post({type:'panel', k:'copytext', term: it.f});
+      const nm = r.querySelector('.fxname'); const old = nm.textContent;
+      nm.textContent = 'Copied!'; setTimeout(() => { try{ nm.textContent = old; }catch(e){} }, 900);
+    }));
+  }
   window.XC = {
     setAnswer(md){
       document.body.classList.remove('loading');
+      $('fxDrop').classList.add('hidden');
       $('body').innerHTML = mdToHtml(md);
       $('body').scrollTop = 0;
       defineTerm = pickTerm(md);
@@ -209,9 +242,19 @@
       const has = q && q.length;
       $('qchip').classList.toggle('hidden', !has);
       if (has) $('qtext').textContent = q;
-    }
+    },
+    setFormulas(items){ renderFx(items); },
+    setFormulasLoading(){ $('fxList').innerHTML = '<div class="fxhead">Looking at what you\'re working on...</div>'; }
   };
 
+  $('fxBtn').addEventListener('click', () => {
+    const d = $('fxDrop');
+    if (d.classList.contains('hidden')){
+      d.classList.remove('hidden');
+      if (!fxItems.length){ XC.setFormulasLoading(); }
+      post({type:'panel', k:'formulas'});
+    } else { d.classList.add('hidden'); }
+  });
   $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));
   $('closeBtn').addEventListener('click', () => post({type:'panel', k:'close'}));
   $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
