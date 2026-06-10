@@ -3,15 +3,19 @@
 <head>
 <meta charset="utf-8">
 <style>
-  /* Dark Cluely liquid glass - spec values. Real desktop blur comes from the
-     Win11 acrylic backdrop BEHIND this transparent page. */
+  /* Cluely control-pill style, adapted to the coach. Spec values verbatim:
+     fill rgba(20,20,24,0.65), hairline rgba(255,255,255,0.10),
+     inner top inset rgba(255,255,255,0.06), key badges 22px r6 rgba(255,255,255,0.13),
+     hover rgba(255,255,255,0.08), text #fff / rgba(255,255,255,0.6).
+     Real desktop blur = Win11 dark acrylic behind this transparent page. */
   :root{
     --fill: rgba(20,20,24,0.65);
     --hairline: rgba(255,255,255,0.10);
     --inner-top: rgba(255,255,255,0.06);
     --text: #ffffff;
-    --text-2: rgba(255,255,255,0.62);
+    --text-2: rgba(255,255,255,0.6);
     --badge: rgba(255,255,255,0.13);
+    --badge-border: rgba(255,255,255,0.10);
     --hover: rgba(255,255,255,0.08);
   }
   *{ box-sizing:border-box; margin:0; padding:0; }
@@ -19,7 +23,7 @@
     font-family:'Segoe UI Variable Text','Segoe UI',Inter,system-ui,sans-serif;
     -webkit-font-smoothing:antialiased; color:var(--text); user-select:none; }
   .card{
-    position:absolute; inset:0; border-radius:20px;
+    position:absolute; inset:0;
     background:var(--fill);
     backdrop-filter: blur(35px) saturate(140%);
     -webkit-backdrop-filter: blur(35px) saturate(140%);
@@ -27,141 +31,132 @@
     box-shadow: inset 0 1px 0 var(--inner-top);
     overflow:hidden;
   }
-
-  /* cursor-tracking sheen (GPU, smooth) */
-  #sheen{ position:absolute; width:260px; height:260px; border-radius:50%; pointer-events:none;
-    background:radial-gradient(circle, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0) 70%);
-    transform:translate(-130px,-130px); opacity:0; transition:opacity .25s ease; }
-  .card:hover #sheen{ opacity:1; }
+  body.bar .card{ border-radius:24px; }
+  body.pill .card{ border-radius:999px; }
 
   /* ---------- modes ---------- */
-  #barUI,#pillUI{ position:absolute; inset:0; display:flex; flex-direction:column;
-    opacity:0; pointer-events:none; transition:opacity .22s ease; }
-  body.bar #barUI{ opacity:1; pointer-events:auto; }
-  body.pill #pillUI{ opacity:1; pointer-events:auto; }
+  #barUI,#pillUI{ position:absolute; inset:0; display:none; }
+  body.bar #barUI{ display:flex; flex-direction:column; }
+  body.pill #pillUI{ display:flex; flex-direction:row; align-items:center; }
 
-  /* ---------- shared bits ---------- */
+  /* ---------- shared ---------- */
   .dot{ width:9px; height:9px; border-radius:50%; background:#969aa2; flex:0 0 auto;
-    box-shadow:0 0 8px rgba(150,154,162,0.4); transition:background .25s ease, box-shadow .25s ease; }
-  .dot.pulse{ animation:breathe 1.6s ease-in-out infinite; }
-  @keyframes breathe{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
-  .status{ font-size:13.5px; font-weight:600; color:var(--text);
+    transition:background .25s ease; }
+  .dot.pulse{ animation:breathe 1.7s ease-in-out infinite; }
+  @keyframes breathe{ 0%,100%{ opacity:.4; } 50%{ opacity:1; } }
+  .status{ font-size:13.5px; font-weight:600; letter-spacing:.1px; color:var(--text);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-  .chip{
-    width:28px; height:28px; border-radius:8px; flex:0 0 auto;
+  /* Cluely-style quiet icon button: no box, soft rounded hover fill */
+  .ghost{
+    height:30px; min-width:30px; padding:0 6px; border-radius:9px; flex:0 0 auto;
     display:flex; align-items:center; justify-content:center; cursor:pointer;
-    background:var(--badge); border:1px solid var(--hairline);
+    color:rgba(255,255,255,0.72); background:transparent;
+    transition:background .16s ease, color .16s ease;
+  }
+  .ghost:hover{ background:var(--hover); color:rgba(255,255,255,0.95); }
+  .ghost:active{ background:rgba(255,255,255,0.12); }
+  .ghost svg{ display:block; }
+  .ghost .alt-i{ display:none; }
+  .ghost.alt .pri-i{ display:none; }
+  .ghost.alt .alt-i{ display:block; }
+  .key{
+    display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto;
+    min-width:22px; height:22px; padding:0 5px;
+    background:var(--badge); border:1px solid var(--badge-border); border-radius:6px;
+    font-size:12px; color:rgba(255,255,255,0.92);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
-    color:rgba(255,255,255,0.85);
-    transition:background .15s ease, transform .15s ease;
   }
-  .chip:hover{ background:rgba(255,255,255,0.20); transform:scale(1.08); }
-  .chip:active{ transform:scale(0.94); }
-  .chip svg{ display:block; }
-  .chip .alt-i{ display:none; }
-  .chip.alt .pri-i{ display:none; }
-  .chip.alt .alt-i{ display:block; }
+  .divider{ width:1px; height:18px; background:rgba(255,255,255,0.12); flex:0 0 auto; }
 
-  /* ---------- bar: row 1 ---------- */
-  #row1{ height:42px; display:flex; align-items:center; gap:10px; padding:0 12px 0 8px; }
+  /* ---------- bar: row 1 (the control pill row) ---------- */
+  #row1{ height:44px; display:flex; align-items:center; gap:12px; padding:2px 14px 0 9px; }
   #pauseBtn{
-    width:30px; height:30px; border-radius:50%; background:#fff; flex:0 0 auto;
+    width:32px; height:32px; border-radius:50%; background:#fff; flex:0 0 auto;
     display:flex; align-items:center; justify-content:center; cursor:pointer;
-    transition:transform .15s ease; box-shadow:0 2px 8px rgba(0,0,0,0.35);
+    transition:transform .18s ease;
   }
-  #pauseBtn:hover{ transform:scale(1.08); }
-  #pauseBtn:active{ transform:scale(0.94); }
+  #pauseBtn:hover{ transform:scale(1.07); }
+  #pauseBtn:active{ transform:scale(0.93); }
   #pauseBtn .alt-i{ display:none; }
   #pauseBtn.alt .pri-i{ display:none; }
   #pauseBtn.alt .alt-i{ display:block; }
-  .eq{ display:flex; align-items:flex-end; gap:2px; height:13px; flex:0 0 auto; }
-  .eq i{ width:2.5px; background:rgba(255,255,255,0.8); border-radius:2px; animation:eq 1.1s ease-in-out infinite; }
-  .eq i:nth-child(1){ height:5px; }
-  .eq i:nth-child(2){ height:11px; animation-delay:.15s; }
-  .eq i:nth-child(3){ height:7px; animation-delay:.3s; }
-  .eq i:nth-child(4){ height:12px; animation-delay:.45s; }
+  .eq{ display:flex; align-items:flex-end; gap:2.5px; height:14px; flex:0 0 auto; }
+  .eq i{ width:2.5px; background:rgba(255,255,255,0.85); border-radius:2px; animation:eq 1.1s ease-in-out infinite; }
+  .eq i:nth-child(1){ height:6px; }
+  .eq i:nth-child(2){ height:12px; animation-delay:.15s; }
+  .eq i:nth-child(3){ height:8px; animation-delay:.3s; }
+  .eq i:nth-child(4){ height:13px; animation-delay:.45s; }
   .eq i:nth-child(5){ height:5px; animation-delay:.6s; }
   @keyframes eq{ 0%,100%{ transform:scaleY(.55);} 50%{ transform:scaleY(1);} }
   body.paused .eq i{ animation-play-state:paused; opacity:.35; }
-  #timer{ font-family:Consolas,'Cascadia Mono',monospace; font-size:12.5px; color:var(--text-2);
-    font-variant-numeric:tabular-nums; flex:0 0 auto; }
+  #timer{ font-variant-numeric:tabular-nums; font-size:13.5px; color:var(--text);
+    min-width:42px; flex:0 0 auto; }
   #row1 .status{ flex:1 1 auto; cursor:pointer; }
-  #row1 .sep{ width:1px; height:16px; background:rgba(255,255,255,0.12); flex:0 0 auto; }
 
   /* ---------- bar: row 2 ---------- */
-  #row2{ height:38px; display:flex; align-items:center; gap:10px; padding:0 12px 8px 12px; }
+  #row2{ height:36px; display:flex; align-items:center; gap:12px; padding:0 14px 6px 16px; }
   #askWrap{
-    flex:1 1 auto; height:30px; display:flex; align-items:center; min-width:0;
-    background:rgba(255,255,255,0.07); border:1px solid var(--hairline); border-radius:15px;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
-    padding:0 8px 0 12px; transition:background .2s ease, border-color .2s ease;
+    flex:1 1 auto; height:30px; display:flex; align-items:center; gap:8px; min-width:0;
+    background:var(--hover); border-radius:10px;
+    padding:0 7px 0 12px; transition:background .2s ease;
   }
-  #askWrap:focus-within{ background:rgba(255,255,255,0.10); border-color:rgba(255,255,255,0.22); }
+  #askWrap:focus-within{ background:rgba(255,255,255,0.12); }
   #ask{
     flex:1 1 auto; min-width:0; background:transparent; border:none; outline:none;
-    color:var(--text); font-size:13px; font-family:inherit;
+    color:var(--text); font-size:13.5px; font-family:inherit;
   }
   #ask::placeholder{ color:var(--text-2); }
-  .key{
-    display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto;
-    min-width:20px; height:20px; padding:0 5px;
-    background:var(--badge); border:1px solid var(--hairline); border-radius:6px;
-    font-size:11px; color:rgba(255,255,255,0.85);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
-  }
   #assist{
-    flex:0 0 auto; height:30px; padding:0 18px; border-radius:15px; border:none;
-    background:#fff; color:#17181c; font-weight:600; font-size:13px; font-family:inherit;
+    flex:0 0 auto; height:30px; padding:0 16px; border-radius:15px; border:none;
+    background:#fff; color:#141418; font-weight:600; font-size:13.5px; font-family:inherit;
     display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer;
-    transition:transform .15s ease; box-shadow:0 2px 8px rgba(0,0,0,0.35);
+    transition:transform .18s ease;
   }
   #assist:hover{ transform:scale(1.05); }
   #assist:active{ transform:scale(0.95); }
   #assist:disabled{ opacity:.7; cursor:default; transform:none; }
-  .spin{ width:14px; height:14px; border-radius:50%; flex:0 0 auto;
-    border:2px solid rgba(23,24,28,0.25); border-top-color:#17181c;
+  .spin{ width:13px; height:13px; border-radius:50%; flex:0 0 auto;
+    border:2px solid rgba(20,20,24,0.25); border-top-color:#141418;
     animation:spin .9s linear infinite; display:none; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
   body.busy .spin{ display:block; }
 
   /* ---------- pill ---------- */
-  #pillUI{ flex-direction:row; align-items:center; gap:10px; padding:0 8px 0 16px; cursor:pointer; }
+  #pillUI{ gap:11px; padding:0 9px 0 17px; cursor:pointer; }
   #pillUI .status{ flex:1 1 auto; font-size:13px; }
-  #pillExpand{ margin-left:auto; }
 </style>
 </head>
 <body class="pill">
   <div class="card" id="card">
-    <div id="sheen"></div>
 
     <!-- ============ BAR ============ -->
     <div id="barUI">
       <div id="row1">
         <div id="pauseBtn" class="act" data-k="pause" title="Pause coaching">
-          <svg class="pri-i" width="11" height="11" viewBox="0 0 12 12"><rect x="2" y="1.5" width="3" height="9" rx="1" fill="#17181c"/><rect x="7" y="1.5" width="3" height="9" rx="1" fill="#17181c"/></svg>
-          <svg class="alt-i" width="11" height="11" viewBox="0 0 12 12"><path d="M3 1.6v8.8L10.4 6 3 1.6z" fill="#17181c"/></svg>
+          <svg class="pri-i" width="11" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="3.2" height="9" rx="1.2" fill="#141418"/><rect x="7.3" y="1.5" width="3.2" height="9" rx="1.2" fill="#141418"/></svg>
+          <svg class="alt-i" width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.6v8.8L10.6 6 3 1.6z" fill="#141418"/></svg>
         </div>
         <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
         <span id="timer">00:00</span>
         <span class="dot pulse" id="dotBar"></span>
         <span class="status" id="statusBar" title="Click to reopen the last answer"></span>
-        <span class="sep"></span>
-        <div class="chip act" data-k="collapse" title="Collapse to a pill">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <span class="divider"></span>
+        <div class="ghost act" id="chipMute" data-k="mute" title="Mute coach voice">
+          <svg class="pri-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9c1 .8 1.6 1.8 1.6 3s-.6 2.2-1.6 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M17.8 6.6c1.7 1.3 2.7 3.2 2.7 5.4s-1 4.1-2.7 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <svg class="alt-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </div>
-        <div class="chip act" id="chipMute" data-k="mute" title="Mute coach voice">
-          <svg class="pri-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9c1 .8 1.6 1.8 1.6 3s-.6 2.2-1.6 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M17.8 6.6c1.7 1.3 2.7 3.2 2.7 5.4s-1 4.1-2.7 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          <svg class="alt-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <div class="ghost act" id="chipSound" data-k="sound" title="Mute the notification sound">
+          <svg class="pri-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3 0-5 2.2-5 5v4l-1.6 2.7c-.3.5 0 1.1.6 1.1h12c.6 0 .9-.6.6-1.1L17 12.5v-4c0-2.8-2-5-5-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.7a2.1 2.1 0 0 0 4 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <svg class="alt-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3 0-5 2.2-5 5v4l-1.6 2.7c-.3.5 0 1.1.6 1.1h12c.6 0 .9-.6.6-1.1L17 12.5v-4c0-2.8-2-5-5-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M4.5 4l15 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </div>
-        <div class="chip act" id="chipSound" data-k="sound" title="Mute the notification sound">
-          <svg class="pri-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3 0-5 2.2-5 5v4l-1.6 2.7c-.3.5 0 1.1.6 1.1h12c.6 0 .9-.6.6-1.1L17 12.5v-4c0-2.8-2-5-5-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.7a2.1 2.1 0 0 0 4 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          <svg class="alt-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3 0-5 2.2-5 5v4l-1.6 2.7c-.3.5 0 1.1.6 1.1h12c.6 0 .9-.6.6-1.1L17 12.5v-4c0-2.8-2-5-5-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M4.5 4l15 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <div class="ghost act" data-k="note" title="Note this - flag what I'm doing now to revisit and practice later">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14.5 3l6.5 6.5-2.2 2.2-.9-.3-3.8 3.8.3 2.5-1.6 1.6-4.2-4.2L4 19.7 3.3 19l4.6-4.6-4.2-4.2 1.6-1.6 2.5.3 3.8-3.8-.3-.9L14.5 3z" fill="currentColor"/></svg>
         </div>
-        <div class="chip act" data-k="note" title="Note this - flag what I'm doing now to revisit and practice later">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14.5 3l6.5 6.5-2.2 2.2-.9-.3-3.8 3.8.3 2.5-1.6 1.6-4.2-4.2L4 19.7 3.3 19l4.6-4.6-4.2-4.2 1.6-1.6 2.5.3 3.8-3.8-.3-.9L14.5 3z" fill="currentColor"/></svg>
+        <div class="ghost act" data-k="collapse" title="Collapse to a pill">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
         </div>
-        <div class="chip act" data-k="close" title="Close coach">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <div class="ghost act" data-k="close" title="Close coach">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </div>
       </div>
       <div id="row2">
@@ -179,8 +174,8 @@
     <div id="pillUI" title="Expand the coach bar">
       <span class="dot pulse" id="dotPill"></span>
       <span class="status" id="statusPill"></span>
-      <div class="chip" id="pillExpand" title="Expand the coach bar">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <div class="ghost" id="pillExpand" title="Expand the coach bar">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </div>
     </div>
   </div>
@@ -189,13 +184,12 @@
   const post = (o) => { try { window.chrome.webview.postMessage(JSON.stringify(o)); } catch(e){} };
   const $ = (id) => document.getElementById(id);
 
-  /* ---------- XC API (PowerShell -> page) ---------- */
   window.XC = {
     setMode(m){ document.body.classList.toggle('bar', m === 'bar'); document.body.classList.toggle('pill', m !== 'bar'); },
     setStatus(t){ $('statusBar').textContent = t; $('statusPill').textContent = t; },
     setDot(hex, pulse){
       for (const d of [$('dotBar'), $('dotPill')]){
-        d.style.background = hex; d.style.boxShadow = '0 0 9px ' + hex;
+        d.style.background = hex;
         d.classList.toggle('pulse', !!pulse);
       }
     },
@@ -212,7 +206,6 @@
     getAsk(){ return $('ask').value; }
   };
 
-  /* ---------- actions ---------- */
   document.querySelectorAll('.act').forEach(el => {
     el.addEventListener('click', (e) => { e.stopPropagation(); post({type:'act', k: el.dataset.k}); });
   });
@@ -226,12 +219,10 @@
   $('ask').addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); sendAsk(); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({type:'panel', k:'close'}); });
 
-  /* pill: click anywhere expands */
   $('pillUI').addEventListener('click', () => { if (!dragged) post({type:'act', k:'expand'}); });
 
-  /* ---------- drag (background only, 3px slop) ---------- */
   let dragOn = false, dragged = false, lx = 0, ly = 0;
-  const interactive = (t) => t.closest('.chip, .act, #askWrap, #assist, #pauseBtn, .status');
+  const interactive = (t) => t.closest('.ghost, .act, #askWrap, #assist, #pauseBtn, .status');
   document.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || interactive(e.target)) return;
     dragOn = true; dragged = false; lx = e.screenX; ly = e.screenY;
@@ -244,12 +235,6 @@
     post({type:'drag', dx, dy});
   });
   document.addEventListener('pointerup', () => { dragOn = false; setTimeout(() => dragged = false, 0); });
-
-  /* ---------- cursor sheen ---------- */
-  const sheen = $('sheen');
-  document.addEventListener('mousemove', (e) => {
-    sheen.style.transform = 'translate(' + (e.clientX - 130) + 'px,' + (e.clientY - 130) + 'px)';
-  });
 
   XC.setStatus('Listening to the lesson');
   post({type:'ready'});

@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8">
 <style>
-  /* Dark Cluely liquid glass answer panel - real blur from the Win11 acrylic behind. */
+  /* Cluely "AI response" panel style, adapted to the coach.
+     fill rgba(20,20,24,0.55), hairline + inner top highlight, radius 20,
+     24px padding, ghost icons, query chip, hover rgba(255,255,255,0.08) r10. */
   :root{
     --fill: rgba(20,20,24,0.55);
     --hairline: rgba(255,255,255,0.10);
     --inner-top: rgba(255,255,255,0.06);
     --text: rgba(255,255,255,0.92);
     --text-2: rgba(255,255,255,0.6);
-    --badge: rgba(255,255,255,0.13);
+    --hover: rgba(255,255,255,0.08);
     --accent: #8ab4ff;
   }
   *{ box-sizing:border-box; margin:0; padding:0; }
@@ -25,85 +27,93 @@
     border:1px solid var(--hairline);
     box-shadow: inset 0 1px 0 var(--inner-top);
     overflow:hidden; display:flex; flex-direction:column;
+    padding:20px 24px 14px;
   }
-  #sheen{ position:absolute; width:300px; height:300px; border-radius:50%; pointer-events:none;
-    background:radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 45%, rgba(255,255,255,0) 70%);
-    transform:translate(-150px,-150px); opacity:0; transition:opacity .25s ease; z-index:0; }
-  .card:hover #sheen{ opacity:1; }
 
-  /* ---------- header ---------- */
-  #hdr{ height:42px; flex:0 0 auto; display:flex; align-items:center; gap:10px;
-    padding:0 12px 0 18px; border-bottom:1px solid rgba(255,255,255,0.08); z-index:1; }
-  #hdr .title{ font-size:13.5px; font-weight:600; color:var(--text-2); }
-  #clock{ margin-left:auto; font-family:Consolas,'Cascadia Mono',monospace; font-size:12px;
-    color:rgba(255,255,255,0.45); font-variant-numeric:tabular-nums; }
+  /* ---------- header (like "AI response" + query chip + icons) ---------- */
+  #hdr{ flex:0 0 auto; display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  #hdr .title{ font-size:15.5px; font-weight:600; color:#fff; flex:0 0 auto; }
   .chip{
-    width:28px; height:28px; border-radius:8px; flex:0 0 auto;
-    display:flex; align-items:center; justify-content:center; cursor:pointer;
-    background:var(--badge); border:1px solid var(--hairline);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
-    color:rgba(255,255,255,0.85);
-    transition:background .15s ease, transform .15s ease;
+    display:flex; align-items:center; gap:7px; min-width:0; flex:0 1 auto;
+    background:var(--hover); border:1px solid var(--hairline);
+    border-radius:16px; padding:4px 12px; font-size:12.5px; color:rgba(255,255,255,0.85);
+    white-space:nowrap; overflow:hidden;
   }
-  .chip:hover{ background:rgba(255,255,255,0.20); transform:scale(1.08); }
-  .chip:active{ transform:scale(0.94); }
-  .chip svg{ display:block; }
+  .chip svg{ flex:0 0 auto; }
+  .chip .q{ overflow:hidden; text-overflow:ellipsis; }
+  .chip.hidden{ display:none; }
+  #hdrIcons{ margin-left:auto; display:flex; align-items:center; gap:4px; flex:0 0 auto; }
+  #clock{ font-variant-numeric:tabular-nums; font-size:12px; color:rgba(255,255,255,0.45); margin-right:6px; }
+  .ghost{
+    height:28px; min-width:28px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    color:rgba(255,255,255,0.72); background:transparent;
+    transition:background .16s ease, color .16s ease;
+  }
+  .ghost:hover{ background:var(--hover); color:rgba(255,255,255,0.95); }
+  .ghost:active{ background:rgba(255,255,255,0.12); }
+  .ghost svg{ display:block; }
 
   /* ---------- body ---------- */
-  #body{ flex:1 1 auto; overflow-y:auto; padding:16px 20px; z-index:1;
-    font-size:14.5px; line-height:1.55; color:var(--text); user-select:text; cursor:default; }
-  #body::-webkit-scrollbar{ width:8px; }
-  #body::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.18); border-radius:4px; }
+  #body{ flex:1 1 auto; overflow-y:auto; min-height:0; padding-right:6px;
+    font-size:14px; line-height:1.55; color:var(--text); user-select:text; cursor:default; }
+  #body::-webkit-scrollbar{ width:7px; }
+  #body::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); border-radius:4px; }
   #body::-webkit-scrollbar-track{ background:transparent; }
-  #body h1{ font-size:19px; font-weight:700; color:#fff; margin:4px 0 10px; }
-  #body h2{ font-size:16.5px; font-weight:650; color:#fff; margin:4px 0 9px; }
-  #body p{ margin:0 0 10px; }
+  #body h1{ font-size:18px; font-weight:650; color:#fff; margin:2px 0 10px; }
+  #body h2{ font-size:15.5px; font-weight:650; color:#fff; margin:2px 0 9px; }
+  #body p{ margin:0 0 12px; }
   #body b{ color:#fff; font-weight:650; }
-  #body .li{ display:flex; gap:9px; margin:0 0 7px; }
+  #body .li{ display:flex; gap:9px; margin:0 0 8px; }
   #body .li .pre{ flex:0 0 auto; color:var(--text-2); }
   #body .li .pre.num{ color:var(--accent); font-weight:650; }
   #body .li .cnt{ flex:1 1 auto; }
 
-  /* spinner (centered) */
-  #spinWrap{ position:absolute; inset:42px 0 36px 0; display:none; align-items:center; justify-content:center; z-index:2; }
+  /* spinner */
+  #spinWrap{ position:absolute; inset:56px 0 44px 0; display:none; align-items:center; justify-content:center; }
   body.loading #spinWrap{ display:flex; }
   body.loading #body{ visibility:hidden; }
-  .ring{ width:40px; height:40px; border-radius:50%;
+  .ring{ width:38px; height:38px; border-radius:50%;
     border:3px solid rgba(255,255,255,0.15); border-top-color:rgba(255,255,255,0.85);
     animation:spin .9s linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
-  /* ---------- footer ---------- */
-  #ftr{ height:36px; flex:0 0 auto; display:flex; align-items:center; gap:10px;
-    padding:0 14px; z-index:1; }
+  /* ---------- footer: action-row style ---------- */
+  #ftr{ flex:0 0 auto; display:flex; align-items:center; margin-top:8px; margin-left:-10px; }
   #explain{
-    height:24px; padding:0 12px; border-radius:12px; border:1px solid var(--hairline);
-    background:var(--badge); color:rgba(255,255,255,0.85);
-    font-size:12px; font-family:inherit; cursor:pointer;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
-    transition:background .15s ease, transform .15s ease;
+    display:flex; align-items:center; gap:9px;
+    padding:7px 10px; border-radius:10px; border:none; background:transparent;
+    color:rgba(255,255,255,0.88); font-size:13px; font-family:inherit; cursor:pointer;
+    transition:background .16s ease;
   }
-  #explain:hover{ background:rgba(255,255,255,0.20); transform:scale(1.04); }
-  #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.4); }
+  #explain:hover{ background:var(--hover); }
+  #esc{ margin-left:auto; font-size:11.5px; color:rgba(255,255,255,0.38); }
 </style>
 </head>
 <body>
   <div class="card">
-    <div id="sheen"></div>
     <div id="hdr">
-      <span class="title">Coach</span>
-      <span id="clock">--:--</span>
-      <div class="chip" id="copyBtn" title="Copy answer">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="title">AI response</span>
+      <div class="chip hidden" id="qchip">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.2 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.2-3.8-8.5s1.3-6.2 3.8-8.5z" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span class="q" id="qtext"></span>
       </div>
-      <div class="chip" id="closeBtn" title="Close (Esc)">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <div id="hdrIcons">
+        <span id="clock">--:--</span>
+        <div class="ghost" id="copyBtn" title="Copy answer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </div>
+        <div class="ghost" id="closeBtn" title="Close (Esc)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
       </div>
     </div>
     <div id="body"></div>
     <div id="spinWrap"><div class="ring"></div></div>
     <div id="ftr">
-      <button id="explain" title="Re-answer with the full reasoning and steps">Explain in detail</button>
+      <button id="explain" title="Re-answer with the full reasoning and steps">
+        <span>&#10024;</span><span>Explain in detail</span>
+      </button>
       <span id="esc">Esc to close</span>
     </div>
   </div>
@@ -119,8 +129,7 @@
     let para = [];
     const flush = () => { if (para.length){ out.push('<p>' + para.join('<br>') + '</p>'); para = []; } };
     for (const raw of String(md).replace(/\r\n/g,'\n').split('\n')){
-      const line = raw;
-      const t = line.trim();
+      const t = raw.trim();
       if (t === ''){ flush(); continue; }
       let m;
       if ((m = t.match(/^(#{1,6})\s+(.*)$/))){
@@ -148,7 +157,12 @@
       $('body').scrollTop = 0;
     },
     setAnswerLoading(){ document.body.classList.add('loading'); },
-    setTime(t){ $('clock').textContent = t; }
+    setTime(t){ $('clock').textContent = t; },
+    setQuery(q){
+      const has = q && q.length;
+      $('qchip').classList.toggle('hidden', !has);
+      if (has) $('qtext').textContent = q;
+    }
   };
 
   $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));
@@ -156,9 +170,8 @@
   $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({type:'panel', k:'close'}); });
 
-  /* drag on non-interactive background */
   let dragOn = false, lx = 0, ly = 0;
-  const interactive = (t) => t.closest('.chip, #explain, #body');
+  const interactive = (t) => t.closest('.ghost, #explain, #body, .chip');
   document.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || interactive(e.target)) return;
     dragOn = true; lx = e.screenX; ly = e.screenY;
@@ -171,11 +184,6 @@
     post({type:'drag', dx, dy});
   });
   document.addEventListener('pointerup', () => { dragOn = false; });
-
-  const sheen = $('sheen');
-  document.addEventListener('mousemove', (e) => {
-    sheen.style.transform = 'translate(' + (e.clientX - 150) + 'px,' + (e.clientY - 150) + 'px)';
-  });
 
   XC.setTime(new Date().toTimeString().slice(0,5));
   post({type:'ready'});

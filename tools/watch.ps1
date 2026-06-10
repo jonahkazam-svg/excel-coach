@@ -449,6 +449,7 @@ function Show-PanelLoading {
   if(-not $panel.Visible){ $panel.Show() }
   if($script:panelReady){ JS $script:wvP ("XC.setAnswerLoading()") } else { $script:pendingLoad=$true }
 }
+function Set-Query($q){ if($script:panelReady){ JS $script:wvP ("XC.setQuery("+(ConvertTo-Json ([string]$q))+")") } else { $script:pendingQ=[string]$q } }
 function Shutdown-Coach {
   $sync.stop=$true; try{ $ui.Stop() }catch{}; Start-Sleep -Milliseconds 300; Kill-FF
   try{ $rs.Close() }catch{}; try{ $rsT.Close() }catch{}
@@ -465,7 +466,7 @@ function Handle-Ask($q){
   $det=$false; if($q){ $det=[bool]($q -match '(?i)explain|in detail|elaborate|\bwhy\b') }
   $qq=$null; if($q){ $qq=$q }
   $ans=Get-Help $qq $det; $script:lastFull=$ans
-  Show-Answer $ans; Log-Watch $(if($q){ "[you asked: "+$q+"] "+$ans }else{ "[help] "+$ans }) ""
+  Show-Answer $ans; Set-Query $(if($q){ $q }else{ "Read my screen" }); Log-Watch $(if($q){ "[you asked: "+$q+"] "+$ans }else{ "[help] "+$ans }) ""
   if(-not $sync.mute){ $sync.ttsText=$ans }
   $script:baseStatus="On track"; $script:idle=$true; Set-Dot '#22c55e' $true
   JS $script:wvS ("XC.busy(false)")
@@ -488,7 +489,7 @@ function Handle-Act($k){
       $script:idle=$false; Set-Msg "Noting this for later..."; Set-Dot '#2563eb' $false
       Show-PanelLoading
       [System.Windows.Forms.Application]::DoEvents()
-      $nn=Add-Note; $script:lastFull=$nn; Show-Answer $nn
+      $nn=Add-Note; $script:lastFull=$nn; Show-Answer $nn; Set-Query "Note this"
       $script:baseStatus="Noted - saved to revisit"; $script:idle=$true; Set-Dot '#22c55e' $true; $script:seen=$sync.stamp
     }
     'close'    { Shutdown-Coach }
@@ -539,6 +540,7 @@ $wvP.add_WebMessageReceived({
       JS $script:wvP ("XC.setTime('"+(Get-Date).ToString("HH:mm")+"')")
       if($script:pendingLoad){ $script:pendingLoad=$false; JS $script:wvP ("XC.setAnswerLoading()") }
       if($script:pendingAns){ $a=$script:pendingAns; $script:pendingAns=$null; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $a)+")") }
+      if($null -ne $script:pendingQ){ JS $script:wvP ("XC.setQuery("+(ConvertTo-Json $script:pendingQ)+")"); $script:pendingQ=$null }
     }
     'panel' { Handle-Panel ([string]$m.k) }
     'drag'  { $script:lastActive=(Get-Date); $script:panel.Left+=[int]([double]$m.dx*$script:S); $script:panel.Top+=[int]([double]$m.dy*$script:S) }
@@ -568,7 +570,7 @@ $ui.Add_Tick({
     $script:seen=$sync.stamp; $r=$sync.text
     if($r -ne "OK" -and $r -ne ""){ $script:lastActive=(Get-Date) }
     if($sync.isAnswer){
-      if($r -ne "" -and $r -ne "OK"){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; Set-Dot '#2563eb' $false; Set-Msg "Answer ready - click to read"; Show-Answer $r; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ $sync.ttsText=$r } }
+      if($r -ne "" -and $r -ne "OK"){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; Set-Dot '#2563eb' $false; Set-Msg "Answer ready - click to read"; Show-Answer $r; Set-Query "Voice question"; Log-Watch ("[you asked] "+$r) $sync.lesson; if(-not $sync.mute){ $sync.ttsText=$r } }
     }
     elseif($r -eq "OK" -or $r -eq ""){
       Set-Dot '#22c55e' $true; $script:idle=$true
@@ -590,7 +592,7 @@ $strip.Add_Shown({
   $ui.Start()
   if($env:XC_UIPROBE){
     $pv=@('## PP&E roll-forward','Your **ending PP&E** looks off in cell **C39**.','- Ending PP&E = beginning PP&E + CapEx - depreciation','- **CapEx should exceed depreciation** for a growing company','1. Check **C37** - the beginning balance link','2. Re-add **C38** (CapEx) and subtract **C39** (depreciation)') -join "`n"
-    $script:lastFull=$pv; $script:collapsed=$false; Apply-Strip; Show-Answer $pv
+    $script:lastFull=$pv; $script:collapsed=$false; Apply-Strip; Show-Answer $pv; Set-Query "Check my PP&E roll-forward"
   }
 })
 [void]$strip.ShowDialog()
