@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Excel Coach</title>
+<style>
+  /* ============================================================
+     Excel Coach strip — snipzy.dev liquid-glass language
+     Light theme over a Windows 11 DWM acrylic backdrop.
+     The OS provides the frost BEHIND the page, so html/body
+     stay fully transparent and glass fills are semi-opaque white.
+     ============================================================ */
+  :root {
+    --text-1: #1a1c22;
+    --text-2: #5f646e;
+    --bg-color: rgba(255, 255, 255, 0.25);        /* snipzy light --bg-color */
+    --highlight: rgba(255, 255, 255, 0.75);       /* snipzy light --highlight */
+    --input-bg: rgba(255, 255, 255, 0.30);
+    --input-border: rgba(255, 255, 255, 0.60);
+    --input-focus: rgba(255, 255, 255, 0.45);
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;          /* OS acrylic shows through */
+    overflow: hidden;
+  }
+  body {
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+    color: var(--text-1);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* ---------- shared snipzy 4-layer glass architecture ---------- */
+  .glass-filter,
+  .glass-overlay,
+  .glass-specular {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .glass-filter {
+    z-index: 1;
+    backdrop-filter: blur(4px);
+    filter: url(#glass-distortion) saturate(120%) brightness(1.15);
+  }
+  .glass-overlay {
+    z-index: 2;
+    background: var(--bg-color);
+    transition: background 0.2s ease;
+  }
+  .glass-specular {
+    z-index: 3;
+    box-shadow: inset 1px 1px 1px var(--highlight);
+  }
+  .glass-content {
+    position: relative;
+    z-index: 4;
+  }
+
+  /* ---------- the card (NAV002 / CRD004 material) ---------- */
+  .glass-card {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+    touch-action: none;
+  }
+  .glass-distortion-overlay {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.05) 0%, transparent 80%),
+                radial-gradient(circle at 80% 70%, rgba(255,255,255,0.05) 0%, transparent 80%);
+    background-size: 300% 300%;
+    animation: floatDistort 10s infinite ease-in-out;
+    mix-blend-mode: overlay;
+    z-index: 2;
+    pointer-events: none;
+  }
+  @keyframes floatDistort {
+    0%   { background-position: 0% 0%; }
+    50%  { background-position: 100% 100%; }
+    100% { background-position: 0% 0%; }
+  }
+  #card > .glass-content {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ---------- mode swap (bar <-> pill) ---------- */
+  #barUI, #pillUI {
+    position: absolute;
+    inset: 0;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity 0.28s ease, transform 0.28s ease, visibility 0s linear 0s;
+  }
+  body.mode-pill #barUI,
+  body.mode-bar  #pillUI {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: scale(0.97);
+    transition: opacity 0.28s ease, transform 0.28s ease, visibility 0s linear 0.28s;
+  }
+
+  /* ---------- bar layout: 600x80, two 40px rows ---------- */
+  #barUI {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .row-top    { gap: 8px; padding: 6px 10px 0 14px; }
+  .row-bottom { gap: 8px; padding: 0 10px 7px 12px; }
+
+  /* status dot — breathing */
+  .dot {
+    width: 10px;
+    height: 10px;
+    flex: none;
+    border-radius: 50%;
+    background: #34c759;
+    box-shadow: 0 0 6px #34c759;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1);    opacity: 1; }
+    50%      { transform: scale(1.3);  opacity: 0.55; }
+  }
+  .dot.pulse { animation: breathe 2.2s ease-in-out infinite; }
+
+  /* mono session timer */
+  .timer {
+    flex: none;
+    font-family: Consolas, 'SF Mono', ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--text-2);
+    letter-spacing: 0.5px;
+  }
+
+  /* status text */
+  .status-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-1);
+    padding: 2px 6px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  .status-text:hover { background-color: rgba(255, 255, 255, 0.25); }
+  .status-text:focus-visible {
+    outline: 2px solid rgba(31, 33, 40, 0.55);
+    outline-offset: 1px;
+  }
+
+  /* ---------- icon chips (ICO001, scaled to 28px) ---------- */
+  .chips {
+    display: flex;
+    gap: 6px;
+    flex: none;
+  }
+  .chip {
+    --bg-color: rgba(255, 255, 255, 0.25);
+    --highlight: rgba(255, 255, 255, 0.75);
+    --icon-color: var(--text-1);
+    position: relative;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border: none;
+    padding: 0;
+    border-radius: 9px;
+    overflow: hidden;
+    background: transparent;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+  .chip:hover  { transform: scale(1.1); }
+  .chip:active { transform: scale(0.95); }
+  .chip:hover .glass-overlay { background: rgba(255, 255, 255, 0.4); }
+  .chip:focus-visible {
+    outline: 2px solid rgba(31, 33, 40, 0.55);
+    outline-offset: 1px;
+  }
+  .chip .glass-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .chip svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    color: var(--icon-color);
+    transition: transform 0.2s ease;
+  }
+  .chip:hover svg { transform: scale(0.9); }
+  /* toggle alternates: .alt shows the b icon */
+  .chip .ic-b      { display: none; }
+  .chip.alt .ic-a  { display: none; }
+  .chip.alt .ic-b  { display: block; }
+
+  /* ---------- ask field (SRH002 search, adapted light) ---------- */
+  .ask-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+  .ask-icon {
+    position: absolute;
+    left: 10px;
+    width: 14px;
+    height: 14px;
+    color: var(--text-2);
+    opacity: 0.8;
+    pointer-events: none;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .ask-input {
+    width: 100%;
+    height: 28px;
+    box-sizing: border-box;
+    padding: 0 62px 0 31px;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 12px;
+    color: var(--text-1);
+    font-family: inherit;
+    font-size: 12.5px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, box-shadow, background;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .ask-input:focus {
+    outline: none;
+    background: var(--input-focus);
+    border-color: var(--highlight);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  }
+  .ask-input:focus ~ .ask-icon { opacity: 1; transform: scale(1.1) translateY(-2px); }
+  .ask-input::placeholder {
+    color: var(--text-2);
+    transition: opacity 0.3s ease;
+  }
+  .ask-input:focus::placeholder { opacity: 0.4; }
+  .keycap {
+    position: absolute;
+    right: 7px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--text-2);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(0, 0, 0, 0.10);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 3px 7px;
+    pointer-events: none;
+  }
+
+  /* ---------- Assist button (BTN003, dark variant, 86x28) ---------- */
+  .assist-btn {
+    --bg-color: rgba(26, 28, 34, 0.92);
+    --highlight: rgba(255, 255, 255, 0.28);
+    --text: #ffffff;
+    position: relative;
+    width: 86px;
+    height: 28px;
+    flex: none;
+    padding: 0;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    overflow: hidden;
+    background: transparent;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+    outline: none;
+  }
+  .assist-btn:not(:disabled):hover  { transform: scale(1.05); }
+  .assist-btn:not(:disabled):active { transform: scale(0.95); }
+  .assist-btn:disabled { opacity: 0.55; cursor: default; }
+  .assist-btn:focus-visible {
+    outline: 2px solid rgba(31, 33, 40, 0.55);
+    outline-offset: 2px;
+  }
+  .assist-btn .glass-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 12.5px;
+  }
+
+  /* ---------- busy spinner (LDR003, scaled small) ---------- */
+  .glass-spinner {
+    --bg-color: rgba(255, 255, 255, 0.25);
+    --highlight: rgba(255, 255, 255, 0.75);
+    --spinner-size: 24px;
+    --ring-size: 17px;
+    --core-size: 7px;
+    position: relative;
+    width: var(--spinner-size);
+    height: var(--spinner-size);
+    flex: none;
+    border-radius: 50%;
+    overflow: hidden;
+    background: transparent;
+    display: none;
+  }
+  .glass-spinner.show { display: block; }
+  .glass-spinner .glass-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .spinner-ring {
+    position: absolute;
+    width: var(--ring-size);
+    height: var(--ring-size);
+    box-sizing: border-box;
+    border: 2px solid transparent;
+    border-top-color: rgba(31, 33, 40, 0.8);
+    border-right-color: rgba(31, 33, 40, 0.45);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  .spinner-core {
+    width: var(--core-size);
+    height: var(--core-size);
+    background: rgba(31, 33, 40, 0.85);
+    border-radius: 50%;
+    animation: pulse 1s ease-in-out infinite alternate;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes pulse {
+    from { transform: scale(0.8); opacity: 0.5; }
+    to   { transform: scale(1);   opacity: 0.8; }
+  }
+
+  /* ---------- pill layout: 280x40 ---------- */
+  #pillUI {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 6px 0 14px;
+    box-sizing: border-box;
+    cursor: pointer;
+  }
+  #pillUI .status-text { font-size: 13px; }
+</style>
+<script>
+(function () {
+  'use strict';
+
+  /* ------- bridge: JS -> PowerShell ------- */
+  function post(obj) {
+    try {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(JSON.stringify(obj));
+      }
+    } catch (e) { /* host not attached (e.g. plain browser) */ }
+  }
+
+  /* ------- state store: makes every XC call idempotent and
+     safe whether it arrives before or after DOM ready ------- */
+  var S = {
+    domReady: false,
+    mode: 'bar',
+    status: 'Ready',
+    dot: '#34c759',
+    pulse: true,
+    timer: '00:00',
+    toggles: { pause: false, mute: false, sound: false },
+    busy: false
+  };
+
+  function $(sel)    { return document.querySelector(sel); }
+  function $all(sel) { return document.querySelectorAll(sel); }
+
+  function apply() {
+    if (!S.domReady) return;
+    document.body.classList.toggle('mode-pill', S.mode === 'pill');
+    document.body.classList.toggle('mode-bar',  S.mode !== 'pill');
+
+    $all('.status-text').forEach(function (el) {
+      el.textContent = S.status;
+      el.title = S.status;
+    });
+    $all('.dot').forEach(function (el) {
+      el.style.background = S.dot;
+      el.style.boxShadow = '0 0 6px ' + S.dot;
+      el.classList.toggle('pulse', !!S.pulse);
+    });
+    var t = $('#timer');
+    if (t) t.textContent = S.timer;
+
+    ['pause', 'mute', 'sound'].forEach(function (k) {
+      var chip = $('#chip-' + k);
+      if (chip) chip.classList.toggle('alt', !!S.toggles[k]);
+    });
+
+    var btn = $('#assistBtn');
+    var spin = $('#busySpin');
+    if (btn) btn.disabled = !!S.busy;
+    if (spin) spin.classList.toggle('show', !!S.busy);
+  }
+
+  /* ------- PowerShell -> JS API ------- */
+  window.XC = {
+    setMode: function (m) {
+      S.mode = (m === 'pill') ? 'pill' : 'bar';
+      apply();
+    },
+    setStatus: function (t) {
+      S.status = (t == null) ? '' : String(t);
+      apply();
+    },
+    setDot: function (hex, pulse) {
+      if (hex) S.dot = String(hex);
+      S.pulse = !!pulse;
+      apply();
+    },
+    setTimer: function (t) {
+      S.timer = (t == null) ? '' : String(t);
+      apply();
+    },
+    setToggle: function (k, on) {
+      if (Object.prototype.hasOwnProperty.call(S.toggles, k)) {
+        S.toggles[k] = !!on;
+        apply();
+      }
+    },
+    busy: function (b) {
+      S.busy = !!b;
+      apply();
+    },
+    /* not required by the protocol (ask value rides in the
+       'ask' message itself) but provided as a convenience */
+    getAsk: function () {
+      var i = $('#askInput');
+      return i ? i.value : '';
+    }
+  };
+
+  /* ------- wiring ------- */
+  function sendAsk() {
+    var i = $('#askInput');
+    var q = i ? i.value.trim() : '';
+    post({ type: 'ask', q: q });
+  }
+
+  function wire() {
+    var card = $('#card');
+
+    /* chip clicks -> act messages */
+    [
+      ['#chip-collapse', 'collapse'],
+      ['#chip-pause',    'pause'],
+      ['#chip-mute',     'mute'],
+      ['#chip-sound',    'sound'],
+      ['#chip-note',     'note'],
+      ['#chip-close',    'close'],
+      ['#chip-expand',   'expand']
+    ].forEach(function (pair) {
+      var el = $(pair[0]);
+      if (el) {
+        el.addEventListener('click', function () {
+          post({ type: 'act', k: pair[1] });
+        });
+      }
+    });
+
+    /* Assist + Enter-in-input -> ask */
+    var assist = $('#assistBtn');
+    if (assist) assist.addEventListener('click', sendAsk);
+    var input = $('#askInput');
+    if (input) {
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          sendAsk();
+        }
+      });
+    }
+
+    /* Escape anywhere -> close the answer panel */
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') post({ type: 'panel', k: 'close' });
+    });
+
+    /* status text keyboard activation */
+    function statusAction() {
+      if (S.mode === 'pill') post({ type: 'act', k: 'expand' });
+      else                   post({ type: 'act', k: 'reopen' });
+    }
+    $all('.status-text').forEach(function (el) {
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          statusAction();
+        }
+      });
+    });
+
+    /* ------- drag on card background (screen-coord deltas so the
+       window moving under the cursor never feeds back) ------- */
+    var drag = null;
+    var SLOP = 3; /* px before a press counts as a drag */
+
+    card.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      if (e.target.closest('button, input')) return; /* not chips/input/assist */
+      drag = {
+        id: e.pointerId,
+        x: e.screenX, y: e.screenY,
+        accX: 0, accY: 0,
+        active: false,
+        target: e.target
+      };
+      try { card.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+
+    card.addEventListener('pointermove', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      var dx = e.screenX - drag.x;
+      var dy = e.screenY - drag.y;
+      drag.x = e.screenX;
+      drag.y = e.screenY;
+      if (!drag.active) {
+        drag.accX += dx;
+        drag.accY += dy;
+        if (Math.abs(drag.accX) > SLOP || Math.abs(drag.accY) > SLOP) {
+          drag.active = true;
+          post({ type: 'drag', dx: drag.accX, dy: drag.accY });
+        }
+        return;
+      }
+      if (dx !== 0 || dy !== 0) post({ type: 'drag', dx: dx, dy: dy });
+    });
+
+    card.addEventListener('pointerup', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      var wasClick = !drag.active;
+      var target = drag.target;
+      drag = null;
+      try { card.releasePointerCapture(e.pointerId); } catch (err) {}
+      if (wasClick) {
+        if (S.mode === 'pill') {
+          /* whole pill background click expands */
+          post({ type: 'act', k: 'expand' });
+        } else if (target && target.closest && target.closest('.status-text')) {
+          /* bar mode: clicking the status text reopens the last answer */
+          post({ type: 'act', k: 'reopen' });
+        }
+      }
+    });
+
+    card.addEventListener('pointercancel', function () { drag = null; });
+
+    /* ------- snipzy cursor-tracking radial highlight on the card
+       (and on the BTN003 Assist button, per the snippets) ------- */
+    function attachGlow(element, specular) {
+      element.addEventListener('mousemove', function (e) {
+        var rect = element.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        if (specular) {
+          specular.style.background = 'radial-gradient(' +
+            'circle at ' + x + 'px ' + y + 'px, ' +
+            'rgba(255,255,255,0.15) 0%, ' +
+            'rgba(255,255,255,0.05) 30%, ' +
+            'rgba(255,255,255,0) 60%)';
+        }
+      });
+      element.addEventListener('mouseleave', function () {
+        var filter = document.querySelector('#glass-distortion feDisplacementMap');
+        if (filter) filter.setAttribute('scale', '77');
+        if (specular) specular.style.background = 'none';
+      });
+    }
+    attachGlow(card, $('#cardSpec'));
+    if (assist) attachGlow(assist, assist.querySelector('.glass-specular'));
+  }
+
+  function init() {
+    S.domReady = true;
+    wire();
+    apply();
+    post({ type: 'ready' });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</head>
+<body class="mode-bar">
+
+<!-- SVG Filter for Glass Distortion (snipzy shared defs) -->
+<svg style="display: none" aria-hidden="true" focusable="false">
+  <filter id="glass-distortion">
+    <feTurbulence type="turbulence" baseFrequency="0.008" numOctaves="2" result="noise" />
+    <feDisplacementMap in="SourceGraphic" in2="noise" scale="77" />
+  </filter>
+</svg>
+
+<div id="card" class="glass-card">
+  <div class="glass-filter"></div>
+  <div class="glass-distortion-overlay"></div>
+  <div class="glass-overlay"></div>
+  <div id="cardSpec" class="glass-specular"></div>
+  <div class="glass-content">
+
+    <!-- ================= BAR MODE (600x80) ================= -->
+    <div id="barUI">
+
+      <!-- Row 1: dot / timer / status / 6 chips -->
+      <div class="row row-top">
+        <span class="dot pulse" id="dotBar"></span>
+        <span class="timer" id="timer">00:00</span>
+        <span class="status-text" id="statusBar" role="button" tabindex="0">Ready</span>
+        <div class="chips">
+
+          <button id="chip-collapse" class="chip" type="button"
+                  title="Collapse to a pill" aria-label="Collapse to a pill">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content">
+              <svg class="ic-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14" />
+              </svg>
+            </div>
+          </button>
+
+          <button id="chip-pause" class="chip" type="button"
+                  title="Pause coaching" aria-label="Pause coaching">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content">
+              <svg class="ic-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 5v14M15 5v14" />
+              </svg>
+              <svg class="ic-b" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 5.5v13l10-6.5z" fill="currentColor" />
+              </svg>
+            </div>
+          </button>
+
+          <button id="chip-mute" class="chip" type="button"
+                  title="Mute coach voice" aria-label="Mute coach voice">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content">
+              <svg class="ic-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M11 5 6 9H3v6h3l5 4z" />
+                <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+              </svg>
+              <svg class="ic-b" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M11 5 6 9H3v6h3l5 4z" />
+                <path d="m16 9.5 5 5M21 9.5l-5 5" />
+              </svg>
+            </div>
+          </button>
+
+          <button id="chip-sound" class="chip" type="button"
+                  title="Mute the notification sound" aria-label="Mute the notification sound">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content">
+              <svg class="ic-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6.002 6.002 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" />
+              </svg>
+              <svg class="ic-b" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6.002 6.002 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" />
+                <path d="M4 4l16 16" />
+              </svg>
+            </div>
+          </button>
+
+          <button id="chip-note" class="chip" type="button"
+                  title="Note this - flag it to revisit later" aria-label="Note this - flag it to revisit later">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content">
+              <svg class="ic-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            </div>
+          </button>
+
+          <button id="chip-close" class="chip" type="button"
+                  title="Close coach" aria-label="Close coach">
+            <div class="glass-filter"></div>
+            <div class="glass-overlay"></div>
+            <div class="glass-specular"></div>
+            <div class="glass-content">
+              <svg class="ic-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </div>
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Row 2: ask field + busy spinner + dark Assist button -->
+      <div class="row row-bottom">
+        <div class="ask-wrap">
+          <input id="askInput" class="ask-input" type="text"
+                 placeholder="Ask me anything - I can see your screen + Excel"
+                 aria-label="Ask the coach" autocomplete="off" spellcheck="false">
+          <svg class="ask-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <span class="keycap" aria-hidden="true">Enter</span>
+        </div>
+
+        <div id="busySpin" class="glass-spinner" role="status" aria-label="Working">
+          <div class="glass-filter"></div>
+          <div class="glass-overlay"></div>
+          <div class="glass-specular"></div>
+          <div class="glass-content">
+            <div class="spinner-ring"></div>
+            <div class="spinner-core"></div>
+          </div>
+        </div>
+
+        <button id="assistBtn" class="assist-btn" type="button" aria-label="Assist">
+          <div class="glass-filter"></div>
+          <div class="glass-overlay"></div>
+          <div class="glass-specular"></div>
+          <div class="glass-content"><span>Assist</span></div>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ================= PILL MODE (280x40) ================= -->
+    <div id="pillUI">
+      <span class="dot pulse" id="dotPill"></span>
+      <span class="status-text" id="statusPill" role="button" tabindex="0">Ready</span>
+      <button id="chip-expand" class="chip" type="button"
+              title="Expand the coach bar" aria-label="Expand the coach bar">
+        <div class="glass-filter"></div>
+        <div class="glass-overlay"></div>
+        <div class="glass-specular"></div>
+        <div class="glass-content">
+          <svg class="ic-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6" />
+            <path d="M21 3l-7 7" />
+            <path d="M9 21H3v-6" />
+            <path d="M3 21l7-7" />
+          </svg>
+        </div>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
