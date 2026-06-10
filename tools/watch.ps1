@@ -26,7 +26,7 @@ $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai")
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
-$sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Reply in plain text only - no markdown, no asterisks/hashes/backticks, no special symbols; short clear sentences; use a simple '- ' for any list."
+$sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
@@ -168,6 +168,7 @@ while(-not $sync.stop){
   $t=$sync.ttsText
   if($t){
     $sync.ttsText=""
+    $t=$t -replace '\*\*','' -replace '__','' -replace '`','' -replace '(?m)^\s{0,3}#{1,6}\s*','' -replace '(?m)^\s*[\*\-\+]\s+',''
     if($cur){ try{ $cur.Stop() }catch{} }; try{ $sp.SpeakAsyncCancelAll() }catch{}
     $spoke=$false
     if($sync.ttsMode -eq 'openai' -and $sync.key){
@@ -253,11 +254,31 @@ function Read-ExcelLive {
   } catch { $out=$null } finally { try{ [System.Runtime.InteropServices.Marshal]::ReleaseComObject($xl)|Out-Null }catch{} }
   return $out
 }
+function Add-Note {
+  $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive }catch{} }
+  $lesson=""; if($sync.lessonlog){ $lesson=$sync.lessonlog; if($lesson.Length -gt 1500){ $lesson=$lesson.Substring($lesson.Length-1500) } }
+  $u="The student pressed NOTE to flag what they are doing right now as important to remember and come back to for practice. Write a concise study note in markdown: a '## ' one-line title naming the topic/skill, then 2-4 bullets - what they were working on, the key concept or formula, and exactly what to practice when they return. Use their real cells/values if provided. Be specific and useful."
+  $content=@(@{type='text';text=$u})
+  if($lesson){ $content+=@{type='text';text=("Recent lesson context: "+$lesson)} }
+  if($xl){ $content+=@{type='text';text=("Their live Excel right now:`n"+$xl)} }
+  $sysN="You write concise, specific study notes for a finance/Excel student preparing for an investment-banking fellowship."
+  $msgs=@(@{role='system';content=($sysN+$sync.brain)},@{role='user';content=$content})
+  $payload=@{ model="gpt-4o-mini"; max_tokens=380; temperature=0.2; messages=$msgs } | ConvertTo-Json -Depth 12
+  $bf="$env:TEMP\xc_note.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
+  $r=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $j=$null; try{ $j=$r|ConvertFrom-Json }catch{}
+  $note="## Flagged for review`r`n- Revisit what you were working on here."
+  if($j.choices){ $note=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $note=Clean-Answer $note } }
+  $nf=Join-Path $Coaching "Notes.md"
+  if(-not(Test-Path $nf)){ [IO.File]::AppendAllText($nf,"# Notes - things I flagged to revisit and practice`r`n",(New-Object System.Text.UTF8Encoding($false))) }
+  [IO.File]::AppendAllText($nf,"`r`n### "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"`r`n"+$note+"`r`n",(New-Object System.Text.UTF8Encoding($false)))
+  return $note
+}
 function Get-Help($question){
   $xlData=Read-ExcelLive
   $ex=Cap-Win "EXCEL"; $co=Cap-Win "chrome"; if(-not $co){ $co=Cap-Win "msedge" }; if(-not $co){ $co=Cap-Win "firefox" }
   if(-not $ex -and -not $co -and -not $xlData){ return "Couldn't find your Excel or browser window to read." }
-  $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). The student follows a course and rebuilds it in Excel. You may be given: the EXACT live contents of their Excel (every non-empty cell's address, value and formula, read straight from the workbook), an image of their Excel, and/or an image of the course/lesson. When the exact Excel data is present, treat it as the ground truth for ALL cell references, values and formulas - never guess a cell address from the image. METHOD for getting it right: (1) first read the exact question or task carefully and be sure you understand precisely what is being asked; (2) work it out step by step using the actual cell values and formulas; (3) double-check your arithmetic and logic; (4) then give the correct answer with a brief clear explanation, citing exact cell addresses (e.g. C39). If there is a quiz/question, work out the correct answer and, if it is multiple choice, state exactly which option to pick. If it is an Excel exercise, give the specific next step or fix and the exact cell(s) and formula to use. If the student typed a specific question, answer THAT directly. Accuracy above all - if you are not sure, say what you would check rather than guessing. Reply in plain text only - no markdown, no asterisks/hashes/backticks, no special symbols; short clear sentences; use a simple '- ' for any list."
+  $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). The student follows a course and rebuilds it in Excel. You may be given: the EXACT live contents of their Excel (every non-empty cell's address, value and formula, read straight from the workbook), an image of their Excel, and/or an image of the course/lesson. When the exact Excel data is present, treat it as the ground truth for ALL cell references, values and formulas - never guess a cell address from the image. METHOD for getting it right: (1) first read the exact question or task carefully and be sure you understand precisely what is being asked; (2) work it out step by step using the actual cell values and formulas; (3) double-check your arithmetic and logic; (4) then give the correct answer with a brief clear explanation, citing exact cell addresses (e.g. C39). If there is a quiz/question, work out the correct answer and, if it is multiple choice, state exactly which option to pick. If it is an Excel exercise, give the specific next step or fix and the exact cell(s) and formula to use. If the student typed a specific question, answer THAT directly. Accuracy above all - if you are not sure, say what you would check rather than guessing. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
   $uh=if($question){ "The student asks: "+$question }else{ "Help me with my work right now." }; if($sync.lessonlog){ $uh+=" (What the instructor has recently been teaching: '"+$sync.lessonlog+"'.)" }
   $content=@(@{type='text';text=$uh})
   if($xlData){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative, use these cell addresses/values/formulas; do not guess cells from the image]:`n"+$xlData)} }
@@ -274,6 +295,29 @@ function Get-Help($question){
 }
 function Set-Round($ctl,$rad){ $d=$rad*2; $w=$ctl.Width; $h=$ctl.Height; $gp=New-Object System.Drawing.Drawing2D.GraphicsPath; $gp.AddArc(0,0,$d,$d,180,90); $gp.AddArc($w-$d-1,0,$d,$d,270,90); $gp.AddArc($w-$d-1,$h-$d-1,$d,$d,0,90); $gp.AddArc(0,$h-$d-1,$d,$d,90,90); $gp.CloseAllFigures(); $ctl.Region=New-Object System.Drawing.Region($gp) }
 function Draw-Border($g,$w,$h,$rad,$col){ $g.SmoothingMode='AntiAlias'; $pen=New-Object System.Drawing.Pen($col,1); $d=$rad*2; $gp=New-Object System.Drawing.Drawing2D.GraphicsPath; $gp.AddArc(0,0,$d,$d,180,90); $gp.AddArc($w-$d-1,0,$d,$d,270,90); $gp.AddArc($w-$d-1,$h-$d-1,$d,$d,0,90); $gp.AddArc(0,$h-$d-1,$d,$d,90,90); $gp.CloseAllFigures(); $g.DrawPath($pen,$gp); $pen.Dispose(); $gp.Dispose() }
+function Append-Inline($rtb,$content,$base,$bld,$fg,$bw){
+  if($content -eq ''){ return }
+  $b=$false
+  foreach($p in ($content -split '(\*\*)')){
+    if($p -eq '**'){ $b=-not $b; continue }
+    if($p -eq ''){ continue }
+    $rtb.SelectionFont=$(if($b){$bld}else{$base}); $rtb.SelectionColor=$(if($b){$bw}else{$fg}); $rtb.AppendText($p)
+  }
+}
+function Render-Rich($rtb,$text){
+  $rtb.Clear()
+  $fg=[System.Drawing.Color]::FromArgb(226,231,239); $acc=[System.Drawing.Color]::FromArgb(125,178,255); $bw=[System.Drawing.Color]::FromArgb(246,248,251)
+  $base=New-Object System.Drawing.Font("Segoe UI",11.5); $bld=New-Object System.Drawing.Font("Segoe UI",11.5,[System.Drawing.FontStyle]::Bold)
+  $h1=New-Object System.Drawing.Font("Segoe UI Semibold",15,[System.Drawing.FontStyle]::Bold); $h2=New-Object System.Drawing.Font("Segoe UI Semibold",13,[System.Drawing.FontStyle]::Bold)
+  foreach($ln in (($text -replace "`r`n","`n") -split "`n")){
+    $t=$ln
+    if($t -match '^\s{0,3}(#{1,6})\s+(.*)$'){ $rtb.SelectionBullet=$false; $rtb.SelectionIndent=0; $rtb.SelectionFont=$(if($Matches[1].Length -le 1){$h1}else{$h2}); $rtb.SelectionColor=$acc; $rtb.AppendText(($Matches[2] -replace '\*\*','')+"`n"); continue }
+    if($t -match '^\s*[\*\-\+]\s+(.*)$'){ $rtb.SelectionBullet=$true; $rtb.SelectionIndent=14; $rtb.BulletIndent=6; Append-Inline $rtb ($Matches[1]) $base $bld $fg $bw; $rtb.AppendText("`n"); $rtb.SelectionBullet=$false; $rtb.SelectionIndent=0; continue }
+    if($t -match '^\s*(\d+)\.\s+(.*)$'){ $rtb.SelectionBullet=$false; $rtb.SelectionIndent=14; $rtb.SelectionFont=$bld; $rtb.SelectionColor=$acc; $rtb.AppendText($Matches[1]+". "); Append-Inline $rtb ($Matches[2]) $base $bld $fg $bw; $rtb.AppendText("`n"); $rtb.SelectionIndent=0; continue }
+    $rtb.SelectionBullet=$false; $rtb.SelectionIndent=0; Append-Inline $rtb $t $base $bld $fg $bw; $rtb.AppendText("`n")
+  }
+  $rtb.SelectionStart=0; $rtb.SelectionLength=0
+}
 function Show-HelpPopup($text){
   if($script:helpPopup -and -not $script:helpPopup.IsDisposed){ try{ $script:helpPopup.Close() }catch{} }
   $f=New-Object System.Windows.Forms.Form; $f.Text="Coach"; $f.FormBorderStyle='None'; $f.TopMost=$true; $f.ShowInTaskbar=$false; $f.Width=600; $f.Height=400; $f.StartPosition='Manual'
@@ -281,8 +325,8 @@ function Show-HelpPopup($text){
   Set-Round $f 16
   $f.Add_Paint({ param($s,$e); Draw-Border $e.Graphics $s.ClientSize.Width $s.ClientSize.Height 16 ([System.Drawing.Color]::FromArgb(58,64,78)) })
   $head=New-Object System.Windows.Forms.Label; $head.Text="  COACH"; $head.Dock='Top'; $head.Height=42; $head.ForeColor=[System.Drawing.Color]::FromArgb(120,170,255); $head.Font=New-Object System.Drawing.Font("Segoe UI Semibold",11); $head.TextAlign='MiddleLeft'; $head.BackColor=[System.Drawing.Color]::FromArgb(24,26,32)
-  $body=New-Object System.Windows.Forms.TextBox; $body.Multiline=$true; $body.ReadOnly=$true; $body.Dock='Fill'; $body.BorderStyle='None'; $body.BackColor=[System.Drawing.Color]::FromArgb(28,31,38); $body.ForeColor=[System.Drawing.Color]::FromArgb(232,236,242); $body.Font=New-Object System.Drawing.Font("Segoe UI",12); $body.ScrollBars='Vertical'; $body.TabStop=$false
-  $body.Text=(($text -replace "`r`n","`n") -replace "`n","`r`n")
+  $body=New-Object System.Windows.Forms.RichTextBox; $body.Multiline=$true; $body.ReadOnly=$true; $body.Dock='Fill'; $body.BorderStyle='None'; $body.BackColor=[System.Drawing.Color]::FromArgb(28,31,38); $body.ForeColor=[System.Drawing.Color]::FromArgb(226,231,239); $body.Font=New-Object System.Drawing.Font("Segoe UI",11.5); $body.ScrollBars='Vertical'; $body.TabStop=$false; $body.DetectUrls=$false
+  Render-Rich $body $text
   $pad=New-Object System.Windows.Forms.Panel; $pad.Dock='Fill'; $pad.Padding='18,4,18,8'; $pad.BackColor=[System.Drawing.Color]::FromArgb(28,31,38); $pad.Controls.Add($body)
   $hint=New-Object System.Windows.Forms.Label; $hint.Text="Esc to close   "; $hint.Dock='Bottom'; $hint.Height=24; $hint.ForeColor=[System.Drawing.Color]::FromArgb(120,126,140); $hint.TextAlign='MiddleRight'; $hint.BackColor=[System.Drawing.Color]::FromArgb(28,31,38)
   $bClose=New-Object System.Windows.Forms.Button; $bClose.Text=([char]0xE711); $bClose.Font=New-Object System.Drawing.Font("Segoe MDL2 Assets",10); $bClose.Width=36; $bClose.Height=28; $bClose.FlatStyle='Flat'; $bClose.FlatAppearance.BorderSize=0; $bClose.BackColor=[System.Drawing.Color]::FromArgb(24,26,32); $bClose.ForeColor=[System.Drawing.Color]::FromArgb(200,205,214); $bClose.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(210,70,70); $bClose.Cursor='Hand'; $bClose.Left=$f.Width-46; $bClose.Top=7; $bClose.Add_Click({ $script:helpPopup.Close() })
@@ -310,10 +354,11 @@ $bX=Mini ([char]0xE711) $mdl 10 552 $false
 foreach($bb in @($bPause,$bMute,$bHelp,$bX)){ Set-Round $bb 9 }
 $tip.SetToolTip($bPause,"Pause coaching"); $tip.SetToolTip($bMute,"Mute coach voice"); $tip.SetToolTip($bHelp,"Get help (reads your screen)"); $tip.SetToolTip($bX,"Close coach")
 $script:askPH="Ask me anything - I can see your screen + Excel"
-$ask=New-Object System.Windows.Forms.TextBox; $ask.Left=16; $ask.Top=44; $ask.Width=518; $ask.BorderStyle='FixedSingle'; $ask.BackColor=[System.Drawing.Color]::FromArgb(34,37,46); $ask.ForeColor=[System.Drawing.Color]::FromArgb(140,146,158); $ask.Font=New-Object System.Drawing.Font("Segoe UI",11); $ask.Text=$script:askPH
-$bAsk=New-Object System.Windows.Forms.Button; $bAsk.Text="Ask"; $bAsk.Left=540; $bAsk.Top=43; $bAsk.Width=46; $bAsk.Height=26; $bAsk.FlatStyle='Flat'; $bAsk.FlatAppearance.BorderSize=0; $bAsk.ForeColor=[System.Drawing.Color]::White; $bAsk.BackColor=[System.Drawing.Color]::FromArgb(56,120,236); $bAsk.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(74,140,255); $bAsk.Font=New-Object System.Drawing.Font("Segoe UI Semibold",9); $bAsk.Cursor='Hand'; Set-Round $bAsk 7
+$ask=New-Object System.Windows.Forms.TextBox; $ask.Left=16; $ask.Top=44; $ask.Width=480; $ask.BorderStyle='FixedSingle'; $ask.BackColor=[System.Drawing.Color]::FromArgb(34,37,46); $ask.ForeColor=[System.Drawing.Color]::FromArgb(140,146,158); $ask.Font=New-Object System.Drawing.Font("Segoe UI",11); $ask.Text=$script:askPH
+$bAsk=New-Object System.Windows.Forms.Button; $bAsk.Text="Ask"; $bAsk.Left=502; $bAsk.Top=43; $bAsk.Width=44; $bAsk.Height=26; $bAsk.FlatStyle='Flat'; $bAsk.FlatAppearance.BorderSize=0; $bAsk.ForeColor=[System.Drawing.Color]::White; $bAsk.BackColor=[System.Drawing.Color]::FromArgb(56,120,236); $bAsk.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(74,140,255); $bAsk.Font=New-Object System.Drawing.Font("Segoe UI Semibold",9); $bAsk.Cursor='Hand'; Set-Round $bAsk 7
+$bNote=New-Object System.Windows.Forms.Button; $bNote.Text=([char]0xE718); $bNote.Left=552; $bNote.Top=43; $bNote.Width=34; $bNote.Height=26; $bNote.FlatStyle='Flat'; $bNote.FlatAppearance.BorderSize=0; $bNote.ForeColor=[System.Drawing.Color]::White; $bNote.BackColor=[System.Drawing.Color]::FromArgb(72,92,124); $bNote.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(92,116,154); $bNote.Font=New-Object System.Drawing.Font("Segoe MDL2 Assets",11); $bNote.Cursor='Hand'; Set-Round $bNote 7; $tip.SetToolTip($bNote,"Note this - flag what I'm doing now to revisit and practice later")
 $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
-$strip.Controls.AddRange(@($script:msg,$dot,$bPause,$bMute,$bHelp,$bX,$ask,$bAsk)); $dot.BringToFront()
+$strip.Controls.AddRange(@($script:msg,$dot,$bPause,$bMute,$bHelp,$bX,$ask,$bAsk,$bNote)); $dot.BringToFront()
 $script:seen=0; $script:lastFull=""; $script:pulse=0; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:dotBase=[System.Drawing.Color]::FromArgb(76,180,120)
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
@@ -337,7 +382,7 @@ $ui.Add_Tick({
       else { $lt=[string]$sync.lesson; if($lt.Length -gt 52){ $lt=$lt.Substring($lt.Length-52) }; $lt=$lt.Trim(); $script:baseStatus=if($lt){ "Hearing: ..."+$lt }else{ "Listening to the lesson" } }
     }
     else {
-      $script:idle=$false; $dot.BackColor=[System.Drawing.Color]::FromArgb(235,180,70); $script:msg.Text=$r; $script:lastFull=$r
+      $script:idle=$false; $dot.BackColor=[System.Drawing.Color]::FromArgb(235,180,70); $script:msg.Text=$(if(Get-Command Speakable -ErrorAction SilentlyContinue){ Speakable $r }else{ $r }); $script:lastFull=$r
       if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; if($sync.isPaused -and -not $sync.mute){ $sync.ttsText=$r } else { [System.Media.SystemSounds]::Asterisk.Play() } }
       $sync.lastNudge=$r
     }
@@ -368,6 +413,11 @@ $bHelp.Add_Click({
   $script:baseStatus="On track"; $script:idle=$true; $dot.BackColor=[System.Drawing.Color]::FromArgb(76,180,120); $script:seen=$sync.stamp
 })
 $bX.Add_Click({ $sync.stop=$true; $ui.Stop(); Start-Sleep -Milliseconds 300; Kill-FF; try{ $rs.Close() }catch{}; try{ $rsT.Close() }catch{}; $strip.Close() })
+$bNote.Add_Click({
+  $script:idle=$false; $script:msg.Text="Noting this for later..."; $dot.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
+  $nn=Add-Note; $script:lastFull=$nn; Show-HelpPopup $nn
+  $script:baseStatus="Noted - saved to revisit"; $script:dotBase=[System.Drawing.Color]::FromArgb(76,180,120); $script:idle=$true; $script:seen=$sync.stamp
+})
 $script:msg.Cursor='Hand'; $script:msg.Add_Click({ if($script:lastFull){ Show-HelpPopup $script:lastFull } })
 $strip.Add_Shown({ $ui.Start() })
 [void]$strip.ShowDialog()

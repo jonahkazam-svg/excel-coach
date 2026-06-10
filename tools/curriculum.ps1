@@ -103,6 +103,8 @@ function Build-CurriculumBrain {
     [void]$sb.Append(" Their top gaps to close next:")
     $i=1; foreach($g in $gaps){ [void]$sb.Append(" ("+$i+") "+$g.node.topic+" ["+$g.node.domain+", "+$g.status+"];"); $i++ }
   }
+  $nf=Join-Path $script:XCCoaching "Notes.md"
+  if(Test-Path $nf){ $nt=(Get-Content $nf -Raw); if($nt.Length -gt 600){ $nt=$nt.Substring($nt.Length-600) }; $nt=(($nt -replace '(?m)^#{1,6}.*$','') -replace "\r?\n"," ").Trim(); if($nt){ [void]$sb.Append(" The student has FLAGGED these to revisit and practice (bring them up when relevant): "+$nt+".") } }
   [void]$sb.Append(" When you help, be accurate and frame it against where the student stands versus what an investment-banking analyst needs to know cold; when it fits naturally, connect your help to closing these gaps. Do not lecture about the curriculum unprompted - just let it sharpen your help.")
   return $sb.ToString()
 }
@@ -157,15 +159,22 @@ function Read-ExcelLive {
   return $out
 }
 
-# Normalize a model answer to clean, readable plain ASCII (strip markdown, convert smart punctuation, drop garbage)
+# Encoding-clean an answer to safe ASCII but KEEP markdown (so the popup can render it richly)
 function Clean-Answer($s){
   if(-not $s){ return $s }
-  $s=$s -replace ([char]0x2014),' - ' -replace ([char]0x2013),'-' -replace ([char]0x2018),"'" -replace ([char]0x2019),"'" -replace ([char]0x201C),'"' -replace ([char]0x201D),'"' -replace ([char]0x2026),'...' -replace ([char]0x2022),'-' -replace ([char]0x2192),'->' -replace ([char]0x00A0),' '
-  $s=$s -replace '\*\*','' -replace '__','' -replace '`',''
-  $s=$s -replace '(?m)^\s{0,3}#{1,6}\s*',''
-  $s=$s -replace '(?m)^\s*[\*\-\+]\s+','- '
+  $s=$s -replace ([char]0x2014),' - ' -replace ([char]0x2013),'-' -replace ([char]0x2018),"'" -replace ([char]0x2019),"'" -replace ([char]0x201C),'"' -replace ([char]0x201D),'"' -replace ([char]0x2026),'...' -replace ([char]0x2022),'- ' -replace ([char]0x2192),'->' -replace ([char]0x00A0),' ' -replace ([char]0x00D7),'x' -replace ([char]0x2264),'<=' -replace ([char]0x2265),'>='
   $s=$s -replace '[^\x09\x0A\x0D\x20-\x7E]',''
-  $s=$s -replace '[ ]{2,}',' '
+  $s=$s -replace '  +',' '
   $s=$s -replace "(\r?\n){3,}","`r`n`r`n"
   return $s.Trim()
+}
+# Plain prose for the spoken voice and the one-line strip label (strip all markdown)
+function Speakable($s){
+  $s=Clean-Answer $s
+  if(-not $s){ return $s }
+  $s=$s -replace '\*\*','' -replace '__','' -replace '`',''
+  $s=$s -replace '(?m)^\s{0,3}#{1,6}\s*',''
+  $s=$s -replace '(?m)^\s*[\*\-\+]\s+',''
+  $s=$s -replace '[ ]{2,}',' '
+  return ($s -replace "(\r?\n){2,}","`r`n").Trim()
 }
