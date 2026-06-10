@@ -41,6 +41,24 @@ function XC-SameIssue($a,$b){
   return ((($inter / [double]$union)) -ge 0.5)
 }
 
+# Match what the student is currently doing (lesson audio + sheet purpose) against
+# topics they previously struggled with (shaky mastery nodes). Returns "topic|note"
+# for the strongest match so the coach can warn BEFORE they err, or $null.
+function Find-WeakFlash($text){
+  if(-not $text){ return $null }
+  $tl=([string]$text).ToLower()
+  $m=Get-Mastery; $cur=Get-Curriculum
+  $best=$null; $bestHits=0
+  foreach($n in $cur){
+    if(-not $m.ContainsKey($n.id)){ continue }
+    if($m[$n.id].status -ne 'shaky'){ continue }
+    $words=@(($n.topic.ToLower() -replace '[^a-z0-9 ]',' ' -split '\s+') | Where-Object { $_.Length -gt 3 } | Select-Object -Unique)
+    $hits=@($words | Where-Object { $tl.Contains($_) }).Count
+    if($hits -ge 2 -and $hits -gt $bestHits){ $bestHits=$hits; $best=($n.topic+"|"+$m[$n.id].note) }
+  }
+  return $best
+}
+
 # Assemble the full context block the tutor leverages: recurring weak points,
 # concepts already covered, and the curriculum/recency brain. Rebuilt periodically
 # so struggles captured DURING a session are leveraged immediately, not after restart.

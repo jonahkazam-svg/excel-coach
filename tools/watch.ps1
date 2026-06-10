@@ -81,18 +81,22 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
-      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__")
+      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__")
       $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
       $afgh=[Win2]::GetForegroundWindow(); $aexFg=$false; try{ $aexFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $afgh }) }catch{}
       $fbB=$null; if(-not $aexFg){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
       $xlA=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xlA=Read-ExcelLive }catch{} }
       $sysA="You are a sharp, accurate finance and Excel tutor at Breaking Into Wall Street / investment-banking level. Answer the student's question or help with whatever they are doing right now. Work carefully and double-check before answering. Format cleanly with ## headers, **bold** for key terms and the final answer, - bullets, and thousands-separated numbers when useful."
-      $ua=$(if($isAssist){ "Help me with whatever I am working on right now." }else{ "I ask: "+$tq })
-      $ua+=" My practice is NOT always an Excel build. Right now it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF) with no Excel involved. Use the images of what I am actually looking at and help with THAT. If there is no real Excel work in progress, read the question or exercise on my screen and answer or explain it directly - do not dismiss the other window as irrelevant. Cite exact Excel cells only when there is real Excel data. "+$(if($tdet){ "Explain in detail with the full reasoning and steps." }else{ "Be concise: the direct answer or fix in 1 to 3 short sentences." })
+      if($isAudit){
+        $ua="Do a THOROUGH final audit of my Excel work, using the EXACT cell data below as the ground truth. Check EVERY cell that holds a formula or entered value against what this sheet is meant to practice and the standard investment-banking method: verify each formula's logic, references, and signs, and recompute the numbers to confirm them. Then report with these sections: '## Verdict' - one line, either correct and complete, or how many issues; '## Issues' - each one as the exact cell, what is wrong, and the exact fix (the correct formula or value); '## Still to do' - only if parts are unfinished; '## Done right' - one short line. Be rigorous; do not wave anything through."
+      } else {
+        $ua=$(if($isAssist){ "Help me with whatever I am working on right now." }else{ "I ask: "+$tq })
+        $ua+=" My practice is NOT always an Excel build. Right now it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF) with no Excel involved. Use the images of what I am actually looking at and help with THAT. If there is no real Excel work in progress, read the question or exercise on my screen and answer or explain it directly - do not dismiss the other window as irrelevant. Cite exact Excel cells only when there is real Excel data. "+$(if($tdet){ "Explain in detail with the full reasoning and steps." }else{ "Be concise: the direct answer or fix in 1 to 3 short sentences." })
+      }
       $ca=@(@{type='text';text=$ua})
       if($xlA){ $ca+=@{type='text';text=("[EXACT live Excel data, if relevant - authoritative]:`n"+$xlA)} }
       if($sync.sheetPurpose){ $ca+=@{type='text';text=("Excel sheet context: "+$sync.sheetPurpose)} }
@@ -101,7 +105,7 @@ while(-not $sync.stop){
       if($coB){ $ca+=@{type='text';text='[Image: browser window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail='high'}} }
       if($fbB){ $ca+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail='high'}} }
       $ma=@(@{role='system';content=($sysA+$sync.brain)},@{role='user';content=$ca})
-      $pa=@{ model=$sync.model; max_completion_tokens=$(if($tdet){3500}else{900}); reasoning_effort='medium'; messages=$ma } | ConvertTo-Json -Depth 12
+      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){2800}elseif($tdet){3500}else{900}); reasoning_effort=$(if($isAudit){'high'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
       $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
       $ar=& curl.exe -s --max-time 150 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
       $aj=$null; try{ $aj=$ar|ConvertFrom-Json }catch{}
@@ -182,6 +186,21 @@ while(-not $sync.stop){
         }
         if((-not $asked) -and $sync.text -ne "OK" -and $sync.text -ne ""){ if(((Get-Date)-$lastNudgeT).TotalSeconds -lt 25){ $sync.text="OK" } else { $lastNudgeT=(Get-Date) } }
         if((-not $asked) -and $working -and $sync.text -ne "OK" -and $sync.text -ne ""){ $newStr=$true; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $newStr=(-not (XC-SameIssue $sync.text $lastStruggleLogged)) }; if($newStr){ $lastStruggleLogged=$sync.text; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $sync.text }catch{} } } }
+        if($xlLive){
+          $xh=$xlLive.GetHashCode()
+          if($xh -ne $lastXlHash){ $lastXlHash=$xh; $lastXlChange=(Get-Date); $stuckOffered=$false }
+          elseif($excelFg -and (-not $asked) -and (-not $stuckOffered) -and (((Get-Date)-$lastXlChange).TotalSeconds -ge 240) -and ($sync.text -eq "OK" -or $sync.text -eq "")){
+            $stuckOffered=$true
+            $sync.text="You've been on "+$(if($sync.lastWb){ "'"+$sync.lastWb+"'" }else{ "this sheet" })+" a few minutes without changes - stuck? Ask me, or hit Assist for a hint."
+          }
+        }
+        if((-not $asked) -and ($sync.text -eq "OK" -or $sync.text -eq "")){
+          $flashTxt=($lessonCtx+" "+[string]$sync.sheetPurpose).Trim()
+          if((Get-Command Find-WeakFlash -ErrorAction SilentlyContinue) -and $flashTxt.Length -gt 5){
+            $fb=$null; try{ $fb=Find-WeakFlash $flashTxt }catch{}
+            if($fb){ $fp=$fb -split '\|',2; if(-not $flashed.ContainsKey($fp[0])){ $flashed[$fp[0]]=$true; $sync.text="Heads up - '"+$fp[0]+"' tripped you up before"+$(if($fp.Count -gt 1 -and $fp[1]){ " ("+$fp[1]+")" }else{ "" })+". Take it slow here." } }
+          }
+        }
         $sync.lesson=$lessonCtx; $sync.isPaused=$working; $sync.isAnswer=$asked; $sync.stamp=$sync.stamp+1
         if($segs.Count -gt 20){ for($i=0;$i -lt ($segs.Count-20);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
         if(-not $asked -and $txt){ $sync.distillbuf=($sync.distillbuf+" "+$txt).Trim(); $sync.distillCount=$sync.distillCount+1 }
@@ -497,6 +516,14 @@ function Handle-Act($k){
       [System.Windows.Forms.Application]::DoEvents()
       $nn=Add-Note; $script:lastFull=$nn; Show-Answer $nn; Set-Query "Note this"
       $script:baseStatus="Noted - saved to revisit"; $script:idle=$true; Set-Dot '#22c55e' $true; $script:seen=$sync.stamp
+    }
+    'audit'    {
+      if($script:askBusy){ return }
+      $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
+      JS $script:wvS ("XC.busy(true)")
+      Set-Msg "Deep-checking your sheet..."; Set-Dot '#2563eb' $false
+      Show-PanelLoading
+      $sync.askLabel="Sheet audit"; $sync.typedDetail=$true; $sync.typedAsk="__AUDIT__"
     }
     'close'    { Shutdown-Coach }
   }
