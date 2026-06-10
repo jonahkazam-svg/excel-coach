@@ -15,6 +15,7 @@ public class Win {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
 }
 '@
 function Read-EnvVal($name,$default){ $l=Get-Content $EnvFile | Where-Object { $_ -match ("^\s*"+$name+"\s*=") } | Select-Object -First 1; if($l){ return ($l -replace ("^\s*"+$name+"\s*=\s*"),'').Trim().Trim('"') } else { return $default } }
@@ -133,24 +134,30 @@ function Log-Watch($text,$lesson){
   $ctx=if($lesson){ "_lesson: "+$lesson+"_`n`n" } else { "_(paused / working)_`n`n" }
   W-Append $daily ("`n### "+$time+"  [WATCH]`n"+$ctx+$text+"`n`n---`n")
 }
-function Capture-Focused($path){
-  $h=[Win]::GetForegroundWindow(); $r=New-Object Win+RECT; [void][Win]::GetWindowRect($h,[ref]$r); $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
-  if($w -lt 300 -or $ht -lt 200){ $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $r=$b; $w=$b.Width; $ht=$b.Height }
-  $cap=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($cap); try{ $g.CopyFromScreen($r.Left,$r.Top,0,0,(New-Object System.Drawing.Size($w,$ht))) }catch{}; $g.Dispose()
-  $mw=2000.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
-  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($cap,0,0,$nw,$nh); $g2.Dispose()
-  $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $cap.Dispose(); $sm.Dispose()
+function Cap-Win($proc){
+  $p=Get-Process $proc -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | Sort-Object { $_.MainWindowTitle.Length } -Descending | Select-Object -First 1
+  if(-not $p){ return $null }
+  $h=$p.MainWindowHandle; $r=New-Object Win+RECT; [void][Win]::GetWindowRect($h,[ref]$r); $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
+  if($w -lt 200 -or $ht -lt 200){ return $null }
+  $bmp=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($bmp); $hdc=$g.GetHdc(); [void][Win]::PrintWindow($h,$hdc,2); $g.ReleaseHdc($hdc); $g.Dispose()
+  $mw=1500.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
+  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g3=[System.Drawing.Graphics]::FromImage($sm); $g3.InterpolationMode='HighQualityBicubic'; $g3.DrawImage($bmp,0,0,$nw,$nh); $g3.Dispose()
+  $f=Join-Path $env:TEMP ("cap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
+  return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
 function Get-Help {
-  $p=Join-Path $env:TEMP "help_shot.png"; Capture-Focused $p
-  $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
-  $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). Look at the student's screen and HELP with whatever is there now: if it is a quiz/test question, work out the correct answer and explain briefly why; if it is Excel, point out the issue or the next step; otherwise give the single most useful next step. Reason it through; be accurate and clear."
-  $uh="Help me with what is on my screen right now."; if($sync.lessonlog){ $uh="What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'.  "+$uh }
-  $msgs=@(@{role='system';content=($sysH+$sync.brain)},@{role='user';content=@(@{type='text';text=$uh},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail='high'}})})
-  if($sync.model -match '^gpt-5'){ $payload=@{ model=$sync.model; max_completion_tokens=3000; reasoning_effort='medium'; messages=$msgs } | ConvertTo-Json -Depth 12 }
-  else { $payload=@{ model=$sync.model; max_tokens=600; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
+  $ex=Cap-Win "EXCEL"; $co=Cap-Win "chrome"; if(-not $co){ $co=Cap-Win "msedge" }; if(-not $co){ $co=Cap-Win "firefox" }
+  if(-not $ex -and -not $co){ return "Couldn't find your Excel or browser window to read." }
+  $sysH="You are a sharp finance and Excel tutor (Breaking Into Wall Street level). The student follows a course and rebuilds it in Excel. You are given an image of THEIR Excel sheet and/or an image of the course/lesson (each labeled). Compare their Excel to the lesson and help: if there is a quiz/question, work out the correct answer and explain; if it is an Excel exercise, give the specific next step or fix for THEIR sheet, referring to cells by the labels you can see. Reason it through; be accurate and clear."
+  $uh="Help me with my work right now."; if($sync.lessonlog){ $uh+=" What the instructor has recently been teaching: '"+$sync.lessonlog+"'." }
+  $content=@(@{type='text';text=$uh})
+  if($ex){ $content+=@{type='text';text='[Image: MY Excel sheet (my work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$ex);detail='high'}} }
+  if($co){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$co);detail='high'}} }
+  $msgs=@(@{role='system';content=($sysH+$sync.brain)},@{role='user';content=$content})
+  if($sync.model -match '^gpt-5'){ $payload=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=$msgs } | ConvertTo-Json -Depth 14 }
+  else { $payload=@{ model=$sync.model; max_tokens=700; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 14 }
   $bf="$env:TEMP\help_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
-  $resp=& curl.exe -s --max-time 120 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $resp=& curl.exe -s --max-time 150 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
   $j=$null; try{ $j=$resp|ConvertFrom-Json }catch{}
   if($j.choices){ return [string]$j.choices[0].message.content } elseif($j.error){ return "Error: "+$j.error.message } else { return "No response (check connection)." }
 }
@@ -194,7 +201,7 @@ $bPause.Add_Click({ $sync.paused=-not $sync.paused; $bPause.Text=$(if($sync.paus
 $bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){"Unmute"}else{"Mute"}); if($sync.mute){ try{ $speaker.SpeakAsyncCancelAll() }catch{} } })
 $bMuteMe.Add_Click({ $sync.muteMe=-not $sync.muteMe; $bMuteMe.Text=$(if($sync.muteMe){"Unmute me"}else{"Mute me"}) })
 $bHelp.Add_Click({
-  $script:msg.Text="Thinking about your screen..."; $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
+  $script:msg.Text="Reading your Excel + the lesson, thinking (~30-40s)..."; $status.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
   $ans=Get-Help; $script:lastFull=$ans
   Show-HelpPopup $ans; Log-Watch ("[help] "+$ans) ""
   if(-not $sync.mute){ try{ $speaker.SpeakAsyncCancelAll(); $speaker.SpeakAsync($ans)|Out-Null }catch{} }
