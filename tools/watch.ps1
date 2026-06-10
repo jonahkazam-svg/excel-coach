@@ -255,6 +255,7 @@ $psw=[powershell]::Create(); $psw.Runspace=$rs; [void]$psw.AddScript($work); [vo
 # and is never blocked by transcription, asks, audits or distillation. ---
 $xlWork=@'
 function XLog($m){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_watcher.log"),((Get-Date).ToString("HH:mm:ss")+"  "+$m+"`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{} }
+function HashOf($s){ $i=([string]$s).IndexOf("`n"); if($i -gt 0){ return $s.Substring($i).GetHashCode() }; return ([string]$s).GetHashCode() }
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
 try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
 XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
@@ -285,16 +286,16 @@ while(-not $sync.stop){
         }
       }catch{}
     }
-    $lastHash=$xl.GetHashCode(); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"
+    $lastHash=(HashOf $xl); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"
     XLog ("workbook: '"+$sync.lastWb+"'")
     Start-Sleep -Seconds 2; continue
   }
-  $h=$xl.GetHashCode()
+  $h=(HashOf $xl)
   if($h -ne $lastHash){
     $lastHash=$h; $lastChange=(Get-Date); $stuck=$false
     XLog "sheet changed - checking"
     Start-Sleep -Milliseconds 2500
-    try{ $x2=Read-ExcelLive; if($x2){ $xl=$x2; $lastHash=$xl.GetHashCode() } }catch{}
+    try{ $x2=Read-ExcelLive; if($x2){ $xl=$x2; $lastHash=(HashOf $xl) } }catch{}
     $les2=[string]$sync.lessonlog; if($les2.Length -gt 500){ $les2=$les2.Substring($les2.Length-500) }
     $uc=@(@{type='text';text="Below is the EXACT live data from my Excel practice sheet (every non-empty cell: address, value, formula). Check ONLY for a GENUINE ERROR: a wrong formula, a wrong cell reference, a clearly wrong number, a broken or incorrect link, a wrong sign, or a real conceptual mistake versus standard investment-banking practice. RECOMPUTE the values yourself from the data before flagging anything - if it could be a valid alternative method, a different order of steps, or just unfinished work, it is NOT an error (unfinished is fine). Do NOT solve quiz questions for me. If a genuine error exists, give ONE short sentence naming the exact cell and the fix. Otherwise reply EXACTLY: OK."})
     if($sync.sheetPurpose){ $uc+=@{type='text';text=("What this sheet practices: "+$sync.sheetPurpose)} }
