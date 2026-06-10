@@ -23,7 +23,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
@@ -47,7 +47,7 @@ if(Test-Path $sync.segdir){ Remove-Item $sync.segdir -Recurse -Force -ErrorActio
 New-Item -ItemType Directory -Force -Path $sync.segdir | Out-Null
 $ffArgs='-hide_banner -loglevel error -f dshow -i audio="'+$sync.mic+'" -f segment -segment_time 10 -ac 1 -ar 16000 -reset_timestamps 1 -y "'+(Join-Path $sync.segdir "seg_%03d.wav")+'"'
 $ffp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru
-$sync.chime=Join-Path $env:TEMP "xc_chime.wav"; try{ & $ff -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=587:duration=0.16" -af "volume=0.22,afade=t=in:st=0:d=0.02,afade=t=out:st=0.09:d=0.07" -ar 44100 -ac 2 $sync.chime 2>$null }catch{}
+$sync.chime=Join-Path $env:TEMP "xc_chime.wav"; try{ & $ff -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=659:duration=0.10" -f lavfi -i "sine=frequency=988:duration=0.17" -filter_complex "[0]volume=0.15,afade=t=in:st=0:d=0.01,afade=t=out:st=0.05:d=0.05[a];[1]volume=0.17,afade=t=in:st=0:d=0.01,afade=t=out:st=0.10:d=0.07[b];[a][b]concat=n=2:v=0:a=1,aecho=0.8:0.9:40:0.2" -ar 44100 -ac 2 $sync.chime 2>$null }catch{}
 $sync.ffpid=$ffp.Id
 
 $work=@'
@@ -105,7 +105,17 @@ while(-not $sync.stop){
         $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
         $fbB=$null; if(-not $exB -and -not $coB){ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }
         $xlLive=$null; if(($asked -or $working) -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
-        if($xlLive -and ($xlLive -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){ $sync.lastWb=$Matches[1]; try{ $les=$sync.lessonlog; if($les.Length -gt 200){ $les=$les.Substring($les.Length-200) }; [IO.File]::AppendAllText((Join-Path $sync.coaching "Sheets.md"),"`r`n- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"  opened '"+$sync.lastWb+"'  (lesson then: "+$les+")",(New-Object System.Text.UTF8Encoding($false))) }catch{} }
+        if($xlLive -and ($xlLive -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
+          $sync.lastWb=$Matches[1]
+          try{
+            $les=$sync.lessonlog; if($les.Length -gt 700){ $les=$les.Substring($les.Length-700) }
+            $sp=@{ model="gpt-4o-mini"; max_tokens=110; temperature=0; messages=@(@{role="system";content="In ONE concise line, state what this Excel sheet is for the student to practice and the method/goal, inferred from its cells, labels, any visible question or prompt, and the recent lesson. Format exactly: 'Practicing <topic> via <method>; goal: <goal>'. Be specific; no preamble."},@{role="user";content=("Recent lesson: "+$les+"`n`nThe Excel sheet:`n"+$xlLive)}) } | ConvertTo-Json -Depth 8
+            $spbf="$env:TEMP\xc_sheet.json"; [IO.File]::WriteAllText($spbf,$sp,(New-Object System.Text.UTF8Encoding($false)))
+            $spr=& curl.exe -s --max-time 20 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$spbf)
+            $spj=$null; try{ $spj=$spr|ConvertFrom-Json }catch{}
+            if($spj.choices){ $sync.sheetPurpose=([string]$spj.choices[0].message.content).Trim(); $sf=Join-Path $sync.coaching "Sheets.md"; if(-not(Test-Path $sf)){ [IO.File]::AppendAllText($sf,"# Sheets - what each practice workbook is for`r`n",(New-Object System.Text.UTF8Encoding($false))) }; [IO.File]::AppendAllText($sf,"`r`n- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"  '"+$sync.lastWb+"': "+$sync.sheetPurpose,(New-Object System.Text.UTF8Encoding($false))) }
+          }catch{}
+        }
         if($asked){
           $u="The student spoke to you and asked: '"+$txt+"'. What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'. You are given up to two labeled images: MY Excel sheet (my own work) and the course/lesson. Read the exact question carefully, work it out step by step and double-check any arithmetic, then answer clearly and helpfully in 1 to 4 sentences - explain it so they understand, like a good tutor. Use my Excel, the course image, this lesson context, and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
           $useModel=$sync.model; $det="high"; $maxtok=700; $effort="medium"
@@ -118,6 +128,7 @@ while(-not $sync.stop){
         }
         $content=@(@{type='text';text=$u})
         if($xlLive){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative; use these cell addresses, values and formulas; never guess a cell from the image]:`n"+$xlLive)} }
+        if($sync.sheetPurpose){ $content+=@{type='text';text=("What this practice sheet is for (already understood): "+$sync.sheetPurpose)} }
         if($asked -or $working){ $content+=@{type='text';text="Identify the SPECIFIC skill the lesson is teaching right now and what I am trying to BUILD in my Excel, then connect them. When you help or flag something, cite the exact cell/formula from the data above (never a guessed cell) and give the precise next step toward that goal."} }
         if($exB){ $content+=@{type='text';text='[Image: MY Excel sheet (my own work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail=$det}} }
         if($coB){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail=$det}} }
@@ -297,6 +308,7 @@ function Get-Help($question,$detail){
   $uh+=$(if($detail){ " Explain in detail: the full reasoning, the steps, and why - take the space you need." }else{ " Keep it SHORT and useful: lead with the direct answer or the exact fix in 1 to 3 short sentences (a tiny list only if truly needed). Do not over-explain or pad - I can ask to explain in detail if I want." })
   $content=@(@{type='text';text=$uh})
   if($xlData){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative, use these cell addresses/values/formulas; do not guess cells from the image]:`n"+$xlData)} }
+  if($sync.sheetPurpose){ $content+=@{type='text';text=("What this practice sheet is for (already understood): "+$sync.sheetPurpose)} }
   $content+=@{type='text';text="Identify the SPECIFIC skill the lesson is teaching and what I am trying to BUILD in my Excel, then connect them: cite the exact cell/formula from the data above (never a guessed cell) and give the precise next step toward that goal."}
   if($ex){ $content+=@{type='text';text='[Image: MY Excel sheet (visual context only)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$ex);detail='high'}} }
   if($co){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$co);detail='high'}} }
@@ -361,22 +373,23 @@ Set-Round $strip 16
 $strip.Add_Paint({ param($s,$e); Draw-Border $e.Graphics $s.ClientSize.Width $s.ClientSize.Height 16 ([System.Drawing.Color]::FromArgb(58,64,78)); $sep=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(42,46,57)); $e.Graphics.DrawLine($sep,16,40,($s.ClientSize.Width-16),40); $sep.Dispose() })
 $dot=New-Object System.Windows.Forms.Panel; $dot.Width=12; $dot.Height=12; $dot.Left=18; $dot.Top=15; $dot.BackColor=[System.Drawing.Color]::FromArgb(120,130,145)
 $dgp=New-Object System.Drawing.Drawing2D.GraphicsPath; $dgp.AddEllipse(0,0,12,12); $dot.Region=New-Object System.Drawing.Region($dgp)
-$script:msg=New-Object System.Windows.Forms.Label; $script:msg.Left=40; $script:msg.Top=2; $script:msg.Width=384; $script:msg.Height=36; $script:msg.ForeColor=[System.Drawing.Color]::FromArgb(236,239,244); $script:msg.Font=New-Object System.Drawing.Font("Segoe UI Semibold",10); $script:msg.TextAlign='MiddleLeft'; $script:msg.BackColor=[System.Drawing.Color]::FromArgb(24,26,32)
+$script:msg=New-Object System.Windows.Forms.Label; $script:msg.Left=40; $script:msg.Top=2; $script:msg.Width=344; $script:msg.Height=36; $script:msg.ForeColor=[System.Drawing.Color]::FromArgb(236,239,244); $script:msg.Font=New-Object System.Drawing.Font("Segoe UI Semibold",10); $script:msg.TextAlign='MiddleLeft'; $script:msg.BackColor=[System.Drawing.Color]::FromArgb(24,26,32)
 $tip=New-Object System.Windows.Forms.ToolTip; $tip.InitialDelay=350
 function Mini($glyph,$fontName,$fsize,$x,$accent){ $b=New-Object System.Windows.Forms.Button; $b.Text=$glyph; $b.Left=$x; $b.Top=6; $b.Width=34; $b.Height=34; $b.FlatStyle='Flat'; $b.FlatAppearance.BorderSize=0; $b.Font=New-Object System.Drawing.Font($fontName,$fsize); $b.Cursor='Hand'; if($accent){ $b.ForeColor=[System.Drawing.Color]::White; $b.BackColor=[System.Drawing.Color]::FromArgb(56,120,236); $b.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(74,140,255); $b.FlatAppearance.MouseDownBackColor=[System.Drawing.Color]::FromArgb(44,104,214) } else { $b.ForeColor=[System.Drawing.Color]::FromArgb(222,227,235); $b.BackColor=[System.Drawing.Color]::FromArgb(34,37,46); $b.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(50,55,68); $b.FlatAppearance.MouseDownBackColor=[System.Drawing.Color]::FromArgb(40,44,54) }; return $b }
 $mdl="Segoe MDL2 Assets"
-$bPause=Mini ([char]0xE769) $mdl 12 432 $false
-$bMute=Mini ([char]0xE767) $mdl 12 472 $false
+$bPause=Mini ([char]0xE769) $mdl 12 392 $false
+$bMute=Mini ([char]0xE767) $mdl 12 432 $false
+$bSound=Mini ([char]0xEA8F) $mdl 11 472 $false
 $bHelp=Mini "?" "Segoe UI Semibold" 14 512 $true
 $bX=Mini ([char]0xE711) $mdl 10 552 $false
-foreach($bb in @($bPause,$bMute,$bHelp,$bX)){ Set-Round $bb 9 }
+foreach($bb in @($bPause,$bMute,$bSound,$bHelp,$bX)){ Set-Round $bb 9 }
 $tip.SetToolTip($bPause,"Pause coaching"); $tip.SetToolTip($bMute,"Mute coach voice"); $tip.SetToolTip($bHelp,"Get help (reads your screen)"); $tip.SetToolTip($bX,"Close coach")
 $script:askPH="Ask me anything - I can see your screen + Excel"
 $ask=New-Object System.Windows.Forms.TextBox; $ask.Left=16; $ask.Top=44; $ask.Width=480; $ask.BorderStyle='FixedSingle'; $ask.BackColor=[System.Drawing.Color]::FromArgb(34,37,46); $ask.ForeColor=[System.Drawing.Color]::FromArgb(140,146,158); $ask.Font=New-Object System.Drawing.Font("Segoe UI",11); $ask.Text=$script:askPH
 $bAsk=New-Object System.Windows.Forms.Button; $bAsk.Text="Ask"; $bAsk.Left=502; $bAsk.Top=43; $bAsk.Width=44; $bAsk.Height=26; $bAsk.FlatStyle='Flat'; $bAsk.FlatAppearance.BorderSize=0; $bAsk.ForeColor=[System.Drawing.Color]::White; $bAsk.BackColor=[System.Drawing.Color]::FromArgb(56,120,236); $bAsk.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(74,140,255); $bAsk.Font=New-Object System.Drawing.Font("Segoe UI Semibold",9); $bAsk.Cursor='Hand'; Set-Round $bAsk 7
 $bNote=New-Object System.Windows.Forms.Button; $bNote.Text=([char]0xE718); $bNote.Left=552; $bNote.Top=43; $bNote.Width=34; $bNote.Height=26; $bNote.FlatStyle='Flat'; $bNote.FlatAppearance.BorderSize=0; $bNote.ForeColor=[System.Drawing.Color]::White; $bNote.BackColor=[System.Drawing.Color]::FromArgb(72,92,124); $bNote.FlatAppearance.MouseOverBackColor=[System.Drawing.Color]::FromArgb(92,116,154); $bNote.Font=New-Object System.Drawing.Font("Segoe MDL2 Assets",11); $bNote.Cursor='Hand'; Set-Round $bNote 7; $tip.SetToolTip($bNote,"Note this - flag what I'm doing now to revisit and practice later")
 $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $speaker.Rate=1 }catch{}; $sync.mute=$false
-$strip.Controls.AddRange(@($script:msg,$dot,$bPause,$bMute,$bHelp,$bX,$ask,$bAsk,$bNote)); $dot.BringToFront()
+$strip.Controls.AddRange(@($script:msg,$dot,$bPause,$bMute,$bSound,$bHelp,$bX,$ask,$bAsk,$bNote)); $dot.BringToFront(); $tip.SetToolTip($bSound,"Mute the notification sound")
 $script:seen=0; $script:lastFull=""; $script:pulse=0; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:dotBase=[System.Drawing.Color]::FromArgb(76,180,120); $script:lastHelpQ=""
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
@@ -401,7 +414,7 @@ $ui.Add_Tick({
     }
     else {
       $script:idle=$false; $dot.BackColor=[System.Drawing.Color]::FromArgb(235,180,70); $script:msg.Text=$(if(Get-Command Speakable -ErrorAction SilentlyContinue){ Speakable $r }else{ $r }); $script:lastFull=$r
-      if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; if($sync.isPaused -and -not $sync.mute){ $sync.ttsText=$r } elseif(-not $sync.mute){ try{ (New-Object System.Media.SoundPlayer $sync.chime).Play() }catch{ [System.Media.SystemSounds]::Asterisk.Play() } } }
+      if($r -ne $sync.lastNudge){ Log-Watch $r $sync.lesson; if($sync.isPaused -and -not $sync.mute){ $sync.ttsText=$r } elseif(-not $sync.muteSound){ try{ (New-Object System.Media.SoundPlayer $sync.chime).Play() }catch{ [System.Media.SystemSounds]::Asterisk.Play() } } }
       $sync.lastNudge=$r
     }
   }
@@ -423,6 +436,7 @@ $ask.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter){ $_.Sup
 $bAsk.Add_Click($submitAsk)
 $bPause.Add_Click({ $sync.paused=-not $sync.paused; $bPause.Text=$(if($sync.paused){[char]0xE768}else{[char]0xE769}); $tip.SetToolTip($bPause,$(if($sync.paused){"Resume coaching"}else{"Pause coaching"})); if($sync.paused){ $script:idle=$false; $script:msg.Text="Paused"; $dot.BackColor=[System.Drawing.Color]::FromArgb(120,130,145) } else { $script:baseStatus="Listening to the lesson"; $script:dotBase=[System.Drawing.Color]::FromArgb(76,180,120); $script:idle=$true } })
 $bMute.Add_Click({ $sync.mute=-not $sync.mute; $bMute.Text=$(if($sync.mute){[char]0xE74F}else{[char]0xE767}); $tip.SetToolTip($bMute,$(if($sync.mute){"Unmute coach voice"}else{"Mute coach voice"})); if($sync.mute){ $sync.ttsStop=$true } })
+$bSound.Add_Click({ $sync.muteSound=-not $sync.muteSound; $bSound.Text=$(if($sync.muteSound){[char]0xE7ED}else{[char]0xEA8F}); $tip.SetToolTip($bSound,$(if($sync.muteSound){"Unmute the notification sound"}else{"Mute the notification sound"})) })
 $bHelp.Add_Click({
   $script:idle=$false; $script:msg.Text="Reading your Excel + the lesson (~30-40s)..."; $dot.BackColor=[System.Drawing.Color]::FromArgb(90,150,230); [System.Windows.Forms.Application]::DoEvents()
   $script:lastHelpQ=""; $ans=Get-Help $null $false; $script:lastFull=$ans
