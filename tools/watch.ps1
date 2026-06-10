@@ -93,7 +93,7 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1)
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1)
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
@@ -174,6 +174,15 @@ while(-not $sync.stop){
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         $fgh=[Win2]::GetForegroundWindow(); $excelFg=$false; try{ $excelFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
         $working=($excelFg -or $paused)
+        if((-not $asked) -and $excelFg -and $txt -and ($txt.Trim().Length -gt 15) -and (-not $sync.typedAsk) -and (((Get-Date)-$lastJumpT).TotalSeconds -ge 120) -and ($txt -match '(?i)(\bwhy\b|how come|\bwait\b|what does|what is|how do|how does|confus|don.t get|do not get|don.t understand|not sure|no idea|i thought|doesn.t make sense)')){
+          try{
+            $jp=@{ model="gpt-4o-mini"; max_tokens=90; temperature=0; messages=@(@{role="system";content="A finance student is working in Excel and thinking aloud (mic transcription). Decide if they are GENUINELY voicing confusion or a question they would want answered - not reading exercise text aloud, not casual muttering, not talking to someone else. Reply EXACTLY with 'YES: <their question restated clearly>' or 'NO'."},@{role="user";content=$txt}) } | ConvertTo-Json -Depth 6
+            $jbf="$env:TEMP\xc_jump.json"; [IO.File]::WriteAllText($jbf,$jp,(New-Object System.Text.UTF8Encoding($false)))
+            $jr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$jbf)
+            $jj2=$null; try{ $jj2=$jr|ConvertFrom-Json }catch{}
+            if($jj2.choices){ $jt=([string]$jj2.choices[0].message.content).Trim(); if($jt -match '(?s)^YES:\s*(.+)$'){ $lastJumpT=(Get-Date); $sync.ackPing=$true; $sync.askLabel="You sounded unsure - jumping in"; $sync.typedDetail=$false; $sync.typedAsk=$Matches[1].Trim() } }
+          }catch{}
+        }
         $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
         $fbB=$null; if((-not $exB -and -not $coB) -or (-not $excelFg)){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
         $xlLive=$null; if($asked -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
@@ -259,7 +268,7 @@ function HashOf($s){ $i=([string]$s).IndexOf("`n"); if($i -gt 0){ return $s.Subs
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
 try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
 XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date)
+$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""
 while(-not $sync.stop){
  try{
   if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
@@ -287,7 +296,7 @@ while(-not $sync.stop){
         }
       }catch{}
     }
-    $lastHash=(HashOf $xl); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"
+    $lastHash=(HashOf $xl); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"; $prevXl=$xl
     XLog ("workbook: '"+$sync.lastWb+"'")
     Start-Sleep -Seconds 2; continue
   }
@@ -296,14 +305,24 @@ while(-not $sync.stop){
     $lastHash=$h; $lastChange=(Get-Date); $stuck=$false
     XLog "sheet changed - checking"
     Start-Sleep -Milliseconds 2500
-    try{ $x2=Read-ExcelLive; if($x2){ $xl=$x2; $lastHash=(HashOf $xl) } }catch{}
+    try{ $x2=Read-ExcelLive; if($x2 -and $x2.Length -ge 130){ $xl=$x2; $lastHash=(HashOf $xl) } }catch{}
+    $diffTxt=""
+    if($prevXl){
+      $po=$prevXl -split "`r?`n"; $co=$xl -split "`r?`n"
+      $addL=@($co | Where-Object { $_ -and ($po -notcontains $_) } | Select-Object -First 6)
+      $remL=@($po | Where-Object { $_ -and ($co -notcontains $_) } | Select-Object -First 4)
+      if($addL.Count -gt 0){ $diffTxt="CELLS I JUST CHANGED OR ADDED:`n"+($addL -join "`n") }
+      if($remL.Count -gt 0){ $diffTxt=$diffTxt+"`nOLD LINES REPLACED OR REMOVED:`n"+($remL -join "`n") }
+    }
+    $prevXl=$xl
     $les2=[string]$sync.lessonlog; if($les2.Length -gt 500){ $les2=$les2.Substring($les2.Length-500) }
-    $uc=@(@{type='text';text="Below is the EXACT live data from my Excel practice sheet (every non-empty cell: address, value, formula). Check ONLY for a GENUINE ERROR: a wrong formula, a wrong cell reference, a clearly wrong number, a broken or incorrect link, a wrong sign, or a real conceptual mistake versus standard investment-banking practice. RECOMPUTE the values yourself from the data before flagging anything - if it could be a valid alternative method, a different order of steps, or just unfinished work, it is NOT an error (unfinished is fine). Do NOT solve quiz questions for me. If a genuine error exists, give ONE short sentence naming the exact cell and the fix. Otherwise reply EXACTLY: OK."})
+    $uc=@(@{type='text';text="Below is the EXACT live data from my Excel practice sheet (every non-empty cell: address, value, formula). Check ONLY for a GENUINE ERROR: a wrong formula, a wrong cell reference, a clearly wrong number, a broken or incorrect link, a wrong sign, or a real conceptual mistake versus standard investment-banking practice. RECOMPUTE the values yourself from the data before flagging anything - if it could be a valid alternative method, a different order of steps, or just unfinished work, it is NOT an error (unfinished is fine). Focus FIRST on the cells I just changed (listed below if any) - recompute those carefully. Pay EXTRA attention to mistakes matching my known weak points (in your context). Never reveal the answer to an exercise I have not attempted yet; once I HAVE entered an answer or formula, verify it by computing the correct result yourself. If a genuine error exists: name the exact cell, the fix, and briefly WHY, in one or two short sentences; if it repeats one of my known weak points, add one short sentence stating the underlying rule so I stop repeating it. Otherwise reply EXACTLY: OK."})
+    if($diffTxt){ $uc+=@{type='text';text=$diffTxt} }
     if($sync.sheetPurpose){ $uc+=@{type='text';text=("What this sheet practices: "+$sync.sheetPurpose)} }
     if($les2){ $uc+=@{type='text';text=("Recent lesson context: "+$les2)} }
     if($sync.lastNudge -and $sync.lastNudge -ne "OK"){ $uc+=@{type='text';text=("You last told me: '"+$sync.lastNudge+"'. If that is now fixed and nothing else is wrong, reply OK; never repeat it.")} }
     $uc+=@{type='text';text=("EXACT Excel data:`n"+$xl)}
-    $pay=@{ model=$sync.model; max_completion_tokens=320; reasoning_effort="low"; messages=@(@{role='system';content=("You are a precise, conservative checker for a finance student rebuilding course models in Excel."+$sync.brain)},@{role='user';content=$uc}) } | ConvertTo-Json -Depth 12
+    $pay=@{ model=$sync.model; max_completion_tokens=1600; reasoning_effort="medium"; messages=@(@{role='system';content=("You are a precise, conservative checker and tutor for a finance student rebuilding course models in Excel."+$sync.brain)},@{role='user';content=$uc}) } | ConvertTo-Json -Depth 12
     $bfx="$env:TEMP\xc_xlcheck.json"; [IO.File]::WriteAllText($bfx,$pay,(New-Object System.Text.UTF8Encoding($false)))
     $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bfx)
     $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
@@ -311,7 +330,8 @@ while(-not $sync.stop){
       $t=([string]$jj.choices[0].message.content).Trim()
       if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $t=Clean-Answer $t }
       XLog ("verdict: "+$(if($t -eq ""){ "<EMPTY>" }elseif($t.Length -gt 140){ $t.Substring(0,140) }else{ $t }))
-      if(($t -match '^\s*OK') -or ($t -eq "")){
+      if($t -eq ""){ }
+      elseif($t -match '^\s*OK'){
         if($lastState -ne "OK"){ $lastState="OK"; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1; XLog "cleared (fixed)" }
       } else {
         if(((Get-Date)-$nudgeT).TotalSeconds -ge 20){
@@ -732,7 +752,7 @@ $ui.Add_Tick({
   if($sync.xlStamp -gt $script:seenXl){
     $script:seenXl=$sync.xlStamp; $rx=[string]$sync.xlText
     if($rx -eq "OK"){
-      if($script:xlNudgeShown){ $script:xlNudgeShown=$false; if(-not $script:askBusy){ Set-Dot '#22c55e' $true; $script:idle=$true; $script:baseStatus="On track" } }
+      if($script:xlNudgeShown){ $script:xlNudgeShown=$false; if(-not $script:askBusy){ Set-Dot '#22c55e' $true; $script:idle=$true; $script:baseStatus="Fixed - nice." } }
     }
     elseif($rx -ne ""){
       $script:xlNudgeShown=$true; $script:lastActive=(Get-Date)
