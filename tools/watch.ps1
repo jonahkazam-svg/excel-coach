@@ -357,7 +357,7 @@ function Glass-On($f0,$top){ $hr=[GlassW]::Backdrop($f0.Handle,3,[int]$top); if(
 function Place-Panel($f){
   $st=$script:strip; if(-not $st){ return }
   $wa3=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  $l=$st.Left+[int](($st.Width-$f.Width)/2)
+  $l=$st.Left
   if($l -lt ($wa3.Left+(Px 8))){ $l=$wa3.Left+(Px 8) }; if(($l+$f.Width) -gt ($wa3.Right-(Px 8))){ $l=$wa3.Right-(Px 8)-$f.Width }
   $t=$st.Top-$f.Height-(Px 8); if($t -lt ($wa3.Top+(Px 8))){ $t=$st.Top+$st.Height+(Px 8) }
   $f.Left=$l; $f.Top=$t
@@ -420,7 +420,7 @@ $script:sdrag=$false; $script:moved=$false; $script:sdp=New-Object System.Drawin
 $script:statusText="Listening to the lesson"; $script:t0=(Get-Date)
 $strip=New-Object System.Windows.Forms.Form
 $strip.FormBorderStyle='None'; $strip.TopMost=$true; $strip.ShowInTaskbar=$false; $strip.StartPosition='Manual'; $strip.Width=$script:stripW; $strip.Height=$script:stripH; $strip.BackColor=[System.Drawing.Color]::Black
-$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-(Px 14)
+$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $strip.Left=$wa.Left+(Px 16); $strip.Top=$wa.Bottom-$strip.Height-(Px 14)
 $script:strip=$strip
 $script:rDot=New-Object System.Drawing.Rectangle((Px 18),(Px 14),(Px 12),(Px 12))
 $script:rTime=New-Object System.Drawing.Rectangle((Px 38),(Px 6),(Px 50),(Px 28))
@@ -479,7 +479,7 @@ function Apply-Strip {
   $oldW=$strip.Width; $oldH=$strip.Height
   if($script:collapsed){ $nw=$script:pillW; $nh=$script:pillH } else { $nw=$script:stripW; $nh=$script:stripH }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  $nl=$strip.Left+[int](($oldW-$nw)/2); $nt=$strip.Top+($oldH-$nh)
+  $nl=$strip.Left; $nt=$strip.Top+($oldH-$nh)
   if($nl -lt ($wa4.Left+(Px 8))){ $nl=$wa4.Left+(Px 8) }; if(($nl+$nw) -gt ($wa4.Right-(Px 8))){ $nl=$wa4.Right-(Px 8)-$nw }
   if($nt -lt ($wa4.Top+(Px 8))){ $nt=$wa4.Top+(Px 8) }; if(($nt+$nh) -gt ($wa4.Bottom-(Px 8))){ $nt=$wa4.Bottom-(Px 8)-$nh }
   $strip.SetBounds($nl,$nt,$nw,$nh)
