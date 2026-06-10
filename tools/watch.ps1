@@ -30,6 +30,8 @@ $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.wav=Join-Path $env:TEMP "w
 $sync.lastNudge=""
 $sync.sys="You are an ambient tutor watching a student's full screen while they follow a Breaking Into Wall Street Excel lesson and rebuild it in their own Excel. You are given what the instructor is currently saying (or that the video is paused) and the screen. If the student is on track and nothing needs saying, reply EXACTLY: OK . Otherwise reply with ONE short, specific, actionable nudge: max 22 words, start with the fix."
 
+$wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
+if(Test-Path $wpf){ $bt=(Get-Content $wpf -Raw); if($bt.Length -gt 1600){ $bt=$bt.Substring($bt.Length-1600) }; $sync.brain=" The student's known recurring weak points (reference by name if you see one recurring): "+$bt }
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
 
@@ -75,7 +77,7 @@ while(-not $sync.stop){
   else { $u="I'm watching the lesson. The instructor is currently saying: '" + $lesson + "'. Use it to know exactly where I am. Compare my Excel to the lesson; only nudge if I've clearly diverged." }
   if($sync.lastNudge -and $sync.lastNudge -ne "OK"){ $u += " You last told me: '" + $sync.lastNudge + "'. Don't repeat unless still unaddressed." }
   $payload=@{ model=$sync.model; max_tokens=80; messages=@(
-    @{role="system";content=$sync.sys},
+    @{role="system";content=($sync.sys+$sync.brain)},
     @{role="user";content=@(@{type="text";text=$u},@{type="image_url";image_url=@{url=("data:image/png;base64,"+$b64)}})}
   )} | ConvertTo-Json -Depth 12
   $sync.text=(VisionPost $payload $sync.key).Trim(); $sync.lesson=$lesson; $sync.isPaused=$paused
