@@ -387,20 +387,39 @@ $script:sfGT=New-Object System.Drawing.StringFormat([System.Drawing.StringFormat
 function New-RRPath($x,$y,$w,$h,$r){ $d=$r*2; if($d -gt $h){ $d=$h }; $gp=New-Object System.Drawing.Drawing2D.GraphicsPath; $gp.AddArc($x,$y,$d,$d,180,90); $gp.AddArc($x+$w-$d,$y,$d,$d,270,90); $gp.AddArc($x+$w-$d,$y+$h-$d,$d,$d,0,90); $gp.AddArc($x,$y+$h-$d,$d,$d,90,90); $gp.CloseAllFigures(); return $gp }
 function Fill-RR($g,$rect,$rad,$col){ $gp=New-RRPath $rect.X $rect.Y $rect.Width $rect.Height $rad; $br=New-Object System.Drawing.SolidBrush($col); $g.FillPath($br,$gp); $br.Dispose(); $gp.Dispose() }
 function Draw-RR($g,$rect,$rad,$col){ $gp=New-RRPath $rect.X $rect.Y $rect.Width $rect.Height $rad; $pen=New-Object System.Drawing.Pen($col,1); $g.DrawPath($pen,$gp); $pen.Dispose(); $gp.Dispose() }
-function Paint-Wash($g,$w,$h){
-  $br=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(115,255,255,255)); $g.FillRectangle($br,0,0,$w,$h); $br.Dispose()
-  $hl=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(110,255,255,255),1); $g.DrawLine($hl,(Px 14),1,($w-(Px 14)),1); $hl.Dispose()
+function Paint-Wash($g,$w,$h,$sheenPt){
+  $br=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(86,255,255,255)); $g.FillRectangle($br,0,0,$w,$h); $br.Dispose()
+  $topH=[int]($h*0.55); if($topH -lt 8){ $topH=8 }
+  $rect=New-Object System.Drawing.Rectangle(0,0,$w,$topH)
+  $lg=New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect,[System.Drawing.Color]::FromArgb(52,255,255,255),[System.Drawing.Color]::FromArgb(0,255,255,255),[single]90)
+  $g.FillRectangle($lg,$rect); $lg.Dispose()
+  if($sheenPt -and ($sheenPt.X -gt -400)){
+    $rad=(Px 160)
+    $gp=New-Object System.Drawing.Drawing2D.GraphicsPath; $gp.AddEllipse(($sheenPt.X-$rad),($sheenPt.Y-$rad),($rad*2),($rad*2))
+    $pgb=New-Object System.Drawing.Drawing2D.PathGradientBrush($gp)
+    $pgb.CenterColor=[System.Drawing.Color]::FromArgb(40,255,255,255); $pgb.SurroundColors=@([System.Drawing.Color]::FromArgb(0,255,255,255))
+    $g.FillPath($pgb,$gp); $pgb.Dispose(); $gp.Dispose()
+  }
+  $hl=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(185,255,255,255),1); $g.DrawLine($hl,(Px 12),1,($w-(Px 12)),1); $hl.Dispose()
+  $vl=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(105,255,255,255),1); $g.DrawLine($vl,1,(Px 10),1,($h-(Px 10))); $vl.Dispose()
 }
 function Draw-Chip($g,$el,$hover){
   $r=$el.r
   if($el.dark){
-    $fc=$(if($hover){[System.Drawing.Color]::FromArgb(255,48,51,60)}else{[System.Drawing.Color]::FromArgb(255,28,30,36)})
-    Fill-RR $g $r (Px 9) $fc
+    $fc1=$(if($hover){[System.Drawing.Color]::FromArgb(255,58,62,74)}else{[System.Drawing.Color]::FromArgb(255,44,47,57)})
+    $fc2=$(if($hover){[System.Drawing.Color]::FromArgb(255,30,33,41)}else{[System.Drawing.Color]::FromArgb(255,17,19,25)})
+    $rect=New-Object System.Drawing.Rectangle($r.X,$r.Y,$r.Width,$r.Height)
+    $gp=New-RRPath $r.X $r.Y $r.Width $r.Height (Px 9)
+    $lg=New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect,$fc1,$fc2,[single]90); $g.FillPath($lg,$gp); $lg.Dispose()
+    $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(58,255,255,255),1); $g.DrawPath($pen,$gp); $pen.Dispose(); $gp.Dispose()
+    $hlp=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(78,255,255,255),1); $g.DrawLine($hlp,($r.X+(Px 8)),($r.Y+1),($r.X+$r.Width-(Px 8)),($r.Y+1)); $hlp.Dispose()
     $g.DrawString($el.txt,$script:fBtn,$script:bWhite,[System.Drawing.RectangleF]::op_Implicit($r),$script:sfMid)
   } else {
-    $fc=$(if($hover){[System.Drawing.Color]::FromArgb(178,255,255,255)}else{[System.Drawing.Color]::FromArgb(98,255,255,255)})
-    Fill-RR $g $r (Px 8) $fc
-    Draw-RR $g $r (Px 8) ([System.Drawing.Color]::FromArgb(34,0,0,0))
+    $a=$(if($hover){132}else{64})
+    Fill-RR $g $r (Px 8) ([System.Drawing.Color]::FromArgb($a,255,255,255))
+    Draw-RR $g $r (Px 8) ([System.Drawing.Color]::FromArgb(108,255,255,255))
+    $hlp=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(150,255,255,255),1); $g.DrawLine($hlp,($r.X+(Px 6)),($r.Y+1),($r.X+$r.Width-(Px 6)),($r.Y+1)); $hlp.Dispose()
+    $dk=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(18,0,0,0),1); $g.DrawLine($dk,($r.X+(Px 6)),($r.Y+$r.Height-1),($r.X+$r.Width-(Px 6)),($r.Y+$r.Height-1)); $dk.Dispose()
     $fnt=$(if($el.fs -eq 's'){$script:fMdlS}else{$script:fMdl})
     $gtxt=$(if($el.gk){ [string]$script:glyphs[$el.gk] }else{ $el.txt })
     $g.DrawString($gtxt,$fnt,$script:bGlyph,[System.Drawing.RectangleF]::op_Implicit($r),$script:sfMid)
@@ -479,6 +498,7 @@ function Show-HelpPopup($text){
   $f=New-Object System.Windows.Forms.Form; $f.Text="Coach"; $f.FormBorderStyle='None'; $f.TopMost=$true; $f.ShowInTaskbar=$false; $f.Width=(Px 600); $f.Height=(Px 400); $f.StartPosition='Manual'; $f.BackColor=[System.Drawing.Color]::Black
   $W=$f.Width; $H=$f.Height
   $script:ansW=$W-(Px 40); $script:ansScroll=0; $script:ansFrags=$null; $script:ansTotal=0
+  $script:pSheen=New-Object System.Drawing.Point(-999,-999)
   $script:pHover=''
   $script:pEls=@(
     @{k='copy';  r=(New-Object System.Drawing.Rectangle(($W-(Px 72)),(Px 4),(Px 28),(Px 28))); dark=$false; gk='copy'; fs='n'},
@@ -488,7 +508,7 @@ function Show-HelpPopup($text){
   $script:rBody=New-Object System.Drawing.Rectangle((Px 18),(Px 44),($W-(Px 36)),($H-(Px 44)-(Px 32)))
   $f.Add_Paint({ param($s,$e)
     $g=$e.Graphics; $g.SmoothingMode='AntiAlias'; $g.TextRenderingHint='AntiAlias'
-    Paint-Wash $g $s.ClientSize.Width $s.ClientSize.Height
+    Paint-Wash $g $s.ClientSize.Width $s.ClientSize.Height $script:pSheen
     $g.DrawString("Coach",$script:fHead,$script:bSec,(Px 16),(Px 10))
     $g.DrawString((Get-Date).ToString("HH:mm"),$script:fMonoS,$script:bMut,($s.ClientSize.Width-(Px 118)),(Px 13))
     $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(26,0,0,0),1); $g.DrawLine($pen,(Px 14),(Px 38),($s.ClientSize.Width-(Px 14)),(Px 38)); $pen.Dispose()
@@ -496,8 +516,8 @@ function Show-HelpPopup($text){
     $g.DrawString("Esc to close",$script:fHint,$script:bMut,$hr,$script:sfRight)
     foreach($el in $script:pEls){
       if($el.txt -and -not $el.gk){
-        $fc=$(if($script:pHover -eq $el.k){[System.Drawing.Color]::FromArgb(178,255,255,255)}else{[System.Drawing.Color]::FromArgb(98,255,255,255)})
-        Fill-RR $g $el.r (Px 7) $fc; Draw-RR $g $el.r (Px 7) ([System.Drawing.Color]::FromArgb(34,0,0,0))
+        $fc=$(if($script:pHover -eq $el.k){[System.Drawing.Color]::FromArgb(132,255,255,255)}else{[System.Drawing.Color]::FromArgb(64,255,255,255)})
+        Fill-RR $g $el.r (Px 7) $fc; Draw-RR $g $el.r (Px 7) ([System.Drawing.Color]::FromArgb(108,255,255,255))
         $g.DrawString($el.txt,$script:fHint,$script:bGlyph,[System.Drawing.RectangleF]::op_Implicit($el.r),$script:sfMid)
       } else { Draw-Chip $g $el ($script:pHover -eq $el.k) }
     }
@@ -521,6 +541,11 @@ function Show-HelpPopup($text){
     }
   })
   $f.Add_MouseMove({
+    if(([math]::Abs($_.X-$script:pSheen.X) -gt (Px 12)) -or ([math]::Abs($_.Y-$script:pSheen.Y) -gt (Px 12))){
+      $o=$script:pSheen; $script:pSheen=$_.Location; $rad=(Px 170)
+      $ix=[math]::Min($o.X,$_.X)-$rad; $iy=[math]::Min($o.Y,$_.Y)-$rad; $iw=[math]::Abs($_.X-$o.X)+($rad*2); $ih=[math]::Abs($_.Y-$o.Y)+($rad*2)
+      $script:helpPopup.Invalidate((New-Object System.Drawing.Rectangle($ix,$iy,$iw,$ih)))
+    }
     $h=''; foreach($el in $script:pEls){ if($el.r.Contains($_.Location)){ $h=$el.k } }
     if($h -ne $script:pHover){ $script:pHover=$h; $script:helpPopup.Invalidate(); $script:helpPopup.Cursor=$(if($h){[System.Windows.Forms.Cursors]::Hand}else{[System.Windows.Forms.Cursors]::Default}) }
     if($script:pDrag){ $script:helpPopup.Left+=($_.X-$script:pDp.X); $script:helpPopup.Top+=($_.Y-$script:pDp.Y) }
@@ -532,6 +557,7 @@ function Show-HelpPopup($text){
     elseif($script:pHover -eq 'copy'){ try{ if($script:lastFull){ [System.Windows.Forms.Clipboard]::SetText($script:lastFull) } }catch{} }
     elseif($script:pHover -eq 'expl'){ try{ Set-Answer "Explaining in detail..."; $sync.typedDetail=$true; $sync.typedAsk=$(if($script:lastHelpQ){ $script:lastHelpQ }else{ "__ASSIST__" }) }catch{} }
   })
+  $f.Add_MouseLeave({ try{ $script:pSheen=New-Object System.Drawing.Point(-999,-999); $script:helpPopup.Invalidate() }catch{} })
   $f.KeyPreview=$true; $f.Add_KeyDown({ if($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $script:helpPopup.Close() } })
   $f.Add_Shown({ Glass-On $script:helpPopup; Set-Answer $script:pendingAns })
   Place-Panel $f
@@ -541,7 +567,7 @@ function Show-HelpPopup($text){
 # ---- the strip: liquid-glass bar with idle pill ----
 $script:stripW=(Px 600); $script:stripH=(Px 80); $script:pillW=(Px 280); $script:pillH=(Px 40); $script:collapsed=$false
 $script:sdrag=$false; $script:moved=$false; $script:sdp=New-Object System.Drawing.Point(0,0); $script:hover=''
-$script:statusText="Listening to the lesson"; $script:t0=(Get-Date)
+$script:statusText="Listening to the lesson"; $script:t0=(Get-Date); $script:sheen=New-Object System.Drawing.Point(-999,-999)
 $script:glyphs=@{ col=[char]0xE921; expd=[char]0xE740; pause=[char]0xE769; mute=[char]0xE767; sound=[char]0xEA8F; note=[char]0xE718; close=[char]0xE711; copy=[char]0xE8C8; pclose=[char]0xE711 }
 $script:tips=@{ col='Collapse to a pill'; expd='Expand the coach bar'; pause='Pause coaching'; mute='Mute coach voice'; sound='Mute the notification sound'; note='Note this - flag it to revisit and practice later'; close='Close coach'; assist='Assist - answers your question, or reads your screen if empty' }
 $strip=New-Object System.Windows.Forms.Form
@@ -571,13 +597,14 @@ function Build-Els {
 Build-Els
 $strip.Add_Paint({ param($s,$e)
   $g=$e.Graphics; $g.SmoothingMode='AntiAlias'; $g.TextRenderingHint='AntiAlias'
-  Paint-Wash $g $s.ClientSize.Width $s.ClientSize.Height
+  Paint-Wash $g $s.ClientSize.Width $s.ClientSize.Height $script:sheen
   if(-not $script:collapsed){
     $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(22,0,0,0),1); $g.DrawLine($pen,(Px 16),(Px 40),($s.ClientSize.Width-(Px 16)),(Px 40)); $pen.Dispose()
     $el=(Get-Date)-$script:t0; $tt=("{0:00}:{1:00}" -f [int][math]::Floor($el.TotalMinutes),$el.Seconds)
     $g.DrawString($tt,$script:fMono,$script:bSec,[System.Drawing.RectangleF]::op_Implicit($script:rTime),$script:sfTrim)
   }
   $db=New-Object System.Drawing.SolidBrush($script:dotColor); $g.FillEllipse($db,$script:rDot); $db.Dispose()
+  $gl=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(115,255,255,255)); $g.FillEllipse($gl,($script:rDot.X+(Px 2)),($script:rDot.Y+(Px 2)),(Px 5),(Px 4)); $gl.Dispose()
   $fnt=$(if($script:collapsed){$script:fPill}else{$script:fStatus})
   $g.DrawString($script:statusText,$fnt,$script:bPri,[System.Drawing.RectangleF]::op_Implicit($script:rStatus),$script:sfTrim)
   foreach($el in $script:els){ Draw-Chip $g $el ($script:hover -eq $el.k) }
@@ -588,7 +615,7 @@ $script:askPH="Ask me anything - I can see your screen + Excel"
 $askHost=New-Object System.Windows.Forms.Form
 $askHost.FormBorderStyle='None'; $askHost.ShowInTaskbar=$false; $askHost.StartPosition='Manual'; $askHost.TopMost=$true; $askHost.Width=(Px 474); $askHost.Height=(Px 28); $askHost.BackColor=[System.Drawing.Color]::FromArgb(250,251,253)
 Set-Round $askHost (Px 13)
-$askHost.Add_Paint({ param($s,$e); $e.Graphics.SmoothingMode='AntiAlias'; $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(36,0,0,0),1); $gp=New-RRPath 0 0 ($s.ClientSize.Width-1) ($s.ClientSize.Height-1) (Px 13); $e.Graphics.DrawPath($pen,$gp); $pen.Dispose(); $gp.Dispose() })
+$askHost.Add_Paint({ param($s,$e); $e.Graphics.SmoothingMode='AntiAlias'; $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(36,0,0,0),1); $gp=New-RRPath 0 0 ($s.ClientSize.Width-1) ($s.ClientSize.Height-1) (Px 13); $e.Graphics.DrawPath($pen,$gp); $pen.Dispose(); $gp.Dispose(); $hl2=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(170,255,255,255),1); $e.Graphics.DrawLine($hl2,(Px 10),1,($s.ClientSize.Width-(Px 10)),1); $hl2.Dispose() })
 $ask=New-Object System.Windows.Forms.TextBox; $ask.BorderStyle='None'; $ask.Left=(Px 14); $ask.Top=(Px 6); $ask.Width=(Px 392); $ask.BackColor=[System.Drawing.Color]::FromArgb(250,251,253); $ask.ForeColor=$C.TextSec; $ask.Font=New-Object System.Drawing.Font("Segoe UI",10); $ask.Text=$script:askPH
 $kcap=New-Object System.Windows.Forms.Label; $kcap.Text="Enter"; $kcap.Font=New-Object System.Drawing.Font("Consolas",8); $kcap.ForeColor=$C.TextSec; $kcap.BackColor=[System.Drawing.Color]::FromArgb(238,240,245); $kcap.TextAlign='MiddleCenter'; $kcap.AutoSize=$false; $kcap.Width=(Px 42); $kcap.Height=(Px 18); $kcap.Left=(Px 424); $kcap.Top=(Px 5); Set-Round $kcap (Px 4)
 $askHost.Controls.Add($ask); $askHost.Controls.Add($kcap)
@@ -620,6 +647,11 @@ $strip.Add_MouseMove({
     $dx=$_.X-$script:sdp.X; $dy=$_.Y-$script:sdp.Y
     if($script:moved -or [math]::Abs($dx) -gt 4 -or [math]::Abs($dy) -gt 4){ $script:moved=$true; $strip.Left+=$dx; $strip.Top+=$dy; if($script:helpPopup -and -not $script:helpPopup.IsDisposed -and $script:helpPopup.Visible){ Place-Panel $script:helpPopup } }
     return
+  }
+  if(([math]::Abs($_.X-$script:sheen.X) -gt (Px 12)) -or ([math]::Abs($_.Y-$script:sheen.Y) -gt (Px 12))){
+    $o=$script:sheen; $script:sheen=$_.Location; $rad=(Px 170)
+    $ix=[math]::Min($o.X,$_.X)-$rad; $iy=[math]::Min($o.Y,$_.Y)-$rad; $iw=[math]::Abs($_.X-$o.X)+($rad*2); $ih=[math]::Abs($_.Y-$o.Y)+($rad*2)
+    $strip.Invalidate((New-Object System.Drawing.Rectangle($ix,$iy,$iw,$ih)))
   }
   $h=''; foreach($el in $script:els){ if($el.r.Contains($_.Location)){ $h=$el.k } }
   if($h -ne $script:hover){
@@ -677,6 +709,7 @@ $strip.Add_MouseUp({
   if($script:collapsed){ $script:collapsed=$false; Apply-Strip }
   elseif($script:rStatus.Contains($_.Location) -and $script:lastFull){ Show-HelpPopup $script:lastFull }
 })
+$strip.Add_MouseLeave({ $script:sheen=New-Object System.Drawing.Point(-999,-999); $strip.Invalidate() })
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
   if(-not (Get-Process -Id $sync.ffpid -ErrorAction SilentlyContinue)){
