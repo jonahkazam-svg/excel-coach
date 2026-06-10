@@ -5,7 +5,7 @@
 # Test: coach.ps1 -Test -Mode socratic|answer|analyze   (streams to console, still logs)
 param([switch]$Test, [ValidateSet('socratic','answer','analyze')][string]$Mode='socratic')
 
-$Vault="C:\Users\jonah\Projects\excel-coach"; $Sessions=Join-Path $Vault "Sessions"; $Coaching=Join-Path $Vault "Coaching"; $EnvFile=Join-Path $Vault ".env"; $Model="gpt-4o"
+$Vault="C:\Users\jonah\Projects\excel-coach"; $Sessions=Join-Path $Vault "Sessions"; $Coaching=Join-Path $Vault "Coaching"; $EnvFile=Join-Path $Vault ".env"; $Model="gpt-5.5"
 $SystemPrompt="You are a sharp Excel and financial-modeling tutor at Breaking Into Wall Street / investment-banking level. The screenshot shows the student's WHOLE desktop - usually the lesson (video/example) on one side and their own Excel on the other. Compare the two. Have a natural back-and-forth: nudge them to think when it helps, answer directly when they ask. Reference their known weak points by name when relevant. Keep replies concise unless they ask for more."
 $AnalyzeSys="You are a financial-modeling study coach. Given a transcript of a Breaking Into Wall Street session (instructor + the student thinking aloud), produce: WEAK POINTS (where they were confused/guessed/erred - quote briefly), COVERED (key concepts/shortcuts), DRILLS (2-3 specific 5-10 min exercises). Be specific and concise."
 
@@ -40,7 +40,8 @@ function Load-Brain {
   return ("`n`nMEMORY - what you know about this student from past sessions (reference recurring weaknesses by name):`n"+($parts -join "`n`n"))
 }
 function Stream-Chat($messages,$onToken){
-  $payload=@{ model=$Model; max_tokens=600; temperature=0; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14
+  if($Model -match '^gpt-5'){ $payload=@{ model=$Model; max_completion_tokens=600; reasoning_effort='none'; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14 }
+  else { $payload=@{ model=$Model; max_tokens=600; temperature=0; stream=$true; messages=$messages } | ConvertTo-Json -Depth 14 }
   $client=New-Object System.Net.Http.HttpClient; $client.Timeout=[TimeSpan]::FromSeconds(120)
   $req=New-Object System.Net.Http.HttpRequestMessage('Post','https://api.openai.com/v1/chat/completions')
   $req.Headers.Authorization=New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer',$script:key)

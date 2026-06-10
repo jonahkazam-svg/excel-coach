@@ -19,7 +19,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
-$sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-4o-mini"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
+$sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
@@ -73,14 +73,16 @@ while(-not $sync.stop){
         Cap $sync.png; $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png))
         if($asked){
           $u="The student spoke to you and asked: '"+$txt+"'. Look at their screen and answer clearly and helpfully in 1 to 4 sentences - actually explain it so they understand, like a good tutor. Use their screen and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
-          $useModel="gpt-4o"; $det="high"; $maxtok=380
+          $useModel=$sync.model; $det="high"; $maxtok=380
         } else {
           if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). Look at what I'm actually doing and, ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences). If it looks fine or you're unsure, reply EXACTLY: OK." }
           else { $u="Recent lesson audio: '"+$lessonCtx+"'. Look at what I'm doing on screen. ONLY if you can clearly see a real, specific mistake, point it out (1-2 sentences). If it looks fine or you're not sure, reply EXACTLY: OK - do not guess or nitpick." }
           if($sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat it." }
           $useModel=$sync.model; $det="auto"; $maxtok=120
         }
-        $payload=@{ model=$useModel; max_tokens=$maxtok; temperature=0; messages=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail=$det}})}) } | ConvertTo-Json -Depth 12
+        $msgs=@(@{role='system';content=($sync.sys+$sync.brain)},@{role='user';content=@(@{type='text';text=$u},@{type='image_url';image_url=@{url=('data:image/png;base64,'+$b64);detail=$det}})})
+        if($useModel -match '^gpt-5'){ $payload=@{ model=$useModel; max_completion_tokens=$maxtok; reasoning_effort='none'; messages=$msgs } | ConvertTo-Json -Depth 12 }
+        else { $payload=@{ model=$useModel; max_tokens=$maxtok; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
         $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
         $vr=& curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
         $vj=$null; try{ $vj=$vr|ConvertFrom-Json }catch{}
