@@ -25,7 +25,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
 $sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""
 if($sync.fishKey){ $sync.ttsMode="fish" }
@@ -147,7 +147,7 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1); $chatUntil=(Get-Date).AddDays(-1)
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1); $chatUntil=(Get-Date).AddDays(-1); $lastLessonCap=(Get-Date).AddDays(-1)
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
@@ -177,6 +177,7 @@ while(-not $sync.stop){
       $ca=@(@{type='text';text=$ua})
       if($xlA){ $ca+=@{type='text';text=("[EXACT live Excel data, if relevant - authoritative]:`n"+$xlA)} }
       if($sync.sheetPurpose){ $ca+=@{type='text';text=("Excel sheet context: "+$sync.sheetPurpose)} }
+      if($sync.lessonModel){ $ca+=@{type='text';text=("What the instructor's build looks like (from the lesson video): "+$sync.lessonModel)} }
       if($sync.companyCtx){ $ca+=@{type='text';text=[string]$sync.companyCtx} }
       if($sync.lessonlog){ $les2=$sync.lessonlog; if($les2.Length -gt 600){ $les2=$les2.Substring($les2.Length-600) }; $ca+=@{type='text';text=("Recent lesson context: "+$les2)} }
       if($exB){ $ca+=@{type='text';text='[Image: Excel window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail='high'}} }
@@ -387,6 +388,32 @@ while(-not $sync.stop){
           }
         }
         $sync.lesson=$lessonCtx; $sync.isPaused=$working; $sync.isAnswer=$asked; $sync.stamp=$sync.stamp+1
+        if((-not $asked) -and (-not $working) -and $txt -and $coB -and (((Get-Date)-$lastLessonCap).TotalSeconds -ge 90)){
+          $lastLessonCap=(Get-Date)
+          try{
+            $lmC=@(@{type='text';text="This is a frame from a finance course video. If the instructor is showing a spreadsheet/model being built, extract its STRUCTURE compactly: each visible row as '<label>: <formula or value>' lines, plus a one-line note of what is being built. If no spreadsheet is visible reply EXACTLY: NOLESSON."})
+            $lmC+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail='high'}}
+            $lmPay=@{ model=$sync.model; max_completion_tokens=1200; reasoning_effort='low'; messages=@(@{role='system';content="You extract spreadsheet structure from a single course-video frame for a finance student."},@{role='user';content=$lmC}) } | ConvertTo-Json -Depth 10
+            $lmBf="$env:TEMP\xc_lesmodel.json"; [IO.File]::WriteAllText($lmBf,$lmPay,(New-Object System.Text.UTF8Encoding($false)))
+            $lmR=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$lmBf)
+            $lmJ=$null; try{ $lmJ=$lmR|ConvertFrom-Json }catch{}
+            if($lmJ.choices){
+              $lmT=([string]$lmJ.choices[0].message.content).Trim()
+              if($lmT -and ($lmT -notmatch '^\s*NOLESSON')){
+                $lmBlk="["+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"]`n"+$lmT
+                $lmRoll=([string]$sync.lessonModel+"`n`n"+$lmBlk).Trim()
+                if($lmRoll.Length -gt 2500){ $lmRoll=$lmRoll.Substring($lmRoll.Length-2500) }
+                $sync.lessonModel=$lmRoll
+                try{
+                  $lmDir=Join-Path $sync.coaching "LessonModels"; New-Item -ItemType Directory -Force -Path $lmDir | Out-Null
+                  $lmF=Join-Path $lmDir ((Get-Date).ToString("yyyy-MM-dd")+".md")
+                  if(-not(Test-Path $lmF)){ [IO.File]::AppendAllText($lmF,("# Lesson models - "+(Get-Date).ToString("yyyy-MM-dd")+"`r`n"),(New-Object System.Text.UTF8Encoding($false))) }
+                  [IO.File]::AppendAllText($lmF,("`r`n## "+(Get-Date).ToString("HH:mm")+"`r`n"+$lmT+"`r`n"),(New-Object System.Text.UTF8Encoding($false)))
+                }catch{}
+              }
+            }
+          }catch{}
+        }
         if($segs.Count -gt 40){ for($i=0;$i -lt ($segs.Count-40);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
         if(-not $asked -and $txt){ $sync.distillbuf=($sync.distillbuf+" "+$txt).Trim(); $sync.distillCount=$sync.distillCount+1 }
         if($sync.distillCount -ge 36 -and $sync.distillbuf.Length -gt 120){
@@ -488,6 +515,7 @@ while(-not $sync.stop){
     $uc=@(@{type='text';text=$inst})
     if($diffTxt){ $uc+=@{type='text';text=$diffTxt} }
     if($sync.sheetPurpose){ $uc+=@{type='text';text=("What this sheet practices: "+$sync.sheetPurpose)} }
+    if($sync.lessonModel){ $uc+=@{type='text';text=("What the instructor's build looks like (from the lesson video): "+$sync.lessonModel)} }
     if($sync.companyCtx){ $uc+=@{type='text';text=[string]$sync.companyCtx} }
     if($les2){ $uc+=@{type='text';text=("Recent lesson context: "+$les2)} }
     if($sync.lastNudge -and $sync.lastNudge -ne "OK"){ $uc+=@{type='text';text=("You last told me: '"+$sync.lastNudge+"'. If I fixed it and nothing else is wrong, reply OK. If it is STILL not fixed, flag it again.")} }
