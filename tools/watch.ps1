@@ -62,7 +62,7 @@ try{
 # start NONSTOP segmented audio capture
 if(Test-Path $sync.segdir){ Remove-Item $sync.segdir -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force -Path $sync.segdir | Out-Null
-$ffArgs='-hide_banner -loglevel error -f dshow -i audio="'+$sync.mic+'" -f segment -segment_time 5 -ac 1 -ar 16000 -reset_timestamps 1 -y "'+(Join-Path $sync.segdir "seg_%03d.wav")+'"'
+$ffArgs='-hide_banner -loglevel error -f dshow -i audio="'+$sync.mic+'" -y -map 0:a -f segment -segment_time 5 -ac 1 -ar 16000 -reset_timestamps 1 "'+(Join-Path $sync.segdir "seg_%03d.wav")+'" -map 0:a -f segment -segment_time 1 -segment_wrap 8 -ac 1 -ar 16000 -reset_timestamps 1 "'+(Join-Path $sync.segdir "lvl_%01d.wav")+'"'
 $ffp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -PassThru
 $sync.chime=Join-Path $env:TEMP "xc_chime.wav"; try{ & $ff -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=659:duration=0.10" -f lavfi -i "sine=frequency=988:duration=0.17" -filter_complex "[0]volume=0.15,afade=t=in:st=0:d=0.01,afade=t=out:st=0.05:d=0.05[a];[1]volume=0.17,afade=t=in:st=0:d=0.01,afade=t=out:st=0.10:d=0.07[b];[a][b]concat=n=2:v=0:a=1,aecho=0.8:0.9:40:0.2" -ar 44100 -ac 2 $sync.chime 2>$null }catch{}
 $sync.ffpid=$ffp.Id
@@ -488,6 +488,31 @@ $pst=[powershell]::Create(); $pst.Runspace=$rsT; [void]$pst.AddScript($ttsWork);
 
 function Kill-FF { try{ Stop-Process -Id $sync.ffpid -Force -ErrorAction SilentlyContinue }catch{} }
 
+# Live mic level: read the tail of the segment ffmpeg is CURRENTLY writing and
+# return average amplitude 0..1 (-1 = unavailable). Lets the strip show that it
+# hears the user the instant they speak, instead of after transcription.
+function Get-MicLevel {
+  try{
+    $f=Get-ChildItem $sync.segdir -Filter "lvl_*.wav" -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 9000 } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if(-not $f){ return -1 }
+    if((((Get-Date)-$f.LastWriteTime).TotalSeconds) -gt 4){ return 0 }
+    $fs=[IO.File]::Open($f.FullName,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+    try{
+      $len=$fs.Length
+      $take=4800
+      $off=$len-$take; if($off -lt 44){ $off=44 }; if(($off % 2) -eq 1){ $off=$off-1 }
+      [void]$fs.Seek($off,[IO.SeekOrigin]::Begin)
+      $buf=New-Object byte[] $take
+      $read=$fs.Read($buf,0,$take)
+      if($read -lt 200){ return 0 }
+      $sum=0.0; $cnt=0
+      for($i=0;$i -lt ($read-1);$i+=4){ $v=[BitConverter]::ToInt16($buf,$i); $sum+=[Math]::Abs([double]$v); $cnt++ }
+      if($cnt -eq 0){ return 0 }
+      return [Math]::Min(1.0,($sum/$cnt)/3000.0)
+    } finally { $fs.Close() }
+  }catch{ return -1 }
+}
+
 if($TestAsync){
   $waited=0; while($sync.stamp -lt 1 -and $waited -lt 50){ Start-Sleep -Milliseconds 500; $waited+=0.5 }
   Write-Host ("stamp="+$sync.stamp+" paused="+$sync.isPaused); Write-Host ("rolling lesson: '"+$sync.lesson+"'"); Write-Host ("Result: "+$sync.text)
@@ -643,7 +668,7 @@ function Tune-WebView($wv){
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
 $script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date)
-$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""
+$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
 $strip=$mkS.f; $wvS=$mkS.wv; $script:strip=$strip; $script:wvS=$wvS
@@ -848,7 +873,13 @@ $ui.Add_Tick({
       elseif($script:ffFails -eq 4){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; Set-Msg "Mic capture failed - check MIC_DEVICE in .env"; Set-Dot '#ef4444' $false }
     }
   } elseif($script:ffFails -ne 0){ $script:ffFails=0 }
-  if($script:idle){ Set-Msg $script:baseStatus }
+  $lv=-1; if(-not $sync.paused){ $lv=Get-MicLevel }
+  if($lv -ge 0){ JS $script:wvS ("XC.setEq("+[string]::Format([Globalization.CultureInfo]::InvariantCulture,"{0:0.00}",$lv)+")") } else { JS $script:wvS ("XC.setEq(-1)") }
+  if($lv -ge 0.12){ $script:heardAt=(Get-Date) }
+  if($script:idle){
+    if($script:heardAt -and (((Get-Date)-$script:heardAt).TotalSeconds -lt 1.6)){ Set-Msg $(if($sync.chatOn){ "Hearing you (chat)..." }else{ "Hearing you..." }) }
+    else { Set-Msg $script:baseStatus }
+  }
   if(-not $script:collapsed){
     $el=(Get-Date)-$script:t0; $tt=("{0:00}:{1:00}" -f [int][math]::Floor($el.TotalMinutes),$el.Seconds)
     if($tt -ne $script:lastTimer){ $script:lastTimer=$tt; JS $script:wvS ("XC.setTimer('"+$tt+"')") }
