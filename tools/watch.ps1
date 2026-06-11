@@ -82,15 +82,16 @@ function Invoke-XlAction($req){
   $ac=@(@{type='text';text=("REQUEST: "+$req)})
   if($sync.sheetPurpose){ $ac+=@{type='text';text=("What the student is practicing: "+$sync.sheetPurpose)} }
   if($fresh){ $ac+=@{type='text';text=("EXACT current Excel data (active sheet):`n"+$fresh)} }
-  $apay=@{ model=$sync.model; max_completion_tokens=2200; reasoning_effort='low'; messages=@(@{role='system';content="You control Microsoft Excel for a finance student via a tiny operation language. If the REQUEST asks you to build, fill, set up, label, or write something in Excel, reply ONLY with operation lines:`nSET <cell> <label or number or =formula>`nSHEET <NewSheetName>`nDONE <one short spoken confirmation of what you built>`nRules: work on the ACTIVE sheet shown in the data (or create a SHEET first if asked for a new one); ONLY write to cells that are empty in the data; do exactly what was asked - minimal, clean, laid out like an investment-banking model; formulas start with =; the LAST line must be the DONE line. If the REQUEST is NOT asking you to write into Excel, reply EXACTLY: NOTACTION"},@{role='user';content=$ac}) } | ConvertTo-Json -Depth 10
+  $apay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content="You control Microsoft Excel for a finance student via a tiny operation language. If the REQUEST asks you to build, fill, set up, label, write, fix, or change something in Excel, reply ONLY with operation lines:`nSET <cell> <label or number or =formula>   (writes only if the cell is empty)`nPUT <cell> <label or number or =formula>   (overwrites - use ONLY when the request explicitly asks to change, fix, replace or correct existing content)`nSHEET <NewSheetName>`nDONE <one short spoken confirmation of what you built>`nRules: work on the ACTIVE sheet shown in the data (or create a SHEET first if asked for a new one); do exactly what was asked - minimal, clean, laid out like an investment-banking model; formulas start with =; before writing the DONE line, double-check every formula so its cell references point at cells you actually wrote or that already exist in the data; the LAST line must be the DONE line. If the REQUEST is NOT asking you to write into Excel, reply EXACTLY: NOTACTION"},@{role='user';content=$ac}) } | ConvertTo-Json -Depth 10
   $abf2="$env:TEMP\xc_act.json"; [IO.File]::WriteAllText($abf2,$apay,(New-Object System.Text.UTF8Encoding($false)))
   $arr2=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf2)
   $ajj2=$null; try{ $ajj2=$arr2|ConvertFrom-Json }catch{}
   if(-not $ajj2.choices){ return $null }
   $aops=([string]$ajj2.choices[0].message.content).Trim()
   if((-not $aops) -or ($aops -match '^\s*NOTACTION')){ return $null }
-  if($aops -notmatch '(?m)^(SET|SHEET)\s'){ return $null }
+  if($aops -notmatch '(?m)^(SET|PUT|SHEET)\s'){ return $null }
   $r=$null; try{ $r=Apply-XlOps $aops }catch{ $r="Excel action failed: "+$_.Exception.Message }
+  try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  REQ: "+$req+"`r`nOPS:`r`n"+$aops+"`r`nRESULT: "+$r+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
   return $r
 }
 function Cap($path){
@@ -123,7 +124,7 @@ while(-not $sync.stop){
   if($sync.typedAsk){
     try{
       $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__")
-      if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out)\b')){
+      if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
         $axr=Invoke-XlAction $tq
         if($axr){
           $sync.text=$axr; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
@@ -143,6 +144,7 @@ while(-not $sync.stop){
       } else {
         $ua=$(if($isAssist){ "Help me with whatever I am working on right now." }else{ "I ask: "+$tq })
         $ua+=" My practice is NOT always an Excel build. Right now it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF) with no Excel involved. Use the images of what I am actually looking at and help with THAT. If there is no real Excel work in progress, read the question or exercise on my screen and answer or explain it directly - do not dismiss the other window as irrelevant. Cite exact Excel cells only when there is real Excel data. "+$(if($tdet){ "Explain in detail with the full reasoning and steps." }else{ "Be concise: the direct answer or fix in 1 to 3 short sentences." })
+        if($sync.handsOn){ $ua+=" NOTE: your hands are enabled - you genuinely CAN write into my Excel yourself. Never say you cannot edit Excel; if I am asking you to build or change something, say you can do it and ask me to give it as a direct command." }
       }
       $ca=@(@{type='text';text=$ua})
       if($xlA){ $ca+=@{type='text';text=("[EXACT live Excel data, if relevant - authoritative]:`n"+$xlA)} }
@@ -239,7 +241,7 @@ while(-not $sync.stop){
         $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and (-not $inChatWin) -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
         $asked=($sync.micMode -and (-not $sync.muteMe) -and (-not $heyHit) -and (-not $inChatWin) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
         if($asked){ $sync.ackPing=$true }
-        if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out)\b')){
+        if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
           $axr3=Invoke-XlAction $txt
           if($axr3){
             [void]$askHist.Add(@{q=$txt;a=$axr3}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
@@ -267,7 +269,7 @@ while(-not $sync.stop){
             $isChat=$true; $chatQ=$txt.Trim()
           }
         }
-        if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out)\b')){
+        if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
           $axr2=Invoke-XlAction $chatQ
           if($axr2){
@@ -280,6 +282,7 @@ while(-not $sync.stop){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
           $hm3=@(); foreach($h in $askHist){ $hm3+=@{role='user';content=[string]$h.q}; $hm3+=@{role='assistant';content=[string]$h.a} }
           $cctx="You are a sharp, friendly finance and Excel tutor having a QUICK spoken conversation with a student mid-study. Answer in 1-3 short conversational sentences - direct and natural, like speech. No markdown, no lists, no headers. If they ask about their sheet, use the Excel data provided."
+          if($sync.handsOn){ $cctx=$cctx+" NOTE: your hands are enabled - you genuinely CAN write into their Excel. Never say you cannot edit Excel; if they wanted you to build or change something, say you can do it and ask them to give it as a direct command (like: fill row 5 with years, or: fix D24)." }
           $cxl=[string]$sync.lastXl; if($cxl.Length -gt 1500){ $cxl=$cxl.Substring(0,1500) }
           $cmsg=$chatQ
           if($sync.sheetPurpose){ $cmsg=$cmsg+"`n(Context - what I am practicing: "+$sync.sheetPurpose+")" }
@@ -316,6 +319,7 @@ while(-not $sync.stop){
         if($doCheck){
         if($asked){
           $u="The student spoke to you and asked: '"+$txt+"'. What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'. You are given up to two labeled images: MY Excel sheet (my own work) and the course/lesson. Read the exact question carefully, work it out step by step and double-check any arithmetic, then answer clearly and helpfully in 1 to 4 sentences - explain it so they understand, like a good tutor. Use my Excel, the course image, this lesson context, and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
+          if($sync.handsOn){ $u+=" NOTE: your hands are enabled - you genuinely CAN write into the student's Excel yourself; never say you cannot edit Excel." }
           $useModel=$sync.model; $det="high"; $maxtok=700; $effort="medium"
         } else {
           if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). You are given up to two labeled images: MY Excel sheet and the course/lesson. Compare my Excel to what the lesson is teaching. ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences), citing exact cell addresses ONLY from the EXACT live-Excel data block if one is provided (never guess a cell from the image). If it looks fine or you're unsure, reply EXACTLY: OK." }

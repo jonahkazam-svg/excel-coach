@@ -64,35 +64,47 @@ function Find-WeakFlash($text){
 # sheet it creates), max 80 writes per command, never deletes or overwrites.
 # -Plan parses and validates without touching Excel (for testing).
 function Apply-XlOps($ops,[switch]$Plan){
-  $written=0; $skipped=0; $sheets=0; $done=""; $errors=0; $planned=@()
+  $written=0; $skipped=0; $sheets=0; $done=""; $failed=@(); $planned=@(); $putUsed=0
   $xl=$null; $wb=$null; $sh=$null
   if(-not $Plan){
     try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ return "Excel is not open - open your workbook first." }
     try{ $wb=$xl.ActiveWorkbook }catch{}
     if(-not $wb){ return "No active workbook in Excel." }
-    $sh=$xl.ActiveSheet
+    $ready=$false
+    for($w=0;$w -lt 8;$w++){ try{ $sh=$xl.ActiveSheet; $null=$sh.Name; $ready=$true; break }catch{ Start-Sleep -Milliseconds 500 } }
+    if(-not $ready){ return "Excel would not let me in (are you editing a cell?) - press Enter or Esc and ask me again." }
   }
   foreach($ln in ([string]$ops -split "`r?`n")){
     $l=$ln.Trim(); if(-not $l){ continue }
-    if($l -match '^SET\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){
-      $addr=$Matches[1].ToUpper(); $val=$Matches[2].Trim()
+    if($l -match '^(SET|PUT)\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){
+      $op=$Matches[1].ToUpper(); $addr=$Matches[2].ToUpper(); $val=$Matches[3].Trim()
       if($written -ge 80){ $skipped++; continue }
-      if($Plan){ $planned+=("SET "+$addr+" "+$val); $written++; continue }
-      try{
-        $cell=$sh.Range($addr)
-        $cur=$cell.Value2
-        if($null -eq $cur -or ([string]$cur) -eq ""){
-          if($val.StartsWith("=")){ $cell.Formula=$val }
-          else{ $d=0.0; if([double]::TryParse($val,[ref]$d)){ $cell.Value2=$d } else { $cell.Value2=$val } }
-          $written++
-        } else { $skipped++ }
-        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell)
-      }catch{ $errors++ }
+      if(($op -eq "PUT") -and ($putUsed -ge 15)){ $skipped++; continue }
+      if($Plan){ $planned+=($op+" "+$addr+" "+$val); $written++; continue }
+      $opOk=$false; $lastErr=""
+      for($try=0;$try -lt 6;$try++){
+        try{
+          $cell=$sh.Range($addr)
+          $cur=$cell.Value2
+          $mayWrite=(($op -eq "PUT") -or ($null -eq $cur) -or (([string]$cur) -eq ""))
+          if($mayWrite){
+            try{ $cell.Formula=$val }catch{ $cell.Value2=$val }
+            $written++; if($op -eq "PUT"){ $putUsed++ }
+          } else { $skipped++ }
+          [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell)
+          $opOk=$true; break
+        }catch{ $lastErr=$_.Exception.Message; Start-Sleep -Milliseconds 400 }
+      }
+      if(-not $opOk){ $failed+=($addr+$(if($lastErr){ " ("+$lastErr.Substring(0,[Math]::Min(70,$lastErr.Length)).Trim()+")" }else{ "" })) }
     }
     elseif($l -match '^SHEET\s+(.+)$'){
       $nm=($Matches[1].Trim() -replace '[\\/\?\*\[\]:]',''); if($nm.Length -gt 28){ $nm=$nm.Substring(0,28) }
       if($Plan){ $planned+=("SHEET "+$nm); $sheets++; continue }
-      try{ $ns=$wb.Worksheets.Add([Type]::Missing,$sh); if($nm){ try{ $ns.Name=$nm }catch{} }; if($sh){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sh) }catch{} }; $sh=$ns; $sheets++ }catch{ $errors++ }
+      $shOk=$false
+      for($try=0;$try -lt 3;$try++){
+        try{ $ns=$wb.Worksheets.Add([Type]::Missing,$sh); if($nm){ try{ $ns.Name=$nm }catch{} }; if($sh){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sh) }catch{} }; $sh=$ns; $sheets++; $shOk=$true; break }catch{ Start-Sleep -Milliseconds 500 }
+      }
+      if(-not $shOk){ $failed+=("sheet '"+$nm+"'") }
     }
     elseif($l -match '^DONE\s*(.*)$'){ $done=$Matches[1].Trim() }
   }
@@ -105,7 +117,7 @@ function Apply-XlOps($ops,[switch]$Plan){
   if($written){ $parts+=("wrote "+$written+" cells") }
   if($sheets){ $parts+=([string]$sheets+" new sheet") }
   if($skipped){ $parts+=("skipped "+$skipped+" non-empty") }
-  if($errors){ $parts+=([string]$errors+" errors") }
+  if($failed.Count -gt 0){ $parts+=("could NOT write "+($failed -join ", ")+" - Excel was busy; ask me to fill those again") }
   if($parts.Count -gt 0){ return ($done+" ("+($parts -join ", ")+")") }
   return $done
 }
