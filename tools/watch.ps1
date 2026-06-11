@@ -91,8 +91,35 @@ function Invoke-XlAction($req){
   $aops=([string]$ajj2.choices[0].message.content).Trim()
   if((-not $aops) -or ($aops -match '^\s*NOTACTION')){ return $null }
   if($aops -notmatch '(?m)^(SET|PUT|SHEET)\s'){ return $null }
-  $r=$null; try{ $r=Apply-XlOps $aops }catch{ $r="Excel action failed: "+$_.Exception.Message }
+  $r=$null; $applied=$false; try{ $r=Apply-XlOps $aops; $applied=$true }catch{ $r="Excel action failed: "+$_.Exception.Message }
   try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  REQ: "+$req+"`r`nOPS:`r`n"+$aops+"`r`nRESULT: "+$r+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+  # self-verify: re-read the sheet, make the model confirm every requested item landed, repair if not (max 2 rounds)
+  if($applied -and $r -and ($r -notmatch '^(Excel is not open|No active workbook|Excel would not let me in)')){
+    $allOps=$aops; $lastRes=[string]$r; $verified=$false; $vfail=$false
+    for($vround=1;$vround -le 2;$vround++){
+      Start-Sleep -Milliseconds 1500
+      $after=$null; try{ $after=Read-ExcelLive }catch{}
+      if(-not $after){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": could not re-read the sheet - verification skipped`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
+      $vc=@(@{type='text';text=("ORIGINAL REQUEST: "+$req)})
+      $vc+=@{type='text';text=("OPS APPLIED SO FAR:`n"+$allOps)}
+      $vc+=@{type='text';text=("APPLY SUMMARY (names any cells that could NOT be written): "+$lastRes)}
+      $vc+=@{type='text';text=("EXACT Excel data NOW, after the writes (active sheet):`n"+$after)}
+      $vpay=@{ model=$sync.model; max_completion_tokens=2500; reasoning_effort='medium'; messages=@(@{role='system';content="You just wrote into a finance student's Excel using SET/PUT/SHEET operation lines and must now VERIFY your own work. You are given the ORIGINAL REQUEST, the ops applied so far, the apply summary (it lists any cells that could NOT be written - those cells are still empty), and the EXACT sheet data as it is NOW. Recompute every formula from this data and confirm EVERY item the request asked for actually landed with correct cell references, labels, numbers and formulas. If anything is missing or wrong, reply ONLY with repair operation lines, one per line:`nSET <cell> <label or number or =formula>   (for cells that are empty now, including the could-NOT-write ones)`nPUT <cell> <label or number or =formula>   (ONLY to fix a cell the ops above just wrote with wrong content - never touch any other cell)`nNo DONE line, no commentary. If every requested item is present and correct, reply EXACTLY: VERIFIED"},@{role='user';content=$vc}) } | ConvertTo-Json -Depth 10
+      $vbf="$env:TEMP\xc_verify.json"; [IO.File]::WriteAllText($vbf,$vpay,(New-Object System.Text.UTF8Encoding($false)))
+      $vrr=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$vbf)
+      $vjj=$null; try{ $vjj=$vrr|ConvertFrom-Json }catch{}
+      if(-not $vjj.choices){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": no API response`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
+      $vout=([string]$vjj.choices[0].message.content).Trim()
+      if($vout -match '^\s*VERIFIED'){ $verified=$true; try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": VERIFIED`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
+      if($vout -notmatch '(?m)^(SET|PUT)\s'){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": unusable reply: "+$(if($vout.Length -gt 160){ $vout.Substring(0,160) }else{ $vout })+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
+      $vfail=$true
+      $vres=$null; try{ $vres=Apply-XlOps $vout }catch{ $vres="Excel repair failed: "+$_.Exception.Message }
+      $allOps=$allOps+"`n"+$vout; $lastRes=[string]$vres
+      try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+" REPAIR`r`nOPS:`r`n"+$vout+"`r`nRESULT: "+$vres+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+    }
+    if($verified){ $r=[string]$r+" - verified." }
+    elseif($vfail){ $r=[string]$r+" - checked twice, may need a look." }
+  }
   return $r
 }
 function Cap($path){
