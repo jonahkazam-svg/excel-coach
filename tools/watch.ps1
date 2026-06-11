@@ -27,7 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -71,6 +71,28 @@ $work=@'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type 'using System; using System.Runtime.InteropServices; public class Win2 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags); }'
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{}
+
+# The coach's hands: turn a natural-language request into SET/SHEET ops and
+# execute them via Apply-XlOps. Returns the spoken summary, or $null if the
+# request was not really an Excel-building action (caller falls back to Q&A).
+function Invoke-XlAction($req){
+  if(-not (Get-Command Apply-XlOps -ErrorAction SilentlyContinue)){ return $null }
+  $fresh=$null; try{ $fresh=Read-ExcelLive }catch{}
+  if(-not $fresh){ $fresh=[string]$sync.lastXl }
+  $ac=@(@{type='text';text=("REQUEST: "+$req)})
+  if($sync.sheetPurpose){ $ac+=@{type='text';text=("What the student is practicing: "+$sync.sheetPurpose)} }
+  if($fresh){ $ac+=@{type='text';text=("EXACT current Excel data (active sheet):`n"+$fresh)} }
+  $apay=@{ model=$sync.model; max_completion_tokens=2200; reasoning_effort='low'; messages=@(@{role='system';content="You control Microsoft Excel for a finance student via a tiny operation language. If the REQUEST asks you to build, fill, set up, label, or write something in Excel, reply ONLY with operation lines:`nSET <cell> <label or number or =formula>`nSHEET <NewSheetName>`nDONE <one short spoken confirmation of what you built>`nRules: work on the ACTIVE sheet shown in the data (or create a SHEET first if asked for a new one); ONLY write to cells that are empty in the data; do exactly what was asked - minimal, clean, laid out like an investment-banking model; formulas start with =; the LAST line must be the DONE line. If the REQUEST is NOT asking you to write into Excel, reply EXACTLY: NOTACTION"},@{role='user';content=$ac}) } | ConvertTo-Json -Depth 10
+  $abf2="$env:TEMP\xc_act.json"; [IO.File]::WriteAllText($abf2,$apay,(New-Object System.Text.UTF8Encoding($false)))
+  $arr2=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf2)
+  $ajj2=$null; try{ $ajj2=$arr2|ConvertFrom-Json }catch{}
+  if(-not $ajj2.choices){ return $null }
+  $aops=([string]$ajj2.choices[0].message.content).Trim()
+  if((-not $aops) -or ($aops -match '^\s*NOTACTION')){ return $null }
+  if($aops -notmatch '(?m)^(SET|SHEET)\s'){ return $null }
+  $r=$null; try{ $r=Apply-XlOps $aops }catch{ $r="Excel action failed: "+$_.Exception.Message }
+  return $r
+}
 function Cap($path){
   $h=[Win2]::GetForegroundWindow(); $r=New-Object Win2+RECT; [void][Win2]::GetWindowRect($h,[ref]$r)
   $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
@@ -101,6 +123,14 @@ while(-not $sync.stop){
   if($sync.typedAsk){
     try{
       $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__")
+      if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out)\b')){
+        $axr=Invoke-XlAction $tq
+        if($axr){
+          $sync.text=$axr; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+          [void]$askHist.Add(@{q=$tq;a=$axr}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
+          continue
+        }
+      }
       $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
       $afgh=[Win2]::GetForegroundWindow(); $aexFg=$false; try{ $aexFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $afgh }) }catch{}
       $fbB=$null; if(-not $aexFg){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
@@ -209,6 +239,14 @@ while(-not $sync.stop){
         $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and (-not $inChatWin) -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
         $asked=($sync.micMode -and (-not $sync.muteMe) -and (-not $heyHit) -and (-not $inChatWin) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
         if($asked){ $sync.ackPing=$true }
+        if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out)\b')){
+          $axr3=Invoke-XlAction $txt
+          if($axr3){
+            [void]$askHist.Add(@{q=$txt;a=$axr3}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
+            $sync.askLabel="Excel action"; $sync.text=$axr3; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+            continue
+          }
+        }
         $isChat=$false; $chatQ=""
         if($sync.micMode -and (-not $sync.muteMe) -and $txt -and ($segT -gt $sync.ttsBusyUntil) -and (-not $asked)){
           if($heyHit){
@@ -227,6 +265,15 @@ while(-not $sync.stop){
               continue
             }
             $isChat=$true; $chatQ=$txt.Trim()
+          }
+        }
+        if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out)\b')){
+          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
+          $axr2=Invoke-XlAction $chatQ
+          if($axr2){
+            [void]$askHist.Add(@{q=$chatQ;a=$axr2}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
+            $sync.askLabel="Excel action"; $sync.text=$axr2; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+            continue
           }
         }
         if($isChat){
@@ -753,6 +800,12 @@ function Handle-Act($k){
     }
     'mute'     { $sync.mute=-not $sync.mute; JS $script:wvS ("XC.setToggle('mute',"+(BoolJs $sync.mute)+")"); if($sync.mute){ $sync.ttsStop=$true } }
     'sound'    { $sync.muteSound=-not $sync.muteSound; JS $script:wvS ("XC.setToggle('sound',"+(BoolJs $sync.muteSound)+")") }
+    'hands'    {
+      $sync.handsOn=-not $sync.handsOn
+      JS $script:wvS ("XC.setToggle('hands',"+(BoolJs $sync.handsOn)+")")
+      $script:idle=$false; Set-Msg $(if($sync.handsOn){ "Hands ON - tell me what to build (empty cells only)" }else{ "Hands off - watching only" }); Set-Dot $(if($sync.handsOn){ '#22c55e' }else{ '#969aa2' }) $false
+      $script:lastActive=(Get-Date); $script:idle=$true
+    }
     'note'     {
       $script:idle=$false; Set-Msg "Noting this for later..."; Set-Dot '#2563eb' $false
       Show-PanelLoading

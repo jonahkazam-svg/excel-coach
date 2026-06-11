@@ -59,6 +59,57 @@ function Find-WeakFlash($text){
   return $best
 }
 
+# Execute a tiny operation language against the LIVE Excel (the coach's "hands").
+# Guardrails: writes ONLY to cells that are empty on the active sheet (or a NEW
+# sheet it creates), max 80 writes per command, never deletes or overwrites.
+# -Plan parses and validates without touching Excel (for testing).
+function Apply-XlOps($ops,[switch]$Plan){
+  $written=0; $skipped=0; $sheets=0; $done=""; $errors=0; $planned=@()
+  $xl=$null; $wb=$null; $sh=$null
+  if(-not $Plan){
+    try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ return "Excel is not open - open your workbook first." }
+    try{ $wb=$xl.ActiveWorkbook }catch{}
+    if(-not $wb){ return "No active workbook in Excel." }
+    $sh=$xl.ActiveSheet
+  }
+  foreach($ln in ([string]$ops -split "`r?`n")){
+    $l=$ln.Trim(); if(-not $l){ continue }
+    if($l -match '^SET\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){
+      $addr=$Matches[1].ToUpper(); $val=$Matches[2].Trim()
+      if($written -ge 80){ $skipped++; continue }
+      if($Plan){ $planned+=("SET "+$addr+" "+$val); $written++; continue }
+      try{
+        $cell=$sh.Range($addr)
+        $cur=$cell.Value2
+        if($null -eq $cur -or ([string]$cur) -eq ""){
+          if($val.StartsWith("=")){ $cell.Formula=$val }
+          else{ $d=0.0; if([double]::TryParse($val,[ref]$d)){ $cell.Value2=$d } else { $cell.Value2=$val } }
+          $written++
+        } else { $skipped++ }
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell)
+      }catch{ $errors++ }
+    }
+    elseif($l -match '^SHEET\s+(.+)$'){
+      $nm=($Matches[1].Trim() -replace '[\\/\?\*\[\]:]',''); if($nm.Length -gt 28){ $nm=$nm.Substring(0,28) }
+      if($Plan){ $planned+=("SHEET "+$nm); $sheets++; continue }
+      try{ $ns=$wb.Worksheets.Add([Type]::Missing,$sh); if($nm){ try{ $ns.Name=$nm }catch{} }; if($sh){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sh) }catch{} }; $sh=$ns; $sheets++ }catch{ $errors++ }
+    }
+    elseif($l -match '^DONE\s*(.*)$'){ $done=$Matches[1].Trim() }
+  }
+  if(-not $Plan){
+    foreach($o in @($sh,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
+  }
+  if($Plan){ return ("PLAN: ops="+($written+$sheets)+"; done='"+$done+"'") }
+  if(-not $done){ $done="Done." }
+  $parts=@()
+  if($written){ $parts+=("wrote "+$written+" cells") }
+  if($sheets){ $parts+=([string]$sheets+" new sheet") }
+  if($skipped){ $parts+=("skipped "+$skipped+" non-empty") }
+  if($errors){ $parts+=([string]$errors+" errors") }
+  if($parts.Count -gt 0){ return ($done+" ("+($parts -join ", ")+")") }
+  return $done
+}
+
 # Assemble the full context block the tutor leverages: recurring weak points,
 # concepts already covered, and the curriculum/recency brain. Rebuilt periodically
 # so struggles captured DURING a session are leveraged immediately, not after restart.
