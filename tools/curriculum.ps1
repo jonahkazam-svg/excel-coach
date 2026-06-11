@@ -264,6 +264,55 @@ function Build-CurriculumBrain {
   return $sb.ToString()
 }
 
+# Mission control ("coach, how am I doing?"): a deterministic spoken progress
+# report assembled purely from the vault flat files - NO API calls. Returns
+# 4-6 sentences of plain ASCII prose, no markdown (it gets spoken aloud).
+function Build-Scorecard {
+  $parts = @()
+  $cur = Get-Curriculum; $m = Get-Mastery
+  $musts = @($cur | Where-Object { $_.tier -eq "must" })
+  $seenMust = @($musts | Where-Object { $m.ContainsKey($_.id) -and $m[$_.id].status -ne "unseen" }).Count
+  $shakyN = @($cur | Where-Object { $m.ContainsKey($_.id) -and $m[$_.id].status -eq "shaky" }).Count
+  $days = XC-DaysToStart
+  $s = "You've covered "+$seenMust+" of "+$musts.Count+" must-know topics so far, with "+$shakyN+" marked shaky"
+  if($days -lt 999){ $s = $s+", and the fellowship starts in "+$days+" day"+$(if($days -ne 1){ "s" }else{ "" }) }
+  $parts += ($s+".")
+  $today = (Get-Date).ToString('yyyy-MM-dd')
+  $daily = Join-Path $script:XCCoaching ($today+".md")
+  $asked = 0; $nudges = 0; $haveDaily = (Test-Path $daily)
+  if($haveDaily){
+    $raw = Get-Content $daily -Raw
+    $asked = ([regex]::Matches($raw,'\[you asked')).Count
+    $entries = ([regex]::Matches($raw,'(?m)^###\s+\d{1,2}:\d{2}\s+\[WATCH\]')).Count
+    $nudges = $entries - $asked; if($nudges -lt 0){ $nudges = 0 }
+  }
+  $sheetsToday = 0
+  $sf = Join-Path $script:XCCoaching "Sheets.md"
+  if(Test-Path $sf){ $sheetsToday = @(Get-Content $sf | Where-Object { $_ -match ('^\s*-\s*'+[regex]::Escape($today)) }).Count }
+  if($haveDaily -or ($sheetsToday -gt 0)){
+    $parts += ("Today you asked "+$asked+" question"+$(if($asked -ne 1){ "s" }else{ "" })+", I jumped in with "+$nudges+" nudge"+$(if($nudges -ne 1){ "s" }else{ "" })+", and "+$sheetsToday+" practice sheet"+$(if($sheetsToday -ne 1){ "s" }else{ "" })+" came up.")
+  } else {
+    $parts += "I haven't logged anything with you today yet."
+  }
+  $gaps = @(Get-NextGap 2)
+  if($gaps.Count -ge 2){ $parts += ("Next I'd hit: "+$gaps[0].node.topic+" ("+$gaps[0].node.domain+"), then "+$gaps[1].node.topic+".") }
+  elseif($gaps.Count -eq 1){ $parts += ("Next I'd hit: "+$gaps[0].node.topic+" ("+$gaps[0].node.domain+").") }
+  $wpf = Join-Path $script:XCCoaching "Weak Points.md"
+  if(Test-Path $wpf){
+    $sec = $null
+    foreach($mt in [regex]::Matches((Get-Content $wpf -Raw),'(?ms)^##\s*\((live|caught while working)\)[^\r\n]*\r?\n(.*?)(?=^##\s*\(|\z)')){ $sec = $mt }
+    if($sec){
+      $b = @($sec.Groups[2].Value -split "\r?\n" | Where-Object { $_ -match '^\s*-\s*\S' } | Select-Object -First 1)
+      if($b.Count -gt 0){
+        $bt = (([string]$b[0]) -replace '^\s*-\s*','' -replace '`','' -replace '\s+',' ').Trim().Trim('"').Trim()
+        if($bt.Length -gt 110){ $bt = $bt.Substring(0,110).TrimEnd()+"..." }
+        if($bt){ if($bt -notmatch '[.!?]$'){ $bt = $bt+"." }; $parts += ("One recent trip-up to keep in mind: "+$bt) }
+      }
+    }
+  }
+  return ($parts -join " ")
+}
+
 function Compact-File($path,[int]$keyIndex){
   if(-not (Test-Path $path)){ return }
   $head = @(); $seen = [ordered]@{}; $started = $false
