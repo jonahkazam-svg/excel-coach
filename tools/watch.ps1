@@ -27,7 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -81,6 +81,7 @@ function Invoke-XlAction($req){
   if(-not $fresh){ $fresh=[string]$sync.lastXl }
   $ac=@(@{type='text';text=("REQUEST: "+$req)})
   if($sync.sheetPurpose){ $ac+=@{type='text';text=("What the student is practicing: "+$sync.sheetPurpose)} }
+  if($sync.companyCtx){ $ac+=@{type='text';text=("Use these saved figures when the request refers to them: "+[string]$sync.companyCtx)} }
   if($fresh){ $ac+=@{type='text';text=("EXACT current Excel data (active sheet):`n"+$fresh)} }
   $apay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content="You control Microsoft Excel for a finance student via a tiny operation language. If the REQUEST asks you to build, fill, set up, label, write, fix, or change something in Excel, reply ONLY with operation lines:`nSET <cell> <label or number or =formula>   (writes only if the cell is empty)`nPUT <cell> <label or number or =formula>   (overwrites - use ONLY when the request explicitly asks to change, fix, replace or correct existing content)`nSHEET <NewSheetName>`nDONE <one short spoken confirmation of what you built>`nRules: work on the ACTIVE sheet shown in the data (or create a SHEET first if asked for a new one); do exactly what was asked - minimal, clean, laid out like an investment-banking model; formulas start with =; before writing the DONE line, double-check every formula so its cell references point at cells you actually wrote or that already exist in the data; the LAST line must be the DONE line. If the REQUEST is NOT asking you to write into Excel, reply EXACTLY: NOTACTION"},@{role='user';content=$ac}) } | ConvertTo-Json -Depth 10
   $abf2="$env:TEMP\xc_act.json"; [IO.File]::WriteAllText($abf2,$apay,(New-Object System.Text.UTF8Encoding($false)))
@@ -149,6 +150,7 @@ while(-not $sync.stop){
       $ca=@(@{type='text';text=$ua})
       if($xlA){ $ca+=@{type='text';text=("[EXACT live Excel data, if relevant - authoritative]:`n"+$xlA)} }
       if($sync.sheetPurpose){ $ca+=@{type='text';text=("Excel sheet context: "+$sync.sheetPurpose)} }
+      if($sync.companyCtx){ $ca+=@{type='text';text=[string]$sync.companyCtx} }
       if($sync.lessonlog){ $les2=$sync.lessonlog; if($les2.Length -gt 600){ $les2=$les2.Substring($les2.Length-600) }; $ca+=@{type='text';text=("Recent lesson context: "+$les2)} }
       if($exB){ $ca+=@{type='text';text='[Image: Excel window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail='high'}} }
       if($coB){ $ca+=@{type='text';text='[Image: browser window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail='high'}} }
@@ -286,6 +288,7 @@ while(-not $sync.stop){
           $cxl=[string]$sync.lastXl; if($cxl.Length -gt 1500){ $cxl=$cxl.Substring(0,1500) }
           $cmsg=$chatQ
           if($sync.sheetPurpose){ $cmsg=$cmsg+"`n(Context - what I am practicing: "+$sync.sheetPurpose+")" }
+          if($sync.companyCtx){ $cmsg=$cmsg+"`n("+[string]$sync.companyCtx+")" }
           if($cxl){ $cmsg=$cmsg+"`n(My Excel right now:`n"+$cxl+")" }
           $cmsgs=@(@{role='system';content=$cctx})+$hm3+@(@{role='user';content=$cmsg})
           if($sync.chatModel -match '^gpt-5'){ $cpay=@{ model=$sync.chatModel; max_completion_tokens=600; reasoning_effort='none'; messages=$cmsgs } | ConvertTo-Json -Depth 10 }
@@ -331,6 +334,7 @@ while(-not $sync.stop){
         $content=@(@{type='text';text=$u})
         if($xlLive){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative; use these cell addresses, values and formulas; never guess a cell from the image]:`n"+$xlLive)} }
         if($sync.sheetPurpose){ $content+=@{type='text';text=("What this practice sheet is for (already understood): "+$sync.sheetPurpose)} }
+        if($sync.companyCtx){ $content+=@{type='text';text=[string]$sync.companyCtx} }
         if($asked -or $working){ $content+=@{type='text';text="Identify the SPECIFIC skill the lesson is teaching right now and what I am trying to BUILD in my Excel, then connect them. When you help or flag something, cite the exact cell/formula from the data above (never a guessed cell) and give the precise next step toward that goal."} }
         $content+=@{type='text';text="My practice is NOT always an Excel build - it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF). Consider what I am ACTUALLY looking at in the images; never dismiss the other window as irrelevant just because it is not Excel."}
         if($exB){ $content+=@{type='text';text='[Image: MY Excel sheet (my own work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail=$det}} }
@@ -398,7 +402,7 @@ function HashOf($s){ $i=([string]$s).IndexOf("`n"); if($i -gt 0){ return $s.Subs
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
 try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
 XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0
+$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1)
 while(-not $sync.stop){
  try{
   if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
@@ -457,6 +461,7 @@ while(-not $sync.stop){
     $uc=@(@{type='text';text=$inst})
     if($diffTxt){ $uc+=@{type='text';text=$diffTxt} }
     if($sync.sheetPurpose){ $uc+=@{type='text';text=("What this sheet practices: "+$sync.sheetPurpose)} }
+    if($sync.companyCtx){ $uc+=@{type='text';text=[string]$sync.companyCtx} }
     if($les2){ $uc+=@{type='text';text=("Recent lesson context: "+$les2)} }
     if($sync.lastNudge -and $sync.lastNudge -ne "OK"){ $uc+=@{type='text';text=("You last told me: '"+$sync.lastNudge+"'. If I fixed it and nothing else is wrong, reply OK. If it is STILL not fixed, flag it again.")} }
     $uc+=@{type='text';text=("EXACT Excel data:`n"+$xl)}
@@ -479,6 +484,30 @@ while(-not $sync.stop){
         } else { XLog "suppressed by 20s cooldown" }
       }
     } elseif($jj.error){ XLog ("API error: "+$jj.error.message) } else { XLog "no API response (timeout?)" }
+    if(($mode -eq "sweep") -and (((Get-Date)-$lastCoSave).TotalSeconds -ge 360)){
+      $lastCoSave=(Get-Date)
+      try{
+        $cuc=@(@{type='text';text="Look at my Excel sheet data. FIRST decide which real-world company this work is about, if any (a named company like Amazon or Tesla - generic practice exercises are NONE). Reply line 1 EXACTLY: COMPANY: <name or NONE>. If it IS about a company, follow with the key REUSABLE data points from this sheet - assumptions, inputs, and important computed outputs - one per line as '- <what> = <value> (cell <ref>)'. Only genuinely reusable finance figures (rates, growth, margins, multiples, totals, share counts, prices, valuations), max 12 lines. Plain ASCII, nothing else."})
+        $cuc+=@{type='text';text=("EXACT Excel data:`n"+$xl)}
+        $cpay=@{ model=$sync.model; max_completion_tokens=900; reasoning_effort="low"; messages=@(@{role='system';content="You extract reusable company figures from a finance student's Excel sheet."},@{role='user';content=$cuc}) } | ConvertTo-Json -Depth 12
+        $cbf2="$env:TEMP\xc_company.json"; [IO.File]::WriteAllText($cbf2,$cpay,(New-Object System.Text.UTF8Encoding($false)))
+        $crr2=& curl.exe -s --max-time 35 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf2)
+        $cjj2=$null; try{ $cjj2=$crr2|ConvertFrom-Json }catch{}
+        if($cjj2.choices){
+          $ct=([string]$cjj2.choices[0].message.content).Trim()
+          if($ct -match '(?m)^\s*COMPANY:\s*(.+)$'){
+            $cname=$Matches[1].Trim()
+            if($cname -and ($cname -notmatch '^(?i)none')){
+              $cdata=($ct -replace '(?m)^\s*COMPANY:.*$','').Trim()
+              if($cdata -and (Get-Command Save-CompanyData -ErrorAction SilentlyContinue)){ try{ Save-CompanyData $cname $sync.lastWb $cdata }catch{} }
+              $sync.company=$cname
+              if(Get-Command Get-CompanyData -ErrorAction SilentlyContinue){ try{ $cc=Get-CompanyData $cname; if($cc){ $sync.companyCtx=("Saved figures for "+$cname+" from my models (company ledger in Obsidian):`n"+$cc) } }catch{} }
+              XLog ("company ledger updated: "+$cname)
+            } else { $sync.company=""; $sync.companyCtx="" }
+          }
+        }
+      }catch{}
+    }
   }
   Start-Sleep -Seconds 4
  }catch{ XLog ("LOOP ERROR: "+$_.Exception.Message); Start-Sleep -Seconds 5 }

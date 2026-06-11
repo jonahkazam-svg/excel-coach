@@ -122,6 +122,28 @@ function Apply-XlOps($ops,[switch]$Plan){
   return $done
 }
 
+# Cross-workbook company ledger: persist the key figures from a sheet about a
+# real company into the Obsidian vault (Coaching/Companies/<Name>.md) so any
+# other spreadsheet about the same company can reference them.
+function Save-CompanyData($company,$wbName,$text){
+  if(-not $company -or -not $text){ return }
+  $dir=Join-Path $script:XCCoaching "Companies"
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $safe=(([string]$company) -replace '[\\/:*?"<>|]','').Trim(); if(-not $safe){ return }
+  $f=Join-Path $dir ($safe+".md")
+  if(-not (Test-Path $f)){ XC-Append $f ("# "+$safe+" - figures carried across my models`r`n") }
+  XC-Append $f ("`r`n## "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"  (from '"+[string]$wbName+"')`r`n"+[string]$text+"`r`n")
+}
+function Get-CompanyData($company){
+  if(-not $company){ return "" }
+  $safe=(([string]$company) -replace '[\\/:*?"<>|]','').Trim(); if(-not $safe){ return "" }
+  $f=Join-Path (Join-Path $script:XCCoaching "Companies") ($safe+".md")
+  if(-not (Test-Path $f)){ return "" }
+  $t=Get-Content $f -Raw
+  if($t.Length -gt 2200){ $t=$t.Substring($t.Length-2200) }
+  return $t
+}
+
 # Assemble the full context block the tutor leverages: recurring weak points,
 # concepts already covered, and the curriculum/recency brain. Rebuilt periodically
 # so struggles captured DURING a session are leveraged immediately, not after restart.
