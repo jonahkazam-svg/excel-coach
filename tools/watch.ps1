@@ -456,7 +456,7 @@ while(-not $sync.stop){
     if($les2){ $uc+=@{type='text';text=("Recent lesson context: "+$les2)} }
     if($sync.lastNudge -and $sync.lastNudge -ne "OK"){ $uc+=@{type='text';text=("You last told me: '"+$sync.lastNudge+"'. If I fixed it and nothing else is wrong, reply OK. If it is STILL not fixed, flag it again.")} }
     $uc+=@{type='text';text=("EXACT Excel data:`n"+$xl)}
-    $pay=@{ model=$sync.model; max_completion_tokens=1600; reasoning_effort="medium"; messages=@(@{role='system';content=("You are a precise, conservative checker and tutor for a finance student rebuilding course models in Excel."+$sync.brain)},@{role='user';content=$uc}) } | ConvertTo-Json -Depth 12
+    $pay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort="medium"; messages=@(@{role='system';content=("You are a precise, conservative checker and tutor for a finance student rebuilding course models in Excel."+$sync.brain)},@{role='user';content=$uc}) } | ConvertTo-Json -Depth 12
     $bfx="$env:TEMP\xc_xlcheck.json"; [IO.File]::WriteAllText($bfx,$pay,(New-Object System.Text.UTF8Encoding($false)))
     $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bfx)
     $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
