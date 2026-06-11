@@ -152,6 +152,10 @@ while(-not $sync.stop){
   if($sync.typedAsk){
     try{
       $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__")
+      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
+        $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+        continue
+      }
       if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
         $axr=Invoke-XlAction $tq
         if($axr){
@@ -298,6 +302,11 @@ while(-not $sync.stop){
             }
             $isChat=$true; $chatQ=$txt.Trim()
           }
+        }
+        if($isChat -and ($chatQ -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
+          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
+          $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+          continue
         }
         if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
