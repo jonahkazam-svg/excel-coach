@@ -67,7 +67,7 @@ function Find-WeakFlash($text){
 # blocks, drills, hands) - never for cells the STUDENT fills. Blue font = hard-coded
 # input, black = formula, accounting number format on figures, bold on total/header
 # labels. Best-effort: every COM set is wrapped so a refusal never breaks a build.
-$script:XCTotalRx='(?i)^(total|subtotal|net |gross profit|operating income|ebit)'
+$script:XCTotalRx='(?i)^(total|subtotal|net income|net cash|net change|net increase|net decrease|gross profit|operating income|ebit|cfo|cfi|cff|fcf)'
 function Format-XlCell($cell,$val){
   if(-not $cell){ return }
   $v=([string]$val).Trim()
