@@ -138,7 +138,7 @@ function Run-Demo($topic){
     if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
     if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept behind their most recent mistake (teach this): "+[string]$sync.lastNudge)} }
     if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reuse: "+[string]$sync.companyCtx)} }
-    $dsys="You are a finance/Excel tutor giving a LIVE narrated demonstration on a fresh blank sheet. Re-build a MINIMAL version of the SAME model/scenario the student was just working on (their last sheet data is given), using their actual numbers where possible, focused on teaching the concept behind their recent mistake (given). Minimal but complete enough to be genuinely teachable. Reply ONLY with a script of interleaved lines, nothing else:`nSTEP <one short spoken sentence explaining what you are about to add>`nSET <cell> <label or number or =formula>`n(more SET lines belong to the step above)`nDONE <one short spoken wrap-up>`nRules: build top-left to bottom (start around B2), label rows, formulas start with =, 5 to 9 STEP groups, plain ASCII, the LAST line is the DONE line."
+    $dsys="You are a finance/Excel tutor giving a LIVE, INTERACTIVE lesson on a fresh blank sheet. Do TWO things SIDE BY SIDE about the concept the student just struggled with. ON THE LEFT (start around B2): build a small WORKED example - fully solved, using their scenario - narrating each step as you build it. ON THE RIGHT (start around H2, same rows so they line up): build a PARALLEL PRACTICE version of the SAME concept with DIFFERENT numbers/items, but LEAVE THE ANSWER CELLS BLANK for the student to fill in - mark each blank answer cell so it gets highlighted. Reply ONLY with a script of these line types, nothing else:`nSTEP <one short spoken sentence about what you are adding to the worked example on the left>`nSET <cell> <label or number or =formula>  (a FILLED cell - the whole worked example, plus the labels and given inputs of the practice block)`nBLANK <cell>  (an ANSWER cell in the practice block the student must fill - left empty and highlighted)`nDONE <one short spoken sentence telling them to fill in the highlighted yellow cells and that you will check each one>`nRules: worked example on the LEFT columns, practice block on the RIGHT columns with a gap, same row layout; formulas start with =; label rows; plain ASCII; 5 to 9 STEP groups; put the practice SET and BLANK lines under a final STEP that says you set one up for them to try; the LAST line is the DONE line."
     $dpay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content=$dsys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
     $dbf="$env:TEMP\xc_demo.json"; [IO.File]::WriteAllText($dbf,$dpay,(New-Object System.Text.UTF8Encoding($false)))
     $drr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
@@ -156,6 +156,7 @@ function Run-Demo($topic){
       if($l -match '(?i)^STEP\s+(.+)$'){ if($curStep){ [void]$steps.Add($curStep) }; $curStep=@{say=$Matches[1].Trim();ops=(New-Object System.Collections.ArrayList)} }
       elseif($l -match '(?i)^DONE\s*(.*)$'){ if($curStep){ [void]$steps.Add($curStep); $curStep=$null }; $doneSay=$Matches[1].Trim() }
       elseif($l -match '^(SET|PUT)\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){ if($curStep){ [void]$curStep.ops.Add(@{addr=$Matches[2].ToUpper();val=$Matches[3].Trim()}) } }
+      elseif($l -match '(?i)^BLANK\s+([A-Za-z]{1,3}[0-9]{1,5})'){ if($curStep){ [void]$curStep.ops.Add(@{addr=$Matches[1].ToUpper();blank=$true}) } }
     }
     if($curStep){ [void]$steps.Add($curStep) }
     if($steps.Count -eq 0){
@@ -176,10 +177,14 @@ function Run-Demo($topic){
         $t0=(Get-Date)
         while($sync.ttsBusyUntil -le $t0 -and ((Get-Date)-$t0).TotalSeconds -lt 6){ Start-Sleep -Milliseconds 200 }
         foreach($op in $st.ops){
-          $addr=[string]$op.addr; $val=[string]$op.val
+          $addr=[string]$op.addr
           if(-not $addr){ continue }
           $cell=$null
-          try{ $cell=$ds.Range($addr); try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; $built++ }catch{}
+          try{
+            $cell=$ds.Range($addr)
+            if($op.blank){ try{ $cell.Interior.Color=0x99FFFF }catch{}; try{ $cell.BorderAround() }catch{} }
+            else{ $val=[string]$op.val; try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; $built++ }
+          }catch{}
           if($cell){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell) }catch{} }
           Start-Sleep -Milliseconds 250
         }
@@ -188,7 +193,7 @@ function Run-Demo($topic){
       }
       if($doneSay){ $sync.ttsText=$doneSay }
       $shName=""; try{ $shName=[string]$ds.Name }catch{}
-      $recap="Demo done on the '"+$shName+"' sheet: I rebuilt a minimal version of your scenario in "+[string]$steps.Count+" steps"+$(if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ ", focused on the spot you just slipped on" }else{ "" })+". Take a look, then try it yourself on your own sheet."
+      $recap="Done on the '"+$shName+"' sheet: a worked example on the LEFT (fully solved"+$(if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ ", focused on the spot you just slipped on" }else{ "" })+") and a parallel PRACTICE version on the RIGHT with different numbers. Fill in the highlighted yellow cells yourself - I'll check each one as you go."
       $sync.text=$recap; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
       try{ foreach($o in @($ds,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } } }catch{}
     } finally { $sync.demoActive=$false }
