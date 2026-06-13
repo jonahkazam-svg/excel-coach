@@ -197,6 +197,71 @@ function Run-Demo($topic){
     try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  TEACH ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
   }
 }
+# Drill mode: build a BLANK but parallel practice exercise on a fresh sheet for
+# the student to solve THEMSELVES (not the worked answer - that is Run-Demo). We
+# lay out labels, the GIVEN inputs and a clear question, and LEAVE the answer
+# cells empty. demoActive returns to $false afterwards so the Excel watcher
+# resumes and grades the student's attempt.
+function Make-Drill($topic){
+  try{
+    $ctx=@(@{type='text';text=("TOPIC the student asked to practice: "+[string]$topic)})
+    $lx=[string]$sync.lastXl; if($lx.Length -gt 1600){ $lx=$lx.Substring($lx.Length-1600) }
+    if($lx){ $ctx+=@{type='text';text=("The student's last sheet data (make a parallel exercise to THIS, same structure, different numbers):`n"+$lx)} }
+    if($sync.sheetPurpose){ $ctx+=@{type='text';text=("What the student is practicing: "+[string]$sync.sheetPurpose)} }
+    if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
+    if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept behind their most recent mistake (drill this): "+[string]$sync.lastNudge)} }
+    if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reuse: "+[string]$sync.companyCtx)} }
+    $dsys="You are a finance/Excel tutor setting up a practice exercise on a blank sheet. Create a SIMILAR but NEW practice exercise on a blank sheet to cement the concept the student just worked on (their last sheet and recent mistake are given). Use DIFFERENT numbers but the same structure/concept. Set up the labels, the GIVEN input values, and a clear question/instruction - but LEAVE THE ANSWER CELLS EMPTY for the student to fill in. Reply ONLY with lines, nothing else: SET <cell> <label, given number, or question text>  (only the setup - do NOT fill the cells the student should solve) ; DONE <one short spoken instruction telling them what to solve>. Rules: start around B2, label rows, plain ASCII, the LAST line is the DONE line, 5-14 SET lines."
+    $dpay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content=$dsys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
+    $dbf="$env:TEMP\xc_drill.json"; [IO.File]::WriteAllText($dbf,$dpay,(New-Object System.Text.UTF8Encoding($false)))
+    $drr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
+    $djj=$null; try{ $djj=$drr|ConvertFrom-Json }catch{}
+    $script=$null; if($djj.choices){ $script=([string]$djj.choices[0].message.content).Trim() }
+    if((-not $script) -or ($script -notmatch '(?m)^\s*SET\s')){
+      $fb="I could not set one up - try again."
+      $sync.askLabel="Practice"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+      return
+    }
+    # parse only SET lines for the setup; capture the DONE line as the spoken instruction
+    $ops=New-Object System.Collections.ArrayList; $doneSay=""
+    foreach($ln in ([string]$script -split "`r?`n")){
+      $l=$ln.Trim(); if(-not $l){ continue }
+      if($l -match '(?i)^DONE\s*(.*)$'){ $doneSay=$Matches[1].Trim() }
+      elseif($l -match '^SET\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){ [void]$ops.Add(@{addr=$Matches[1].ToUpper();val=$Matches[2].Trim()}) }
+    }
+    if($ops.Count -eq 0){
+      $fb="I could not set one up - try again."
+      $sync.askLabel="Practice"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+      return
+    }
+    $built=0; $shName=""
+    $sync.demoActive=$true
+    try{
+      $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ $sync.text="Open Excel first so I can set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+      $wb=$null; try{ $wb=$xl.ActiveWorkbook }catch{}
+      if(-not $wb){ $sync.text="Open a workbook in Excel first so I can set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+      $ds=$wb.Worksheets.Add(); try{ $ds.Name=("Practice "+(Get-Date).ToString("HHmm")) }catch{}
+      try{ $shName=[string]$ds.Name }catch{}
+      foreach($op in $ops){
+        $addr=[string]$op.addr; $val=[string]$op.val
+        if(-not $addr){ continue }
+        $cell=$null
+        try{ $cell=$ds.Range($addr); try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; $built++ }catch{}
+        if($cell){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell) }catch{} }
+        Start-Sleep -Milliseconds 120
+      }
+      if($doneSay -and (-not $sync.mute)){ $sync.ttsText=$doneSay }
+      $sync.text="Set up a practice problem on the '"+$shName+"' sheet - fill in the blank cells and I'll check your answer."
+      $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+      try{ foreach($o in @($ds,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } } }catch{}
+    } finally { $sync.demoActive=$false }
+    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  DRILL REQ: "+[string]$topic+"`r`nSCRIPT:`r`n"+[string]$script+"`r`npractice set up ("+[string]$built+" cells) on '"+$shName+"'`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+  }catch{
+    $sync.demoActive=$false
+    $sync.text="Sorry - I could not set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  DRILL ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+  }
+}
 function Cap($path){
   $h=[Win2]::GetForegroundWindow(); $r=New-Object Win2+RECT; [void][Win2]::GetWindowRect($h,[ref]$r)
   $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
@@ -227,12 +292,17 @@ while(-not $sync.stop){
   if($sync.typedAsk){
     try{
       $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__")
+      $isTrace=((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})')); if($isTrace){ $tdet=$true }
       if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
         $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
         continue
       }
       if($sync.teachOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
         Run-Demo $tq
+        continue
+      }
+      if($sync.teachOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|let me (try|practice)|give me (a|another) (problem|exercise|practice)|drill me|quiz me on this|make me a)\b')){
+        Make-Drill $tq
         continue
       }
       if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
@@ -256,6 +326,7 @@ while(-not $sync.stop){
         $ua=$(if($isAssist){ "Help me with whatever I am working on right now." }else{ "I ask: "+$tq })
         $ua+=" My practice is NOT always an Excel build. Right now it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF) with no Excel involved. Use the images of what I am actually looking at and help with THAT. If there is no real Excel work in progress, read the question or exercise on my screen and answer or explain it directly - do not dismiss the other window as irrelevant. Cite exact Excel cells only when there is real Excel data. "+$(if($tdet){ "Explain in detail with the full reasoning and steps." }else{ "Be concise: the direct answer or fix in 1 to 3 short sentences." })
         if($sync.handsOn){ $ua+=" NOTE: your hands are enabled - you genuinely CAN write into my Excel yourself. Never say you cannot edit Excel; if I am asking you to build or change something, say you can do it and ask me to give it as a direct command." }
+        if($isTrace){ $ua+=" TRACE MODE: I want to understand where a value comes from. Identify the exact cell(s) I am asking about, then follow the formula dependency chain BACKWARD step by step using the EXACT cell data, explaining each link in plain English (for example: 'C39 = gross PP&E in C37 minus accumulated depreciation in C38; C38 rolls forward from last period C30 plus this period's depreciation D12'). Finish with one line on what the number ultimately represents." }
       }
       $ca=@(@{type='text';text=$ua})
       if($xlA){ $ca+=@{type='text';text=("[EXACT live Excel data, if relevant - authoritative]:`n"+$xlA)} }
@@ -358,6 +429,10 @@ while(-not $sync.stop){
           Run-Demo $txt
           continue
         }
+        if($asked -and $sync.teachOn -and ($txt -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|let me (try|practice)|give me (a|another) (problem|exercise|practice)|drill me|quiz me on this|make me a)\b')){
+          Make-Drill $txt
+          continue
+        }
         if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
           $axr3=Invoke-XlAction $txt
           if($axr3){
@@ -396,6 +471,11 @@ while(-not $sync.stop){
           Run-Demo $chatQ
           continue
         }
+        if($isChat -and $sync.teachOn -and ($chatQ -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|let me (try|practice)|give me (a|another) (problem|exercise|practice)|drill me|quiz me on this|make me a)\b')){
+          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
+          Make-Drill $chatQ
+          continue
+        }
         if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
           $axr2=Invoke-XlAction $chatQ
@@ -415,6 +495,7 @@ while(-not $sync.stop){
           if($sync.sheetPurpose){ $cmsg=$cmsg+"`n(Context - what I am practicing: "+$sync.sheetPurpose+")" }
           if($sync.companyCtx){ $cmsg=$cmsg+"`n("+[string]$sync.companyCtx+")" }
           if($cxl){ $cmsg=$cmsg+"`n(My Excel right now:`n"+$cxl+")" }
+          if($chatQ -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})'){ $cmsg=$cmsg+" TRACE MODE: I want to understand where a value comes from. Identify the exact cell(s) I am asking about, then follow the formula dependency chain BACKWARD step by step using the EXACT cell data, explaining each link in plain English (for example: 'C39 = gross PP&E in C37 minus accumulated depreciation in C38; C38 rolls forward from last period C30 plus this period's depreciation D12'). Finish with one line on what the number ultimately represents." }
           $cmsgs=@(@{role='system';content=$cctx})+$hm3+@(@{role='user';content=$cmsg})
           if($sync.chatModel -match '^gpt-5'){ $cpay=@{ model=$sync.chatModel; max_completion_tokens=600; reasoning_effort='none'; messages=$cmsgs } | ConvertTo-Json -Depth 10 }
           else { $cpay=@{ model=$sync.chatModel; max_tokens=220; temperature=0.5; messages=$cmsgs } | ConvertTo-Json -Depth 10 }
@@ -448,6 +529,7 @@ while(-not $sync.stop){
         if($asked){
           $u="The student spoke to you and asked: '"+$txt+"'. What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'. You are given up to two labeled images: MY Excel sheet (my own work) and the course/lesson. Read the exact question carefully, work it out step by step and double-check any arithmetic, then answer clearly and helpfully in 1 to 4 sentences - explain it so they understand, like a good tutor. Use my Excel, the course image, this lesson context, and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
           if($sync.handsOn){ $u+=" NOTE: your hands are enabled - you genuinely CAN write into the student's Excel yourself; never say you cannot edit Excel." }
+          if($txt -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})'){ $u+=" TRACE MODE: I want to understand where a value comes from. Identify the exact cell(s) I am asking about, then follow the formula dependency chain BACKWARD step by step using the EXACT cell data, explaining each link in plain English (for example: 'C39 = gross PP&E in C37 minus accumulated depreciation in C38; C38 rolls forward from last period C30 plus this period's depreciation D12'). Finish with one line on what the number ultimately represents." }
           $useModel=$sync.model; $det="high"; $maxtok=700; $effort="medium"
         } else {
           if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). You are given up to two labeled images: MY Excel sheet and the course/lesson. Compare my Excel to what the lesson is teaching. ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences), citing exact cell addresses ONLY from the EXACT live-Excel data block if one is provided (never guess a cell from the image). If it looks fine or you're unsure, reply EXACTLY: OK." }
