@@ -205,6 +205,41 @@ function Run-Demo($topic){
     try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  TEACH ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
   }
 }
+# Cheat Sheet: drop a compact quick-reference card (the rules + categories for the
+# concept the student is on) into EMPTY columns to the RIGHT of their work, so they
+# can glance at it while they go. Reuses Apply-XlOps (empty-only writes + IB
+# formatting + retries); demoActive guards the watcher during the multi-cell write.
+function Make-CheatSheet($topic){
+  try{
+    if(-not (Get-Command Apply-XlOps -ErrorAction SilentlyContinue)){ $sync.text="Open your workbook in Excel first so I can drop in a cheat sheet."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+    $fresh=$null; try{ $fresh=Read-ExcelLive }catch{}
+    if(-not $fresh){ $fresh=[string]$sync.lastXl }
+    $ctx=@(@{type='text';text=("TOPIC the student wants a cheat sheet for: "+[string]$topic)})
+    if($sync.sheetPurpose){ $ctx+=@{type='text';text=("What the student is practicing: "+[string]$sync.sheetPurpose)} }
+    if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
+    if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept they most recently slipped on - emphasize it: "+[string]$sync.lastNudge)} }
+    if($fresh){ $ctx+=@{type='text';text=("The student's CURRENT sheet. Place the cheat sheet in EMPTY columns to the RIGHT of this data - never overwrite it:`n"+$fresh)} }
+    if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reference: "+[string]$sync.companyCtx)} }
+    $sys="You are building a CHEAT SHEET - a compact quick-reference card - inside the student's open Excel sheet for the concept they are working on. Look at their current data and place the card starting about TWO columns to the RIGHT of their last used column, in empty cells, so you NEVER overwrite their work. Reply with ONLY these line types and nothing else: SET <cell> <short text, number, or =formula> ; and a final DONE <one short spoken sentence>. Include a TITLE, then a compact table (a header row plus 3 to 6 rows) of the key categories/rules/framework, then a short 'Key rules' list of 2 to 4 lines. Keep it SCANNABLE and brief - a reference card, NOT a lesson or worked example, no long sentences. Plain ASCII. 12 to 26 SET lines. The LAST line is the DONE line."
+    $pay=@{ model=$sync.model; max_completion_tokens=2500; reasoning_effort='medium'; messages=@(@{role='system';content=$sys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
+    $bf="$env:TEMP\xc_cheat.json"; [IO.File]::WriteAllText($bf,$pay,(New-Object System.Text.UTF8Encoding($false)))
+    $rr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+    $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
+    $ops=$null; if($jj.choices){ $ops=([string]$jj.choices[0].message.content).Trim() }
+    if((-not $ops) -or ($ops -notmatch '(?im)^\s*SET\s')){
+      $sync.text="I could not put a cheat sheet together just now - give it another go in a moment."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return
+    }
+    $r=$null; $sync.demoActive=$true
+    try{ $r=Apply-XlOps $ops }catch{ $r="Cheat sheet write failed: "+$_.Exception.Message } finally { $sync.demoActive=$false }
+    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  CHEAT REQ: "+[string]$topic+"`r`nOPS:`r`n"+[string]$ops+"`r`nRESULT: "+[string]$r+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+    $say="Dropped a cheat sheet to the right of your work - the key rules and categories for this, right there to glance at as you go."
+    $sync.text=$say; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText=$say }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+  }catch{
+    $sync.demoActive=$false
+    $sync.text="Sorry - the cheat sheet hit a snag."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  CHEAT ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+  }
+}
 # Drill mode: build a BLANK but parallel practice exercise on a fresh sheet for
 # the student to solve THEMSELVES (not the worked answer - that is Run-Demo). We
 # lay out labels, the GIVEN inputs and a clear question, and LEAVE the answer
@@ -300,10 +335,15 @@ $lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
-      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__"); $isWhy=($tq -eq "__WHY__")
+      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__"); $isWhy=($tq -eq "__WHY__"); $isCheat=($tq -eq "__CHEAT__")
+      if($isCheat){ Make-CheatSheet "the concept on this sheet"; continue }
       $isTrace=((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})')); if($isTrace){ $tdet=$true }
       if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
         $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+        continue
+      }
+      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(cheat ?sheet|reference (card|table|sheet)|quick reference|summary (table|card)|give me the rules|rules (table|card)|lesson sheet)')){
+        Make-CheatSheet $tq
         continue
       }
       if($sync.teachOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
@@ -1170,6 +1210,14 @@ function Handle-Act($k){
       Set-Msg "Explaining this cell..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Why this"
       Show-PanelLoading
       $sync.askLabel="Why this cell"; $sync.typedDetail=$false; $sync.typedAsk="__WHY__"
+    }
+    'cheat'    {
+      if($script:askBusy){ return }
+      $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
+      JS $script:wvS ("XC.busy(true)")
+      Set-Msg "Building a cheat sheet..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Cheat sheet"
+      Show-PanelLoading
+      $sync.askLabel="Cheat sheet"; $sync.typedDetail=$false; $sync.typedAsk="__CHEAT__"
     }
     'close'    { Shutdown-Coach }
   }
