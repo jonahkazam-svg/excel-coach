@@ -113,7 +113,7 @@ function Polish-BuiltSheet($ws,$ops){
 }
 
 function Apply-XlOps($ops,[switch]$Plan){
-  $written=0; $skipped=0; $sheets=0; $done=""; $failed=@(); $planned=@(); $putUsed=0
+  $written=0; $skipped=0; $sheets=0; $done=""; $failed=@(); $planned=@(); $putUsed=0; $builtOps=New-Object System.Collections.ArrayList
   $xl=$null; $wb=$null; $sh=$null
   if(-not $Plan){
     try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ return "Excel is not open - open your workbook first." }
@@ -139,7 +139,7 @@ function Apply-XlOps($ops,[switch]$Plan){
           if($mayWrite){
             try{ $cell.Formula=$val }catch{ $cell.Value2=$val }
             if($sync.formatOn){ Format-XlCell $cell $val }
-            $written++; if($op -eq "PUT"){ $putUsed++ }
+            $written++; if($op -eq "PUT"){ $putUsed++ }; [void]$builtOps.Add(@{addr=$addr;val=$val})
           } else { $skipped++ }
           [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell)
           $opOk=$true; break
@@ -152,12 +152,13 @@ function Apply-XlOps($ops,[switch]$Plan){
       if($Plan){ $planned+=("SHEET "+$nm); $sheets++; continue }
       $shOk=$false
       for($try=0;$try -lt 3;$try++){
-        try{ $ns=$wb.Worksheets.Add([Type]::Missing,$sh); if($nm){ try{ $ns.Name=$nm }catch{} }; if($sh){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sh) }catch{} }; $sh=$ns; $sheets++; $shOk=$true; break }catch{ Start-Sleep -Milliseconds 500 }
+        try{ $ns=$wb.Worksheets.Add([Type]::Missing,$sh); if($nm){ try{ $ns.Name=$nm }catch{} }; if($sh){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sh) }catch{} }; $sh=$ns; $sheets++; $shOk=$true; $builtOps.Clear(); break }catch{ Start-Sleep -Milliseconds 500 }
       }
       if(-not $shOk){ $failed+=("sheet '"+$nm+"'") }
     }
     elseif($l -match '^DONE\s*(.*)$'){ $done=$Matches[1].Trim() }
   }
+  if((-not $Plan) -and $sync.formatOn -and ($builtOps.Count -gt 0) -and (Get-Command Polish-BuiltSheet -ErrorAction SilentlyContinue)){ try{ Polish-BuiltSheet $sh $builtOps }catch{} }
   if(-not $Plan){
     foreach($o in @($sh,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
   }
