@@ -765,9 +765,10 @@ while(-not $sync.stop){
         $gt=([string]$gjj.choices[0].message.content).Trim()
         if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $gt=Clean-Answer $gt }
         if($gt -match '(?im)^\s*DONE\s*\|\s*(.+)$'){ if($lastGuideStep -ne "DONE"){ $lastGuideStep="DONE"; $sync.xlText=("GUIDE: "+$Matches[1].Trim()); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE done: "+$Matches[1].Trim()) } }
-        elseif($gt -match '(?im)^\s*KEY:\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*(.+)$'){
-          $gkey=$Matches[1].Trim().ToLower(); $gmsg=$Matches[2].Trim(); $gchk=$Matches[3].Trim()
-          if($gkey -ne $lastGuideStep){ $lastGuideStep=$gkey; $sync.xlText=("GUIDE: "+$gmsg+"  -- you'll know it's right when: "+$gchk); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE step '"+$gkey+"': "+$gmsg) } else { XLog ("guide same step '"+$gkey+"' - suppressed") } }
+        elseif($gt -match '(?im)^\s*(?:KEY:\s*)?([A-Za-z][A-Za-z0-9 /]{0,24})\s*\|\s*(.+)$'){
+          $gkey=$Matches[1].Trim().ToLower(); $grest=$Matches[2].Trim(); $gmsg=$grest; $gchk=""
+          if($grest -match '^(.*\S)\s*\|\s*(.+)$'){ $gmsg=$Matches[1].Trim(); $gchk=$Matches[2].Trim() }
+          if($gkey -ne $lastGuideStep){ $lastGuideStep=$gkey; $sync.xlText=("GUIDE: "+$gmsg+$(if($gchk){ "  -- you'll know it's right when: "+$gchk }else{ "" })); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE step '"+$gkey+"': "+$gmsg) } else { XLog ("guide same step '"+$gkey+"' - suppressed") } }
         else { XLog ("guide unparsed: "+$(if($gt.Length -gt 140){ $gt.Substring(0,140) }else{ $gt })) }
       }
     }catch{ XLog ("guide error: "+$_.Exception.Message) }
