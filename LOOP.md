@@ -75,6 +75,7 @@ Then read `%TEMP%\xc_hands.log` (builds) and `%TEMP%\xc_watcher.log` (verdicts) 
 - Drive channel (`%TEMP%\xc_cmd.txt`), cheat-sheet fails honestly when Excel closed, cheat sheet now process-first.
 
 ## Backlog (reprioritize freely; logs override)
+- [BUG found 2026-06-13 sweep] **Audit returns nothing** — drove `act:audit`, no answer in xc_ask.log after >2.5 min (Why/Kick logged in 6-9s). Heaviest call (reasoning_effort high + 2800 cap + --max-time 150). Likely the 150s curl timeout is hit OR reasoning consumes the whole token budget -> empty content (empty -> not logged, line 407 guard). Fix: raise max_completion_tokens and/or drop effort to medium, bump --max-time, and treat empty as a clear "audit timed out, try again" message instead of silence. VERIFY by re-driving act:audit and reading xc_ask.log.
 - [reliability] **fail-honestly on Run-Demo + Make-Drill** — Excel-open check + reflect real result, like Make-CheatSheet (highest: a feature that fakes success is the worst look).
 - [reliability] **Watcher hang-detection** — watchdog only restarts a CRASHED runspace, not a HUNG one (blocked COM read stays State=Running). Add heartbeat-liveness: watcher stamps `$sync` each loop; tick force-restarts if no stamp > ~3 min.
 - [noise] **Same-issue nudge suppression** — the 20s cooldown re-nags an unfixed cell (~40s repeats seen live); suppress until that cell's value changes or a few minutes pass.
