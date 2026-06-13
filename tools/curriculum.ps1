@@ -144,6 +144,38 @@ function Get-CompanyData($company){
   return $t
 }
 
+# Memory hygiene: Weak Points.md accumulates many near-duplicate entries which
+# crowd out signal in the brain. Once per day, dedupe it into a clean list of
+# DISTINCT recurring weak points via gpt-4o-mini; the raw history is archived,
+# never deleted. Guarded by a date stamp so it runs at most once a day.
+function Consolidate-WeakPoints {
+  try{
+    $f=Join-Path $script:XCCoaching "Weak Points.md"
+    if(-not (Test-Path $f)){ return }
+    $raw=Get-Content $f -Raw
+    if($raw.Length -lt 3000){ return }
+    $today=(Get-Date).ToString('yyyy-MM-dd')
+    $stamp=Join-Path $script:XCCoaching ".wp_stamp"
+    if(Test-Path $stamp){ if(((Get-Content $stamp -Raw).Trim()) -eq $today){ return } }
+    $kl=Get-Content $script:XCEnv -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\s*OPENAI_API_KEY\s*=' } | Select-Object -First 1
+    if(-not $kl){ return }
+    $key=($kl -replace '^\s*OPENAI_API_KEY\s*=\s*','').Trim().Trim('"'); if(-not $key){ return }
+    $src=$raw; if($src.Length -gt 9000){ $src=$src.Substring($src.Length-9000) }
+    $pay=@{ model="gpt-4o-mini"; max_tokens=700; temperature=0; messages=@(@{role="system";content="You consolidate a finance student's accumulated weak-point notes, which contain many near-duplicate entries. Output a CLEAN, DEDUPED list of their DISTINCT recurring weak points - merge duplicates, keep the clearest phrasing, most recurring or important first. Each line starts with '- '. Max 15 lines. Plain ASCII. No preamble, no headers, nothing else."},@{role="user";content=$src}) } | ConvertTo-Json -Depth 8
+    $bf=Join-Path $env:TEMP "xc_wpcons.json"; [IO.File]::WriteAllText($bf,$pay,(New-Object System.Text.UTF8Encoding($false)))
+    $rr=& curl.exe -s --max-time 35 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$key) -H "Content-Type: application/json" -d ("@"+$bf)
+    $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
+    if(-not $jj.choices){ return }
+    $clean=([string]$jj.choices[0].message.content).Trim()
+    if(-not ($clean -match '(?m)^\s*-\s')){ return }
+    $arch=Join-Path $script:XCCoaching "Weak Points.archive.md"
+    XC-Append $arch ("`r`n# Archived "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"`r`n"+$raw+"`r`n")
+    $new="# Weak Points (consolidated "+$today+")`r`n`r`n"+$clean+"`r`n`r`n## New since consolidation`r`n"
+    [IO.File]::WriteAllText($f,$new,(New-Object System.Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($stamp,$today,(New-Object System.Text.UTF8Encoding($false)))
+  }catch{}
+}
+
 # Assemble the full context block the tutor leverages: recurring weak points,
 # concepts already covered, and the curriculum/recency brain. Rebuilt periodically
 # so struggles captured DURING a session are leveraged immediately, not after restart.

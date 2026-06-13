@@ -34,6 +34,7 @@ $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
+try{ . (Join-Path $PSScriptRoot "curriculum.ps1"); if(Get-Command Consolidate-WeakPoints -ErrorAction SilentlyContinue){ Consolidate-WeakPoints } }catch{}
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
 if(Test-Path $wpf){ $bt=(Get-Content $wpf -Raw); if($bt.Length -gt 1600){ $bt=$bt.Substring($bt.Length-1600) }; $sync.brain=" The student's known recurring weak points (call out by name if one recurs): "+$bt }
 $kfb=Join-Path $Coaching "Knowledge.md"
@@ -1117,6 +1118,16 @@ $ui.Add_Tick({
       elseif($script:ffFails -eq 4){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; $script:idle=$false; Set-Msg "Mic capture failed - check MIC_DEVICE in .env"; Set-Dot '#ef4444' $false }
     }
   } elseif($script:ffFails -ne 0){ $script:ffFails=0 }
+  if(-not $sync.stop){
+    $wS=[string]$psw.InvocationStateInfo.State
+    if($wS -eq 'Completed' -or $wS -eq 'Failed' -or $wS -eq 'Stopped'){
+      try{ $script:rs=[runspacefactory]::CreateRunspace(); $script:rs.ApartmentState='STA'; $script:rs.ThreadOptions='ReuseThread'; $script:rs.Open(); $script:rs.SessionStateProxy.SetVariable('sync',$sync); $script:psw=[powershell]::Create(); $script:psw.Runspace=$script:rs; [void]$script:psw.AddScript($work); [void]$script:psw.BeginInvoke(); $script:baseStatus="Coach engine restarted - back up" }catch{}
+    }
+    $xS=[string]$psx.InvocationStateInfo.State
+    if($xS -eq 'Completed' -or $xS -eq 'Failed' -or $xS -eq 'Stopped'){
+      try{ $script:rsX=[runspacefactory]::CreateRunspace(); $script:rsX.ApartmentState='STA'; $script:rsX.ThreadOptions='ReuseThread'; $script:rsX.Open(); $script:rsX.SessionStateProxy.SetVariable('sync',$sync); $script:psx=[powershell]::Create(); $script:psx.Runspace=$script:rsX; [void]$script:psx.AddScript($xlWork); [void]$script:psx.BeginInvoke(); $script:baseStatus="Mistake-watcher restarted - back up" }catch{}
+    }
+  }
   $lv=-1; if(-not $sync.paused){ $lv=Get-MicLevel }
   if($lv -ge 0){ JS $script:wvS ("XC.setEq("+[string]::Format([Globalization.CultureInfo]::InvariantCulture,"{0:0.00}",$lv)+")") } else { JS $script:wvS ("XC.setEq(-1)") }
   if($lv -ge 0.12){ $script:heardAt=(Get-Date) }
