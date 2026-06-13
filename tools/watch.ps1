@@ -223,7 +223,7 @@ function Make-CheatSheet($topic){
     if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept they most recently slipped on - emphasize it: "+[string]$sync.lastNudge)} }
     if($fresh){ $ctx+=@{type='text';text=("The student's CURRENT sheet. Place the cheat sheet in EMPTY columns to the RIGHT of this data - never overwrite it:`n"+$fresh)} }
     if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reference: "+[string]$sync.companyCtx)} }
-    $sys="You are building a CHEAT SHEET - a compact quick-reference card - inside the student's open Excel sheet for the concept they are working on. Look at their current data and place the card starting about TWO columns to the RIGHT of their last used column, in empty cells, so you NEVER overwrite their work. Reply with ONLY these line types, one per line, nothing else. For each cell output a line formatted EXACTLY as: SET <cell> <short text, number, or =formula> - with NO trailing semicolon or punctuation after the value. Then one final line: DONE <one short spoken sentence>. Include a TITLE, then a compact table (a header row plus 3 to 6 rows) of the key categories/rules/framework, then a short 'Key rules' list of 2 to 4 lines. Keep it SCANNABLE and brief - a reference card, NOT a lesson or worked example, no long sentences. Plain ASCII. 12 to 26 SET lines. The LAST line is the DONE line."
+    $sys="You are building a CHEAT SHEET - a compact quick-reference card - inside the student's open Excel sheet for the concept they are working on. Look at their current data and place the card starting about TWO columns to the RIGHT of their last used column, in empty cells, so you NEVER overwrite their work. Reply with ONLY these line types, one per line, nothing else. For each cell output a line formatted EXACTLY as: SET <cell> <short text, number, or =formula> - with NO trailing semicolon or punctuation after the value. Then one final line: DONE <one short spoken sentence>. Include a TITLE, then a numbered STEP-BY-STEP PROCESS for completing this kind of task in order (Step 1: do X, Step 2: do Y, ... - the actual order of operations someone follows, not just definitions), then a short reference list of the key formulas or rules. The PROCESS is the most important part - lead with it. Keep it SCANNABLE - short imperative lines, no long paragraphs. Plain ASCII. 12 to 26 SET lines. The LAST line is the DONE line."
     $pay=@{ model=$sync.model; max_completion_tokens=2500; reasoning_effort='medium'; messages=@(@{role='system';content=$sys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
     $bf="$env:TEMP\xc_cheat.json"; [IO.File]::WriteAllText($bf,$pay,(New-Object System.Text.UTF8Encoding($false)))
     $rr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
@@ -751,29 +751,26 @@ while(-not $sync.stop){
     XLog ("workbook: '"+$sync.lastWb+"'")
     Start-Sleep -Seconds 2; continue
   }
-  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ((Get-Date)-$guideT).TotalSeconds -ge 30){
-    $gh2=(HashOf $xl)
-    if($gh2 -ne $guideHash){
-      $guideHash=$gh2; $guideT=(Get-Date)
-      try{
-        $gu=@(@{type='text';text=("Goal of this sheet: "+[string]$sync.sheetPurpose)})
-        $gu+=@{type='text';text=("The student's CURRENT sheet (what they have filled in so far):`n"+$xl)}
-        $gu+=@{type='text';text="Identify the SINGLE next step the student should do now, based on what is already filled in versus what the goal needs. Reply with EXACTLY one line, no preamble: STEP <n>|<the next step in one clear sentence, naming the section and the lines or items, but NOT the numeric answers>|<how they will know it is right - the check or tie-out>. <n> is which step of the whole task this is (1 for first, 2 for next, and so on). If the whole task is already complete and ties out, reply: DONE|<one sentence on what they finished and the tie-out>."}
-        $gpay=@{ model="gpt-4o-mini"; max_tokens=300; temperature=0; messages=@(@{role='system';content="You are a concise finance/Excel tutor guiding a student through a worksheet ONE step at a time. You name the next section and what goes in it and the check that proves it right. You NEVER give the numeric answers - only the structure and logic."},@{role='user';content=$gu}) } | ConvertTo-Json -Depth 10
-        $gbf="$env:TEMP\xc_guide.json"; [IO.File]::WriteAllText($gbf,$gpay,(New-Object System.Text.UTF8Encoding($false)))
-        $grr=& curl.exe -s --max-time 20 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$gbf)
-        $gjj=$null; try{ $gjj=$grr|ConvertFrom-Json }catch{}
-        if($gjj.choices){
-          $gt=([string]$gjj.choices[0].message.content).Trim()
-          if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $gt=Clean-Answer $gt }
-          if($gt -match '(?im)^\s*DONE\s*\|\s*(.+)$'){ if($lastGuideStep -ne "DONE"){ $lastGuideStep="DONE"; $sync.xlText=("GUIDE: "+$Matches[1].Trim()); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE done: "+$Matches[1].Trim()) } }
-          elseif($gt -match '(?im)^\s*STEP\s+(\S+)\s*\|\s*(.+?)\s*\|\s*(.+)$'){
-            $gstep=$Matches[1]; $gmsg=$Matches[2].Trim(); $gchk=$Matches[3].Trim()
-            if($gstep -ne $lastGuideStep){ $lastGuideStep=$gstep; $sync.xlText=("GUIDE: "+$gmsg+" -- you will know it is right when: "+$gchk); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE step "+$gstep+": "+$gmsg) } else { XLog ("guide same step "+$gstep+" - suppressed") } }
-          else { XLog ("guide unparsed: "+$(if($gt.Length -gt 120){ $gt.Substring(0,120) }else{ $gt })) }
-        }
-      }catch{ XLog ("guide error: "+$_.Exception.Message) }
-    }
+  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($lastGuideStep -ne "DONE") -and ( (((HashOf $xl) -ne $guideHash) -and ((Get-Date)-$guideT).TotalSeconds -ge 30) -or (((Get-Date)-$guideT).TotalSeconds -ge 75) )){
+    $guideHash=(HashOf $xl); $guideT=(Get-Date)
+    try{
+      $gu=@(@{type='text';text=("Goal of this sheet: "+[string]$sync.sheetPurpose)})
+      $gu+=@{type='text';text=("The student's CURRENT sheet (what they have filled in so far):`n"+$xl)}
+      $gu+=@{type='text';text="Identify the SINGLE step the student should do NOW, based on what is filled in versus the goal. Reply EXACTLY one line, no preamble, using | as the separator: KEY: <a 1 or 2 word slug naming this step, e.g. operating, capex, fcf, financing, reconcile> | <complete guidance a stuck student can follow: WHAT to do and in which section or cells, HOW to do it as a short process that references the exact cells and values they already have, and WHY it matters - enough that someone with no idea how to do it can follow. Do NOT state the final numeric answer; point them at the cells and let them compute.> | <the check or tie-out that proves it is right>. If the whole task is already complete and ties out, reply instead: DONE | <one short sentence: what they finished and the tie-out they hit>."}
+      $gpay=@{ model="gpt-4o-mini"; max_tokens=450; temperature=0; messages=@(@{role='system';content="You are a finance/Excel tutor guiding a student through a worksheet ONE step at a time. For the current step you explain WHAT, WHERE, HOW (the process, referencing their actual cells), and WHY - enough that someone who has no idea how to do it can follow - but you NEVER give the final numeric answer; you point at the cells and let them compute it."},@{role='user';content=$gu}) } | ConvertTo-Json -Depth 10
+      $gbf="$env:TEMP\xc_guide.json"; [IO.File]::WriteAllText($gbf,$gpay,(New-Object System.Text.UTF8Encoding($false)))
+      $grr=& curl.exe -s --max-time 25 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$gbf)
+      $gjj=$null; try{ $gjj=$grr|ConvertFrom-Json }catch{}
+      if($gjj.choices){
+        $gt=([string]$gjj.choices[0].message.content).Trim()
+        if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $gt=Clean-Answer $gt }
+        if($gt -match '(?im)^\s*DONE\s*\|\s*(.+)$'){ if($lastGuideStep -ne "DONE"){ $lastGuideStep="DONE"; $sync.xlText=("GUIDE: "+$Matches[1].Trim()); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE done: "+$Matches[1].Trim()) } }
+        elseif($gt -match '(?im)^\s*KEY:\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*(.+)$'){
+          $gkey=$Matches[1].Trim().ToLower(); $gmsg=$Matches[2].Trim(); $gchk=$Matches[3].Trim()
+          if($gkey -ne $lastGuideStep){ $lastGuideStep=$gkey; $sync.xlText=("GUIDE: "+$gmsg+"  -- you'll know it's right when: "+$gchk); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE step '"+$gkey+"': "+$gmsg) } else { XLog ("guide same step '"+$gkey+"' - suppressed") } }
+        else { XLog ("guide unparsed: "+$(if($gt.Length -gt 140){ $gt.Substring(0,140) }else{ $gt })) }
+      }
+    }catch{ XLog ("guide error: "+$_.Exception.Message) }
   }
   $h=(HashOf $xl)
   $mode=""; $diffTxt=""
