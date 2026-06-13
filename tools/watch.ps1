@@ -25,7 +25,7 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$false; $sync.demoActive=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
 $sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""
 if($sync.fishKey){ $sync.ttsMode="fish" }
@@ -122,6 +122,80 @@ function Invoke-XlAction($req){
   }
   return $r
 }
+# Teach mode: build a MINIMAL worked example of the same scenario on a fresh
+# throwaway sheet while Jarvis (TTS) narrates each step. Coordinated with the
+# $ttsWork thread via $sync.ttsText (start narration) and $sync.ttsBusyUntil
+# (when playback ends) so cells appear while the coach is speaking.
+function Run-Demo($topic){
+  try{
+    $ctx=@(@{type='text';text=("TOPIC the student asked about: "+[string]$topic)})
+    $lx=[string]$sync.lastXl; if($lx.Length -gt 1600){ $lx=$lx.Substring($lx.Length-1600) }
+    if($lx){ $ctx+=@{type='text';text=("The student's last sheet data (rebuild a minimal version of THIS, using their numbers):`n"+$lx)} }
+    if($sync.sheetPurpose){ $ctx+=@{type='text';text=("What the student is practicing: "+[string]$sync.sheetPurpose)} }
+    if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
+    if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept behind their most recent mistake (teach this): "+[string]$sync.lastNudge)} }
+    if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reuse: "+[string]$sync.companyCtx)} }
+    $dsys="You are a finance/Excel tutor giving a LIVE narrated demonstration on a fresh blank sheet. Re-build a MINIMAL version of the SAME model/scenario the student was just working on (their last sheet data is given), using their actual numbers where possible, focused on teaching the concept behind their recent mistake (given). Minimal but complete enough to be genuinely teachable. Reply ONLY with a script of interleaved lines, nothing else:`nSTEP <one short spoken sentence explaining what you are about to add>`nSET <cell> <label or number or =formula>`n(more SET lines belong to the step above)`nDONE <one short spoken wrap-up>`nRules: build top-left to bottom (start around B2), label rows, formulas start with =, 5 to 9 STEP groups, plain ASCII, the LAST line is the DONE line."
+    $dpay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content=$dsys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
+    $dbf="$env:TEMP\xc_demo.json"; [IO.File]::WriteAllText($dbf,$dpay,(New-Object System.Text.UTF8Encoding($false)))
+    $drr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
+    $djj=$null; try{ $djj=$drr|ConvertFrom-Json }catch{}
+    $script=$null; if($djj.choices){ $script=([string]$djj.choices[0].message.content).Trim() }
+    if((-not $script) -or ($script -notmatch '(?m)^\s*STEP\s')){
+      $fb="I could not put together a demo just now. In short: "+[string]$topic+" - rebuild the same scenario on a clean sheet, label each row, and let each formula reference only cells you have already entered."
+      $sync.askLabel="Teach demo"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+      return
+    }
+    # parse the script into ordered steps: each step = narration + the SET/PUT lines that follow it
+    $steps=New-Object System.Collections.ArrayList; $doneSay=""; $curStep=$null
+    foreach($ln in ([string]$script -split "`r?`n")){
+      $l=$ln.Trim(); if(-not $l){ continue }
+      if($l -match '(?i)^STEP\s+(.+)$'){ if($curStep){ [void]$steps.Add($curStep) }; $curStep=@{say=$Matches[1].Trim();ops=(New-Object System.Collections.ArrayList)} }
+      elseif($l -match '(?i)^DONE\s*(.*)$'){ if($curStep){ [void]$steps.Add($curStep); $curStep=$null }; $doneSay=$Matches[1].Trim() }
+      elseif($l -match '^(SET|PUT)\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){ if($curStep){ [void]$curStep.ops.Add(@{addr=$Matches[2].ToUpper();val=$Matches[3].Trim()}) } }
+    }
+    if($curStep){ [void]$steps.Add($curStep) }
+    if($steps.Count -eq 0){
+      $fb="I could not put together a demo just now. In short: "+[string]$topic+" - rebuild the same scenario on a clean sheet and reference only cells you have already entered."
+      $sync.askLabel="Teach demo"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+      return
+    }
+    $built=0
+    $sync.demoActive=$true
+    try{
+      $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ $sync.text="Open Excel first so I can demonstrate."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+      $wb=$null; try{ $wb=$xl.ActiveWorkbook }catch{}
+      if(-not $wb){ $sync.text="Open a workbook in Excel first so I can demonstrate."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+      $ds=$wb.Worksheets.Add(); try{ $ds.Name=("Coach Demo "+(Get-Date).ToString("HHmm")) }catch{}
+      foreach($st in $steps){
+        $sayTxt=[string]$st.say
+        if($sayTxt){ $sync.ttsText=$sayTxt }
+        $t0=(Get-Date)
+        while($sync.ttsBusyUntil -le $t0 -and ((Get-Date)-$t0).TotalSeconds -lt 6){ Start-Sleep -Milliseconds 200 }
+        foreach($op in $st.ops){
+          $addr=[string]$op.addr; $val=[string]$op.val
+          if(-not $addr){ continue }
+          $cell=$null
+          try{ $cell=$ds.Range($addr); try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; $built++ }catch{}
+          if($cell){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell) }catch{} }
+          Start-Sleep -Milliseconds 250
+        }
+        while((Get-Date) -lt $sync.ttsBusyUntil -and ((Get-Date)-$t0).TotalSeconds -lt 18){ Start-Sleep -Milliseconds 200 }
+        Start-Sleep -Milliseconds 400
+      }
+      if($doneSay){ $sync.ttsText=$doneSay }
+      $shName=""; try{ $shName=[string]$ds.Name }catch{}
+      $recap="Demo done on the '"+$shName+"' sheet: I rebuilt a minimal version of your scenario in "+[string]$steps.Count+" steps"+$(if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ ", focused on the spot you just slipped on" }else{ "" })+". Take a look, then try it yourself on your own sheet."
+      $sync.text=$recap; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+      try{ foreach($o in @($ds,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } } }catch{}
+    } finally { $sync.demoActive=$false }
+    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  TEACH REQ: "+[string]$topic+"`r`nSCRIPT:`r`n"+[string]$script+"`r`ndemo done ("+[string]$built+" cells)`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+  }catch{
+    $sync.demoActive=$false
+    $sync.text="Sorry - the demo hit a snag."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  TEACH ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
+  }
+}
 function Cap($path){
   $h=[Win2]::GetForegroundWindow(); $r=New-Object Win2+RECT; [void][Win2]::GetWindowRect($h,[ref]$r)
   $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
@@ -154,6 +228,10 @@ while(-not $sync.stop){
       $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__")
       if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
         $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+        continue
+      }
+      if($sync.teachOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
+        Run-Demo $tq
         continue
       }
       if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
@@ -275,6 +353,10 @@ while(-not $sync.stop){
         $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and (-not $inChatWin) -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
         $asked=($sync.micMode -and (-not $sync.muteMe) -and (-not $heyHit) -and (-not $inChatWin) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
         if($asked){ $sync.ackPing=$true }
+        if($asked -and $sync.teachOn -and ($txt -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
+          Run-Demo $txt
+          continue
+        }
         if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
           $axr3=Invoke-XlAction $txt
           if($axr3){
@@ -306,6 +388,11 @@ while(-not $sync.stop){
         if($isChat -and ($chatQ -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
           $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+          continue
+        }
+        if($isChat -and $sync.teachOn -and ($chatQ -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
+          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
+          Run-Demo $chatQ
           continue
         }
         if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
@@ -902,6 +989,12 @@ function Handle-Act($k){
       $sync.handsOn=-not $sync.handsOn
       JS $script:wvS ("XC.setToggle('hands',"+(BoolJs $sync.handsOn)+")")
       $script:idle=$false; Set-Msg $(if($sync.handsOn){ "Hands ON - tell me what to build (empty cells only)" }else{ "Hands off - watching only" }); Set-Dot $(if($sync.handsOn){ '#22c55e' }else{ '#969aa2' }) $false
+      $script:lastActive=(Get-Date); $script:idle=$true
+    }
+    'teach'    {
+      $sync.teachOn=-not $sync.teachOn
+      JS $script:wvS ("XC.setToggle('teach',"+(BoolJs $sync.teachOn)+")")
+      $script:idle=$false; Set-Msg $(if($sync.teachOn){ "Teach mode ON - ask me to show you something" }else{ "Teach mode off" }); Set-Dot $(if($sync.teachOn){ '#22c55e' }else{ '#969aa2' }) $false
       $script:lastActive=(Get-Date); $script:idle=$true
     }
     'note'     {
