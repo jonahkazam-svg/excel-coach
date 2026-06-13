@@ -71,6 +71,8 @@
   #body h2{ font-size:15.5px; font-weight:650; color:#fff; margin:2px 0 9px; }
   #body p{ margin:0 0 12px; }
   #body b{ color:#fff; font-weight:650; }
+  #body b.term{ cursor:pointer; border-bottom:1px dashed rgba(138,180,255,0.45); transition:color .12s ease, border-color .12s ease; }
+  #body b.term:hover{ color:#8ab4ff; border-bottom-color:#8ab4ff; }
   #body .li{ display:flex; gap:9px; margin:0 0 8px; }
   #body .li .pre{ flex:0 0 auto; color:var(--text-2); }
   #body .li .pre.num{ color:var(--accent); font-weight:650; }
@@ -163,6 +165,28 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const bold = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  function isTermLike(t){
+    t = String(t).trim().replace(/[.,:;!?]+$/,'');
+    if (t.length < 3 || t.length > 40) return false;
+    if (t.split(/\s+/).length > 5) return false;
+    if (/^[A-Z]{1,3}\d{1,4}$/.test(t)) return false;        // cell ref like C39
+    if (/^[\d.,%$\s()+\-x]+$/i.test(t)) return false;        // pure number / amount
+    return true;
+  }
+  function wireTerms(){
+    document.querySelectorAll('#body b').forEach(b => {
+      const t = b.textContent.trim().replace(/[.,:;!?]+$/,'');
+      if (isTermLike(t)){
+        b.classList.add('term');
+        b.title = 'Explain "' + t + '" in this context';
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.body.classList.add('loading');
+          post({type:'panel', k:'define', term: t});
+        });
+      }
+    });
+  }
 
   function mdToHtml(md){
     const out = [];
@@ -245,6 +269,7 @@
       $('idDrop').classList.add('hidden');
       $('body').innerHTML = mdToHtml(md);
       $('body').scrollTop = 0;
+      wireTerms();
       defineTerm = pickTerm(md);
       $('defineBtn').classList.toggle('hidden', !defineTerm);
       if (defineTerm){
