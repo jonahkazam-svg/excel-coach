@@ -766,11 +766,11 @@ while(-not $sync.stop){
         if($gjj.choices){
           $gt=([string]$gjj.choices[0].message.content).Trim()
           if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $gt=Clean-Answer $gt }
-          if($gt -match '(?im)^\s*DONE\s*\|\s*(.+)$'){ if($lastGuideStep -ne "DONE"){ $lastGuideStep="DONE"; $sync.xlText=("GUIDE: "+$Matches[1].Trim()); $sync.xlStamp=$sync.xlStamp+1; XLog "GUIDE published (done)" } }
+          if($gt -match '(?im)^\s*DONE\s*\|\s*(.+)$'){ if($lastGuideStep -ne "DONE"){ $lastGuideStep="DONE"; $sync.xlText=("GUIDE: "+$Matches[1].Trim()); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE done: "+$Matches[1].Trim()) } }
           elseif($gt -match '(?im)^\s*STEP\s+(\S+)\s*\|\s*(.+?)\s*\|\s*(.+)$'){
             $gstep=$Matches[1]; $gmsg=$Matches[2].Trim(); $gchk=$Matches[3].Trim()
-            if($gstep -ne $lastGuideStep){ $lastGuideStep=$gstep; $sync.xlText=("GUIDE: "+$gmsg+" -- you will know it is right when: "+$gchk); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE published step "+$gstep) }
-          }
+            if($gstep -ne $lastGuideStep){ $lastGuideStep=$gstep; $sync.xlText=("GUIDE: "+$gmsg+" -- you will know it is right when: "+$gchk); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE step "+$gstep+": "+$gmsg) } else { XLog ("guide same step "+$gstep+" - suppressed") } }
+          else { XLog ("guide unparsed: "+$(if($gt.Length -gt 120){ $gt.Substring(0,120) }else{ $gt })) }
         }
       }catch{ XLog ("guide error: "+$_.Exception.Message) }
     }
