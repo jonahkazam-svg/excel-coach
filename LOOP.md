@@ -20,6 +20,7 @@ Drive each via `%TEMP%\xc_cmd.txt` with Excel open, then read logs / screenshot 
 - teach demo (Run-Demo) + drill (Make-Drill) — build correctly, formatted, columns sized, and **fail honestly when Excel is closed** (still TODO — only cheat does this).
 - watcher error-catching — catches real errors fast, no same-cell re-nag (the 20s cooldown is too short).
 - formatting — blue inputs / bold totals / styled header / sized columns; SCREENSHOT to judge, don't trust properties.
+- **responsiveness** — time every drive cmd -> answer using log timestamps (xc_ask.log / xc_hands.log / xc_watcher.log). Targets: Why/Kick < 10s (measured 6-9s), cheat < 30s, guide step < 20s; flag anything slow (Audit measured > 2.5 min = the open bug). The coach must FEEL fast and snappy.
 
 ## What already exists (don't rebuild)
 A live ambient coach: `tools/watch.ps1` (4 threads: UI tick / audio worker / Excel watcher / TTS) + `tools/curriculum.ps1` (Excel ops, formatting, memory engine) + `tools/ui/strip.html` (Cluely strip). Features: silent mistake-watching, Kick / Audit / **Why** (cell explanation) / **Cheat Sheet** / Teach demo / Drill / Hands / IB formatting / "hey coach" chat / Notes / company ledger. Obsidian vault in `Coaching/`.
@@ -84,6 +85,9 @@ Then read `%TEMP%\xc_hands.log` (builds) and `%TEMP%\xc_watcher.log` (verdicts) 
 - [polish] **3-dot (...) options popup** for the toggles (hands/teach/format/guide/mute/sound) — declutter the strip + give Guide a visible toggle.
 - [polish] cheat/build long cells **wrap-text** instead of truncating at width 45.
 - [correctness] **Capability-aware routing** — any phrasing routes to the right feature, not brittle exact-phrase regex.
+- [UX-important, Jonah asked 2026-06-13] **"Is it listening?" indicator** — he can't tell when the coach is hearing his voice. Make the strip show an UNMISTAKABLE listening state: a prominent pulsing mic + "Listening..." when voice capture is active, and a distinct "Listening (chat)" while in "hey coach" chat mode. The eq VU bars + faint "Hearing you..." aren't clear enough. (Strip is masked in screenshots since the coach process isn't granted - reason from strip.html + the tick mic-level/chat logic, or grant "Windows PowerShell" to see it.)
+- [polish, Jonah asked - NOT critical path] **Panel equation/answer formatting** — the answer pill (ui/panel.html `mdToHtml`) writes equations as plain run-on English; it can't show fractions, tables, or readable layouts. Improve: render markdown TABLES as real HTML tables, support simple stacked fractions (a/b), and steer answers to use tables/structured layout for formulas instead of sentences. Bigger lift later = KaTeX/MathJax for real math; start with tables + structure.
+- [responsiveness] make the whole thing FEEL fast — snappy acks, no long silent waits; investigate any feature measured slow.
 - Keep discovering via logs + drive-channel testing + screenshots.
 
 ## Pace & surfacing
