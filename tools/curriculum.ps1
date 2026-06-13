@@ -96,6 +96,18 @@ function Polish-BuiltSheet($ws,$ops){
     $trows=@{}
     foreach($o in $ops){ if((-not $o.blank) -and ([string]$o.val -match $script:XCTotalRx)){ $rr=([string]$o.addr -replace '^[A-Za-z]+',''); if($rr){ $trows[$rr]=$true } } }
     foreach($o in $ops){ if($o.blank){ continue }; $rr=([string]$o.addr -replace '^[A-Za-z]+',''); if($rr -and $trows[$rr]){ try{ $tc=$ws.Range([string]$o.addr); $tc.Font.Bold=$true; $b=$tc.Borders(8); $b.LineStyle=1; $b.Weight=2; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($b) }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tc) }catch{} } }
+    # visible structure: styled title (top-left cell) + shaded/bold header row (first row with 2+ cells)
+    $rowCnt=@{}; $titleAddr=$null; $titleKey=$null
+    foreach($o in $ops){
+      if($o.blank){ continue }
+      $a=[string]$o.addr; if($a -notmatch '^([A-Za-z]+)([0-9]+)$'){ continue }
+      $col=$Matches[1].ToUpper(); $row=[int]$Matches[2]; $ci=0; foreach($ch in $col.ToCharArray()){ $ci=$ci*26+([int][char]$ch-64) }
+      if($rowCnt.ContainsKey($row)){ $rowCnt[$row]=$rowCnt[$row]+1 }else{ $rowCnt[$row]=1 }
+      $key=$row*1000+$ci; if(($null -eq $titleKey) -or ($key -lt $titleKey)){ $titleKey=$key; $titleAddr=$a }
+    }
+    if($titleAddr){ try{ $tcell=$ws.Range($titleAddr); $tcell.Font.Bold=$true; $tcell.Font.Size=13; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tcell) }catch{} }
+    $hdrRow=$null; foreach($row in ($rowCnt.Keys | Sort-Object)){ if($rowCnt[$row] -ge 2){ $hdrRow=$row; break } }
+    if($hdrRow){ foreach($o in $ops){ if($o.blank){ continue }; $a=[string]$o.addr; if($a -match '^[A-Za-z]+([0-9]+)$'){ if([int]$Matches[1] -eq $hdrRow){ try{ $hc=$ws.Range($a); $hc.Font.Bold=$true; $hc.Interior.Color=16115420; $hb=$hc.Borders(9); $hb.LineStyle=1; $hb.Weight=2; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($hb) }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($hc) }catch{} } } } }
     try{ $ws.UsedRange.Columns.AutoFit() }catch{}
   }catch{}
 }

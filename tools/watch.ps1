@@ -1309,6 +1309,18 @@ $panel.Add_Shown({ Glass-On $script:panel; [void]$script:wvP.EnsureCoreWebView2A
 # ---- tick: worker results -> UI ----
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
+  try{
+    $cmdF=(Join-Path $env:TEMP "xc_cmd.txt")
+    if([IO.File]::Exists($cmdF)){
+      $cmdLine=""; try{ $cmdLine=([IO.File]::ReadAllText($cmdF)).Trim() }catch{}
+      try{ [IO.File]::Delete($cmdF) }catch{}
+      if($cmdLine){
+        if($cmdLine -match '(?i)^act:(.+)$'){ Handle-Act ($Matches[1].Trim()) }
+        elseif($cmdLine -match '(?i)^ask:(.+)$'){ Handle-Ask ($Matches[1].Trim()) }
+        else{ Handle-Ask $cmdLine }
+      }
+    }
+  }catch{}
   if(-not (Get-Process -Id $sync.ffpid -ErrorAction SilentlyContinue)){
     if(((Get-Date)-$script:ffLastTry).TotalSeconds -ge 10){
       $script:ffLastTry=(Get-Date); $script:ffFails++
