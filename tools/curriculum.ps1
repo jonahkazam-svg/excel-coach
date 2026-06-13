@@ -176,6 +176,53 @@ function Consolidate-WeakPoints {
   }catch{}
 }
 
+# Higher-order synthesizer: read ALL the behavioral signals we have on the student
+# (consolidated weak points, Note-button flags, the practice-sheet types, the kick
+# and revisit signals, and the shaky curriculum nodes) and have gpt-4o-mini distill
+# them into the student's 3-4 WEAKEST CATEGORIES, whether each is a START vs EXECUTE
+# problem, and the single highest-priority thing to drill next. Written to
+# Struggle Profile.md and loaded into the brain so help is prioritized by category.
+# Daily-stamped so it runs at most once a day; mirrors Consolidate-WeakPoints.
+function Build-StruggleProfile {
+  try{
+    $today=(Get-Date).ToString('yyyy-MM-dd')
+    $stamp=Join-Path $script:XCCoaching ".sp_stamp"
+    if(Test-Path $stamp){ if(((Get-Content $stamp -Raw).Trim()) -eq $today){ return } }
+    $kl=Get-Content $script:XCEnv -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\s*OPENAI_API_KEY\s*=' } | Select-Object -First 1
+    if(-not $kl){ return }
+    $key=($kl -replace '^\s*OPENAI_API_KEY\s*=\s*','').Trim().Trim('"'); if(-not $key){ return }
+    $sb=New-Object System.Text.StringBuilder
+    $wpf=Join-Path $script:XCCoaching "Weak Points.md"
+    if(Test-Path $wpf){ $t=(Get-Content $wpf -Raw); if($t.Length -gt 3000){ $t=$t.Substring($t.Length-3000) }; [void]$sb.AppendLine("=== CONSOLIDATED WEAK POINTS ==="); [void]$sb.AppendLine($t) }
+    $nf=Join-Path $script:XCCoaching "Notes.md"
+    if(Test-Path $nf){ $t=(Get-Content $nf -Raw); if($t.Length -gt 1500){ $t=$t.Substring($t.Length-1500) }; [void]$sb.AppendLine("=== NOTES THE STUDENT FLAGGED TO REVISIT ==="); [void]$sb.AppendLine($t) }
+    $sf=Join-Path $script:XCCoaching "Sheets.md"
+    if(Test-Path $sf){ $sl=@(Get-Content $sf | Where-Object { $_ -match '^\s*-\s' } | Select-Object -Last 12); if($sl.Count -gt 0){ [void]$sb.AppendLine("=== RECENT PRACTICE-SHEET TYPES ==="); [void]$sb.AppendLine(($sl -join "`r`n")) } }
+    $gf=Join-Path $script:XCCoaching "Signals.md"
+    if(Test-Path $gf){ $sl2=@(Get-Content $gf | Where-Object { $_ -match '^\s*-\s' } | Select-Object -Last 40); if($sl2.Count -gt 0){ [void]$sb.AppendLine("=== BEHAVIORAL SIGNALS (kick = asked where to start; revisit = looped back to an already-covered topic) ==="); [void]$sb.AppendLine(($sl2 -join "`r`n")) } }
+    try{
+      $m=Get-Mastery; $cur=Get-Curriculum
+      $shaky=@($cur | Where-Object { $m.ContainsKey($_.id) -and ($m[$_.id].status -eq 'shaky') } | ForEach-Object { "- "+$_.topic+" ["+$_.domain+"]" })
+      if($shaky.Count -gt 0){ [void]$sb.AppendLine("=== SHAKY CURRICULUM NODES (auto-tracked as not yet solid) ==="); [void]$sb.AppendLine(($shaky -join "`r`n")) }
+    }catch{}
+    $src=$sb.ToString().Trim()
+    if($src.Length -lt 40){ return }
+    if($src.Length -gt 9000){ $src=$src.Substring($src.Length-9000) }
+    $sys="From these signals about a finance student, identify their 3 to 4 WEAKEST CATEGORIES (e.g. cash flow statement, depreciation, working capital, Excel accelerator keys, DCF), and for each give the specific recurring problem AND whether they struggle to START the work or to EXECUTE it correctly. Most severe first, each line '- '. Then a final line exactly: 'START HERE: <the single highest-priority thing to drill next>'. Max 12 lines, plain ASCII, no preamble."
+    $pay=@{ model="gpt-4o-mini"; max_tokens=500; temperature=0; messages=@(@{role="system";content=$sys},@{role="user";content=$src}) } | ConvertTo-Json -Depth 8
+    $bf=Join-Path $env:TEMP "xc_sprofile.json"; [IO.File]::WriteAllText($bf,$pay,(New-Object System.Text.UTF8Encoding($false)))
+    $rr=& curl.exe -s --max-time 35 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$key) -H "Content-Type: application/json" -d ("@"+$bf)
+    $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
+    if(-not $jj.choices){ return }
+    $clean=([string]$jj.choices[0].message.content).Trim()
+    if(-not ($clean -match '(?m)^\s*-\s')){ return }
+    $out=Join-Path $script:XCCoaching "Struggle Profile.md"
+    $new="# Struggle Profile (updated "+$today+")`r`n`r`n"+$clean+"`r`n"
+    [IO.File]::WriteAllText($out,$new,(New-Object System.Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($stamp,$today,(New-Object System.Text.UTF8Encoding($false)))
+  }catch{}
+}
+
 # Assemble the full context block the tutor leverages: recurring weak points,
 # concepts already covered, and the curriculum/recency brain. Rebuilt periodically
 # so struggles captured DURING a session are leveraged immediately, not after restart.

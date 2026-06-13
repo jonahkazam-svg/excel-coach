@@ -34,9 +34,11 @@ $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
-try{ . (Join-Path $PSScriptRoot "curriculum.ps1"); if(Get-Command Consolidate-WeakPoints -ErrorAction SilentlyContinue){ Consolidate-WeakPoints } }catch{}
+try{ . (Join-Path $PSScriptRoot "curriculum.ps1"); if(Get-Command Consolidate-WeakPoints -ErrorAction SilentlyContinue){ Consolidate-WeakPoints }; if(Get-Command Build-StruggleProfile -ErrorAction SilentlyContinue){ Build-StruggleProfile } }catch{}
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
 if(Test-Path $wpf){ $bt=(Get-Content $wpf -Raw); if($bt.Length -gt 1600){ $bt=$bt.Substring($bt.Length-1600) }; $sync.brain=" The student's known recurring weak points (call out by name if one recurs): "+$bt }
+$spf=Join-Path $Coaching "Struggle Profile.md"
+if(Test-Path $spf){ $spt=(Get-Content $spf -Raw); if($spt.Length -gt 1200){ $spt=$spt.Substring($spt.Length-1200) }; $sync.brain=$sync.brain+" The student's weakest categories and where to start (use this to prioritize help and to know where they struggle most): "+$spt.Trim() }
 $kfb=Join-Path $Coaching "Knowledge.md"
 if(Test-Path $kfb){ $kt=(Get-Content $kfb -Raw); if($kt.Length -gt 2000){ $kt=$kt.Substring($kt.Length-2000) }; $sync.brain=$sync.brain+" Concepts the student has already covered in lessons: "+$kt }
 $WatchCur=(Read-EnvVal "WATCH_CURRICULUM" "1"); $sync.curr=""
@@ -287,7 +289,7 @@ function CapWin2($proc){
   $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
   return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
 }
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1); $chatUntil=(Get-Date).AddDays(-1); $lastLessonCap=(Get-Date).AddDays(-1)
+$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $seenNodes=@{}; $revisitLogged=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1); $chatUntil=(Get-Date).AddDays(-1); $lastLessonCap=(Get-Date).AddDays(-1)
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
@@ -350,6 +352,14 @@ while(-not $sync.stop){
         $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isKick){ "(kick-start on this sheet)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
         $arec=$(if($ans.Length -gt 1200){ $ans.Substring(0,1200) }else{ $ans })
         [void]$askHist.Add(@{q=$qrec;a=$arec}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
+      }
+      if($isKick){
+        try{
+          $sigF=Join-Path $sync.coaching "Signals.md"
+          if(-not (Test-Path $sigF)){ [IO.File]::AppendAllText($sigF,"# Signals - behavioral struggle signals`r`n",(New-Object System.Text.UTF8Encoding($false))) }
+          $sigP=[string]$sync.sheetPurpose; if(-not $sigP){ $sigP="unknown" }
+          [IO.File]::AppendAllText($sigF,("- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+" | kick | "+$sigP+"`r`n"),(New-Object System.Text.UTF8Encoding($false)))
+        }catch{}
       }
       if($isAudit -and $ans -and ($ans -match '##\s*Issues')){
         try{
@@ -611,7 +621,23 @@ while(-not $sync.stop){
             $cbf="$env:TEMP\xc_curr.json"; [IO.File]::WriteAllText($cbf,$cp,(New-Object System.Text.UTF8Encoding($false)))
             $cr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf)
             $cj=$null; try{ $cj=$cr|ConvertFrom-Json }catch{}
-            if($cj.choices){ $ct=([string]$cj.choices[0].message.content).Trim(); foreach($cl in ($ct -split "`n")){ $cpp=$cl.Trim() -split '\|'; if($cpp.Count -ge 2){ $nid=$cpp[0].Trim(); $kind=$cpp[1].Trim().ToUpper(); if($kind -eq 'COVERED' -and $cpp.Count -ge 3 -and $cpp[2].Trim().ToUpper() -eq 'HIGH'){ try{ Bump-Mastery $nid 'exposed' 'covered in lesson' }catch{} } elseif($kind -eq 'STRUGGLED'){ try{ Bump-Mastery $nid 'shaky' 'struggled in lesson' }catch{} } } } }
+            if($cj.choices){ $ct=([string]$cj.choices[0].message.content).Trim(); foreach($cl in ($ct -split "`n")){ $cpp=$cl.Trim() -split '\|'; if($cpp.Count -ge 2){ $nid=$cpp[0].Trim(); $kind=$cpp[1].Trim().ToUpper();
+              if($nid){
+                if($seenNodes.ContainsKey($nid)){
+                  if(-not $revisitLogged.ContainsKey($nid)){
+                    $revisitLogged[$nid]=$true
+                    try{
+                      $rtopic=$nid
+                      if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ $cn=Get-Curriculum | Where-Object { $_.id -eq $nid } | Select-Object -First 1; if($cn){ $rtopic=$cn.topic } }
+                      if($rtopic -eq $nid -and $sync.curr){ foreach($crl in ($sync.curr -split "`n")){ if($crl -match ('^\s*'+[regex]::Escape($nid)+'\s*:\s*(.+)$')){ $rtopic=$Matches[1].Trim(); break } } }
+                      $sigF2=Join-Path $sync.coaching "Signals.md"
+                      if(-not (Test-Path $sigF2)){ [IO.File]::AppendAllText($sigF2,"# Signals - behavioral struggle signals`r`n",(New-Object System.Text.UTF8Encoding($false))) }
+                      [IO.File]::AppendAllText($sigF2,("- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+" | revisit | "+$rtopic+"`r`n"),(New-Object System.Text.UTF8Encoding($false)))
+                    }catch{}
+                  }
+                } else { $seenNodes[$nid]=$true }
+              }
+              if($kind -eq 'COVERED' -and $cpp.Count -ge 3 -and $cpp[2].Trim().ToUpper() -eq 'HIGH'){ try{ Bump-Mastery $nid 'exposed' 'covered in lesson' }catch{} } elseif($kind -eq 'STRUGGLED'){ try{ Bump-Mastery $nid 'shaky' 'struggled in lesson' }catch{} } } } }
           }
           $sync.distillbuf=""; $sync.distillCount=0
           if(Get-Command Build-FullBrain -ErrorAction SilentlyContinue){ try{ $sync.brain=Build-FullBrain }catch{} }
