@@ -30,9 +30,11 @@
     border:1px solid var(--hairline);
     box-shadow: inset 0 1px 0 var(--inner-top);
     overflow:hidden;
+    transition: border-radius .18s ease;
   }
   body.bar .card{ border-radius:24px; }
   body.pill .card{ border-radius:999px; }
+  #barUI,#pillUI{ transition: opacity .18s ease; }
 
   /* cursor-tracking light shift */
   #sheen{ position:absolute; width:280px; height:280px; border-radius:50%; pointer-events:none;

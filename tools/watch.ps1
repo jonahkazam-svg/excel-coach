@@ -998,11 +998,23 @@ function Place-PanelHome {
 function Set-Msg($t){ if($script:statusText -ne $t){ $script:statusText=$t; JS $script:wvS ("XC.setStatus("+(ConvertTo-Json $t)+")") } }
 function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne $k){ $script:dotState=$k; JS $script:wvS ("XC.setDot('"+$hex+"',"+(BoolJs $pulse)+")") } }
 function Apply-Strip {
+  if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
   if($script:collapsed){ $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 600); $nh=(Px 80) }
   $nl=$wa4.Left+[int](($wa4.Width-$nw)/2); $nt=$wa4.Bottom-$nh-(Px 14)
-  $strip.SetBounds($nl,$nt,$nw,$nh)
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
+  $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
+  if($ow -eq $nw -and $oh -eq $nh -and $ox -eq $nl -and $oy -eq $nt){ return }
+  $script:animating=$true
+  try{
+    for($i=1;$i -le 10;$i++){
+      $p=$i/10.0; $e=1.0-[Math]::Pow(1.0-$p,3)
+      $cw=[int]($ow+($nw-$ow)*$e); $ch=[int]($oh+($nh-$oh)*$e); $cx=[int]($ox+($nl-$ox)*$e); $cy=[int]($oy+($nt-$oy)*$e)
+      $strip.SetBounds($cx,$cy,$cw,$ch)
+      [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 12
+    }
+    $strip.SetBounds($nl,$nt,$nw,$nh)
+  } finally { $script:animating=$false }
 }
 function Push-StripState {
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
