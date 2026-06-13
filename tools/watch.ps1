@@ -212,6 +212,9 @@ function Run-Demo($topic){
 function Make-CheatSheet($topic){
   try{
     if(-not (Get-Command Apply-XlOps -ErrorAction SilentlyContinue)){ $sync.text="Open your workbook in Excel first so I can drop in a cheat sheet."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+    $xlchk=$null; try{ $xlchk=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
+    if(-not $xlchk){ $sync.text="Open your workbook in Excel first, then ask me for a cheat sheet."; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText="Open your workbook in Excel first." }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+    try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($xlchk) }catch{}
     $fresh=$null; try{ $fresh=Read-ExcelLive }catch{}
     if(-not $fresh){ $fresh=[string]$sync.lastXl }
     $ctx=@(@{type='text';text=("TOPIC the student wants a cheat sheet for: "+[string]$topic)})
@@ -232,8 +235,12 @@ function Make-CheatSheet($topic){
     $r=$null; $sync.demoActive=$true
     try{ $r=Apply-XlOps $ops }catch{ $r="Cheat sheet write failed: "+$_.Exception.Message } finally { $sync.demoActive=$false }
     try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  CHEAT REQ: "+[string]$topic+"`r`nOPS:`r`n"+[string]$ops+"`r`nRESULT: "+[string]$r+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-    $say="Dropped a cheat sheet to the right of your work - the key rules and categories for this, right there to glance at as you go."
-    $sync.text=$say; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText=$say }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+    if([string]$r -match '(?i)(Excel is not open|No active workbook|would not let me in|failed)'){
+      $sync.text=[string]$r; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText="I could not write the cheat sheet - "+[string]$r }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+    } else {
+      $say="Dropped a cheat sheet to the right of your work - the key rules and categories for this, right there to glance at as you go."
+      $sync.text=$say; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText=$say }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
+    }
   }catch{
     $sync.demoActive=$false
     $sync.text="Sorry - the cheat sheet hit a snag."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
