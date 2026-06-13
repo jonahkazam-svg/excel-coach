@@ -5,7 +5,21 @@ Run this with `/loop`. Each firing = one improvement iteration. Self-pace with S
 ## Mission
 Make the **existing** excel-coach basics work *excellently* — reliable, polished, genuinely helpful — so Jonah can demo it to the **head of 22C** (his IB fellowship program) and it just works. Every iteration leaves the tool more solid than the last.
 
-**NOT now:** flashcards, a practice/spaced-repetition system, or any big new feature. Those come later. This loop hardens what already exists. If you think of a new feature, write it to the backlog — don't build it.
+**NOT now:** flashcards, a practice/spaced-repetition system, or any big new feature. Those come later (a few days out). This loop hardens what already exists. If you think of a new feature, write it to the backlog — don't build it.
+
+## Autonomous mode (Jonah away, from 2026-06-13 eve)
+Jonah handed off: run the loop unattended, make every existing feature as useful/helpful/polished as possible, **make all assumptions yourself** (don't wait to ask). Because he's away there is NO live session to protect — so **relaunch + drive-verify freely** (the constraint about not relaunching mid-study is suspended while he's away; just check he hasn't returned by watching for new user messages). Bias to: verify a feature actually works end-to-end with the drive channel, SEE the result (screenshot Excel via computer-use, don't trust cell properties alone), fix what's weak, make it look polished. Small, verified commits.
+
+## Feature verification sweep (work through these; fix anything weak)
+Drive each via `%TEMP%\xc_cmd.txt` with Excel open, then read logs / screenshot the result:
+- `act:guide` path — Guide overview + step-by-step: does it paint the big picture then give what/where/how/why proactively, no spam, advance cleanly? (just rebuilt — watch for slug jitter / over-firing)
+- `act:cheat` — cheat sheet: process-first, formatted, columns sized+capped (verify by screenshot), fails honestly if Excel closed.
+- `act:why` — cell explanation: scoped, teaches the why.
+- `act:kick` — get-going hint.
+- `act:audit` — deep sheet check.
+- teach demo (Run-Demo) + drill (Make-Drill) — build correctly, formatted, columns sized, and **fail honestly when Excel is closed** (still TODO — only cheat does this).
+- watcher error-catching — catches real errors fast, no same-cell re-nag (the 20s cooldown is too short).
+- formatting — blue inputs / bold totals / styled header / sized columns; SCREENSHOT to judge, don't trust properties.
 
 ## What already exists (don't rebuild)
 A live ambient coach: `tools/watch.ps1` (4 threads: UI tick / audio worker / Excel watcher / TTS) + `tools/curriculum.ps1` (Excel ops, formatting, memory engine) + `tools/ui/strip.html` (Cluely strip). Features: silent mistake-watching, Kick / Audit / **Why** (cell explanation) / **Cheat Sheet** / Teach demo / Drill / Hands / IB formatting / "hey coach" chat / Notes / company ledger. Obsidian vault in `Coaching/`.
@@ -55,15 +69,21 @@ Then read `%TEMP%\xc_hands.log` (builds) and `%TEMP%\xc_watcher.log` (verdicts) 
 - Coach does what's asked **however phrased**, and knows its own capabilities.
 - No silent deaths — a hung watcher self-heals.
 
+## Done this session (2026-06-13) — verify they stay working
+- Guide mode: big-picture overview + proactive step-by-step (what/where/how/why), stable-slug advancement, lenient parser, observability logging.
+- Formatting: structure reaches cheat sheets (Apply-XlOps -> Polish), styled title + shaded header, column sizing fixed (autofit OWN cols only, capped 45, student cols untouched), stray ";" gone.
+- Drive channel (`%TEMP%\xc_cmd.txt`), cheat-sheet fails honestly when Excel closed, cheat sheet now process-first.
+
 ## Backlog (reprioritize freely; logs override)
+- [reliability] **fail-honestly on Run-Demo + Make-Drill** — Excel-open check + reflect real result, like Make-CheatSheet (highest: a feature that fakes success is the worst look).
 - [reliability] **Watcher hang-detection** — watchdog only restarts a CRASHED runspace, not a HUNG one (blocked COM read stays State=Running). Add heartbeat-liveness: watcher stamps `$sync` each loop; tick force-restarts if no stamp > ~3 min.
-- [correctness] **Capability-aware routing** — features fire on brittle exact-phrase regex; make any phrasing route to the right feature (cheat/why/teach/hands/drill). The coach should understand what it can do.
-- [reliability] Apply the **fail-honestly** pattern (Excel-open check + real Apply-XlOps result) to **Run-Demo and Make-Drill** like Make-CheatSheet already does.
-- [quality] **Fix the struggling Teach worked-example** build — read its log, find why it chokes, make it reliable.
-- [polish] **3-dot (...) options popup** holding the toggles (hands/teach/format/mute/sound), to declutter the strip and fix overflow properly.
-- [noise] Extend **same-issue nudge suppression** — don't re-nag an unfixed cell every ~20s; wait until that cell changes or a few minutes pass.
-- [polish] Verify **formatting** looks good on real builds (drive a cheat sheet with Excel open); tune colors/structure.
-- Keep discovering via logs + drive-channel testing.
+- [noise] **Same-issue nudge suppression** — the 20s cooldown re-nags an unfixed cell (~40s repeats seen live); suppress until that cell's value changes or a few minutes pass.
+- [quality] **Tune Guide** from the logs — watch for slug jitter (false advancement), over-firing, or guidance that's too long/short; make sure the overview fires once and the steps track real progress.
+- [quality] **Fix the struggling Teach worked-example** build if it still chokes — read its log.
+- [polish] **3-dot (...) options popup** for the toggles (hands/teach/format/guide/mute/sound) — declutter the strip + give Guide a visible toggle.
+- [polish] cheat/build long cells **wrap-text** instead of truncating at width 45.
+- [correctness] **Capability-aware routing** — any phrasing routes to the right feature, not brittle exact-phrase regex.
+- Keep discovering via logs + drive-channel testing + screenshots.
 
 ## Pace & surfacing
 - **Self-pace** with ScheduleWakeup. Coach open + Jonah studying -> watch the logs + do small safe improvements + drive-test. Coach idle / Jonah away -> do offline reliability + polish that doesn't need his live Excel (code, parse-verify, commit; defer drive-tests).
