@@ -27,7 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$false; $sync.demoActive=$false; $sync.cancelled=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -717,7 +717,7 @@ function HashOf($s){ $i=([string]$s).IndexOf("`n"); if($i -gt 0){ return $s.Subs
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
 try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
 XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1)
+$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1
 while(-not $sync.stop){
  try{
   if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
@@ -750,6 +750,30 @@ while(-not $sync.stop){
     $lastHash=(HashOf $xl); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"; $prevXl=$xl; $sweptHash=$lastHash
     XLog ("workbook: '"+$sync.lastWb+"'")
     Start-Sleep -Seconds 2; continue
+  }
+  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ((Get-Date)-$guideT).TotalSeconds -ge 30){
+    $gh2=(HashOf $xl)
+    if($gh2 -ne $guideHash){
+      $guideHash=$gh2; $guideT=(Get-Date)
+      try{
+        $gu=@(@{type='text';text=("Goal of this sheet: "+[string]$sync.sheetPurpose)})
+        $gu+=@{type='text';text=("The student's CURRENT sheet (what they have filled in so far):`n"+$xl)}
+        $gu+=@{type='text';text="Identify the SINGLE next step the student should do now, based on what is already filled in versus what the goal needs. Reply with EXACTLY one line, no preamble: STEP <n>|<the next step in one clear sentence, naming the section and the lines or items, but NOT the numeric answers>|<how they will know it is right - the check or tie-out>. <n> is which step of the whole task this is (1 for first, 2 for next, and so on). If the whole task is already complete and ties out, reply: DONE|<one sentence on what they finished and the tie-out>."}
+        $gpay=@{ model="gpt-4o-mini"; max_tokens=300; temperature=0; messages=@(@{role='system';content="You are a concise finance/Excel tutor guiding a student through a worksheet ONE step at a time. You name the next section and what goes in it and the check that proves it right. You NEVER give the numeric answers - only the structure and logic."},@{role='user';content=$gu}) } | ConvertTo-Json -Depth 10
+        $gbf="$env:TEMP\xc_guide.json"; [IO.File]::WriteAllText($gbf,$gpay,(New-Object System.Text.UTF8Encoding($false)))
+        $grr=& curl.exe -s --max-time 20 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$gbf)
+        $gjj=$null; try{ $gjj=$grr|ConvertFrom-Json }catch{}
+        if($gjj.choices){
+          $gt=([string]$gjj.choices[0].message.content).Trim()
+          if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $gt=Clean-Answer $gt }
+          if($gt -match '(?im)^\s*DONE\s*\|\s*(.+)$'){ if($lastGuideStep -ne "DONE"){ $lastGuideStep="DONE"; $sync.xlText=("GUIDE: "+$Matches[1].Trim()); $sync.xlStamp=$sync.xlStamp+1; XLog "GUIDE published (done)" } }
+          elseif($gt -match '(?im)^\s*STEP\s+(\S+)\s*\|\s*(.+?)\s*\|\s*(.+)$'){
+            $gstep=$Matches[1]; $gmsg=$Matches[2].Trim(); $gchk=$Matches[3].Trim()
+            if($gstep -ne $lastGuideStep){ $lastGuideStep=$gstep; $sync.xlText=("GUIDE: "+$gmsg+" -- you will know it is right when: "+$gchk); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE published step "+$gstep) }
+          }
+        }
+      }catch{ XLog ("guide error: "+$_.Exception.Message) }
+    }
   }
   $h=(HashOf $xl)
   $mode=""; $diffTxt=""
@@ -1187,6 +1211,11 @@ function Handle-Act($k){
       $script:idle=$false; Set-Msg $(if($sync.formatOn){ "Formatting ON - I'll style what I build (IB conventions)" }else{ "Formatting off - I'll build plain cells" }); Set-Dot $(if($sync.formatOn){ '#22c55e' }else{ '#969aa2' }) $false
       $script:lastActive=(Get-Date); $script:idle=$true
     }
+    'guide'    {
+      $sync.guideOn=-not $sync.guideOn
+      $script:idle=$false; Set-Msg $(if($sync.guideOn){ "Guide ON - I'll walk you through the next step" }else{ "Guide off - reactive checking only" }); Set-Dot $(if($sync.guideOn){ '#22c55e' }else{ '#969aa2' }) $false
+      $script:lastActive=(Get-Date); $script:idle=$true
+    }
     'note'     {
       $script:idle=$false; Set-Msg "Noting this for later..."; Set-Dot '#2563eb' $false
       Show-PanelLoading
@@ -1389,7 +1418,17 @@ $ui.Add_Tick({
   }
   if($sync.xlStamp -gt $script:seenXl){
     $script:seenXl=$sync.xlStamp; $rx=[string]$sync.xlText
-    if($rx -eq "OK"){
+    if($rx -match '^GUIDE: '){
+      $gmsg=$rx.Substring(7)
+      $script:xlNudgeShown=$true; $script:lastActive=(Get-Date)
+      if($script:collapsed){ $script:collapsed=$false; Apply-Strip }
+      $script:idle=$false; Set-Dot '#2563eb' $false
+      Set-Msg $(if(Get-Command Speakable -ErrorAction SilentlyContinue){ Speakable $gmsg }else{ $gmsg }); $script:lastFull=$gmsg
+      if(Get-Command Show-Answer -ErrorAction SilentlyContinue){ Show-Answer $gmsg; Set-Query "Your next step" }
+      if(-not $sync.mute){ $sync.ttsText=$gmsg }
+      $script:baseStatus="On track - guiding"
+    }
+    elseif($rx -eq "OK"){
       if($script:xlNudgeShown){ $script:xlNudgeShown=$false; if(-not $script:askBusy){ Set-Dot '#22c55e' $true; $script:idle=$true; $script:baseStatus="Fixed - nice." } }
     }
     elseif($rx -ne ""){
