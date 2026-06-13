@@ -717,7 +717,7 @@ function HashOf($s){ $i=([string]$s).IndexOf("`n"); if($i -gt 0){ return $s.Subs
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
 try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
 XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1
+$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1; $guideOverviewSheet=""
 while(-not $sync.stop){
  try{
   if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
@@ -750,6 +750,19 @@ while(-not $sync.stop){
     $lastHash=(HashOf $xl); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"; $prevXl=$xl; $sweptHash=$lastHash
     XLog ("workbook: '"+$sync.lastWb+"'")
     Start-Sleep -Seconds 2; continue
+  }
+  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($guideOverviewSheet -ne $sync.lastWb)){
+    $guideOverviewSheet=$sync.lastWb; $guideT=(Get-Date)
+    try{
+      $ou=@(@{type='text';text=("Goal of this sheet: "+[string]$sync.sheetPurpose)})
+      $ou+=@{type='text';text=("The student's sheet:`n"+$xl)}
+      $ou+=@{type='text';text="This is UNFAMILIAR material for the student. In 3 to 4 short sentences, paint the FULL PICTURE of this whole exercise before they start the steps: what it is overall, its major parts or sections and how they connect, and the end goal - how they will know the whole thing is complete (the final tie-out or check). Plain language, no numeric answers, no preamble - just orient them to the whole."}
+      $opay=@{ model="gpt-4o-mini"; max_tokens=350; temperature=0; messages=@(@{role='system';content="You orient a student to an unfamiliar finance/Excel exercise by giving the big picture - the whole structure and the end goal - before any individual step."},@{role='user';content=$ou}) } | ConvertTo-Json -Depth 10
+      $obf="$env:TEMP\xc_guideov.json"; [IO.File]::WriteAllText($obf,$opay,(New-Object System.Text.UTF8Encoding($false)))
+      $orr=& curl.exe -s --max-time 25 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$obf)
+      $ojj=$null; try{ $ojj=$orr|ConvertFrom-Json }catch{}
+      if($ojj.choices){ $ov=([string]$ojj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ov=Clean-Answer $ov }; if($ov){ $sync.xlText=("GUIDE: Big picture -- "+$ov); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE overview: "+$ov) } }
+    }catch{ XLog ("guide overview error: "+$_.Exception.Message) }
   }
   if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($lastGuideStep -ne "DONE") -and ( (((HashOf $xl) -ne $guideHash) -and ((Get-Date)-$guideT).TotalSeconds -ge 30) -or (((Get-Date)-$guideT).TotalSeconds -ge 75) )){
     $guideHash=(HashOf $xl); $guideT=(Get-Date)
