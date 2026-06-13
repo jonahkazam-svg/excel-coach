@@ -63,6 +63,43 @@ function Find-WeakFlash($text){
 # Guardrails: writes ONLY to cells that are empty on the active sheet (or a NEW
 # sheet it creates), max 80 writes per command, never deletes or overwrites.
 # -Plan parses and validates without touching Excel (for testing).
+# IB-convention styling for anything the coach BUILDS (worked examples, practice
+# blocks, drills, hands) - never for cells the STUDENT fills. Blue font = hard-coded
+# input, black = formula, accounting number format on figures, bold on total/header
+# labels. Best-effort: every COM set is wrapped so a refusal never breaks a build.
+$script:XCTotalRx='(?i)^(total|subtotal|net |gross profit|operating income|ebit)'
+function Format-XlCell($cell,$val){
+  if(-not $cell){ return }
+  $v=([string]$val).Trim()
+  try{
+    if($v -match '^='){
+      try{ $cell.Font.Color=0 }catch{}
+      try{ $cell.NumberFormat='#,##0.00;(#,##0.00)' }catch{}
+    }
+    elseif($v -match '^\(?-?\$?\s*[0-9][0-9,]*(\.[0-9]+)?\)?%?$'){
+      try{ $cell.Font.Color=16711680 }catch{}
+      if($v -match '%'){ try{ $cell.NumberFormat='0.0%' }catch{} }
+      elseif($v -match '^(19|20)[0-9]{2}$'){ try{ $cell.NumberFormat='General' }catch{} }
+      else{ try{ $cell.NumberFormat='#,##0.00;(#,##0.00)' }catch{} }
+    }
+    else{
+      if($v -match $script:XCTotalRx){ try{ $cell.Font.Bold=$true }catch{} }
+    }
+  }catch{}
+}
+
+# After a build: bold + top-border the total rows, then autofit columns so the
+# sheet reads like a real model. $ops = flat list of @{addr=..;val=..;blank=..}.
+function Polish-BuiltSheet($ws,$ops){
+  if(-not $ws -or -not $ops){ return }
+  try{
+    $trows=@{}
+    foreach($o in $ops){ if((-not $o.blank) -and ([string]$o.val -match $script:XCTotalRx)){ $rr=([string]$o.addr -replace '^[A-Za-z]+',''); if($rr){ $trows[$rr]=$true } } }
+    foreach($o in $ops){ if($o.blank){ continue }; $rr=([string]$o.addr -replace '^[A-Za-z]+',''); if($rr -and $trows[$rr]){ try{ $tc=$ws.Range([string]$o.addr); $tc.Font.Bold=$true; $b=$tc.Borders(8); $b.LineStyle=1; $b.Weight=2; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($b) }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tc) }catch{} } }
+    try{ $ws.UsedRange.Columns.AutoFit() }catch{}
+  }catch{}
+}
+
 function Apply-XlOps($ops,[switch]$Plan){
   $written=0; $skipped=0; $sheets=0; $done=""; $failed=@(); $planned=@(); $putUsed=0
   $xl=$null; $wb=$null; $sh=$null
@@ -89,6 +126,7 @@ function Apply-XlOps($ops,[switch]$Plan){
           $mayWrite=(($op -eq "PUT") -or ($null -eq $cur) -or (([string]$cur) -eq ""))
           if($mayWrite){
             try{ $cell.Formula=$val }catch{ $cell.Value2=$val }
+            if($sync.formatOn){ Format-XlCell $cell $val }
             $written++; if($op -eq "PUT"){ $putUsed++ }
           } else { $skipped++ }
           [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell)

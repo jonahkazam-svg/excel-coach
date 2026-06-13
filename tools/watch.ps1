@@ -27,7 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$false; $sync.demoActive=$false; $sync.cancelled=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -138,7 +138,7 @@ function Run-Demo($topic){
     if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
     if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept behind their most recent mistake (teach this): "+[string]$sync.lastNudge)} }
     if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reuse: "+[string]$sync.companyCtx)} }
-    $dsys="You are a finance/Excel tutor giving a LIVE, INTERACTIVE lesson on a fresh blank sheet. Do TWO things SIDE BY SIDE about the concept the student just struggled with. ON THE LEFT (start around B2): build a small WORKED example - fully solved, using their scenario - narrating each step as you build it. ON THE RIGHT (start around H2, same rows so they line up): build a PARALLEL PRACTICE version of the SAME concept with DIFFERENT numbers/items, but LEAVE THE ANSWER CELLS BLANK for the student to fill in - mark each blank answer cell so it gets highlighted. Reply ONLY with a script of these line types, nothing else:`nSTEP <one short spoken sentence about what you are adding to the worked example on the left>`nSET <cell> <label or number or =formula>  (a FILLED cell - the whole worked example, plus the labels and given inputs of the practice block)`nBLANK <cell>  (an ANSWER cell in the practice block the student must fill - left empty and highlighted)`nDONE <one short spoken sentence telling them to fill in the highlighted yellow cells and that you will check each one>`nRules: worked example on the LEFT columns, practice block on the RIGHT columns with a gap, same row layout; formulas start with =; label rows; plain ASCII; 5 to 9 STEP groups; put the practice SET and BLANK lines under a final STEP that says you set one up for them to try; the LAST line is the DONE line."
+    $dsys="You are a finance/Excel tutor giving a LIVE, INTERACTIVE lesson on a fresh blank sheet. Do TWO things SIDE BY SIDE about the concept the student just struggled with. ON THE LEFT (start around B2): build a small WORKED example - fully solved, using their scenario - narrating each step as you build it. ON THE RIGHT (start around H2, same rows so they line up): build a PARALLEL PRACTICE version of the SAME concept with DIFFERENT numbers/items, but LEAVE THE ANSWER CELLS BLANK for the student to fill in - mark each blank answer cell so it gets highlighted. Reply ONLY with a script of these line types, nothing else:`nSTEP <one short spoken sentence about what you are adding to the worked example on the left>`nSET <cell> <label or number or =formula>  (a FILLED cell - the whole worked example, plus the labels and given inputs of the practice block)`nBLANK <cell>  (an ANSWER cell in the practice block the student must fill - left empty and highlighted)`nDONE <one short spoken sentence telling them to fill in the highlighted yellow cells and that you will check each one>`nRules: worked example on the LEFT columns, practice block on the RIGHT columns with a gap, same row layout; formulas start with =; label rows; plain ASCII; 5 to 9 STEP groups; put the practice SET and BLANK lines under a final STEP that says you set one up for them to try; the LAST line is the DONE line. Never mention cell colors, fonts, borders, number formats or any styling in a STEP or DONE sentence - narrate only the finance and Excel logic."
     $dpay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content=$dsys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
     $dbf="$env:TEMP\xc_demo.json"; [IO.File]::WriteAllText($dbf,$dpay,(New-Object System.Text.UTF8Encoding($false)))
     $drr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
@@ -182,8 +182,8 @@ function Run-Demo($topic){
           $cell=$null
           try{
             $cell=$ds.Range($addr)
-            if($op.blank){ try{ $cell.Interior.Color=0x99FFFF }catch{}; try{ $cell.BorderAround() }catch{} }
-            else{ $val=[string]$op.val; try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; $built++ }
+            if($op.blank){ try{ $cell.Interior.Color=0x99FFFF }catch{}; try{ $cell.BorderAround() }catch{}; if($sync.formatOn){ try{ $cell.Font.Color=16711680 }catch{}; try{ $cell.NumberFormat='#,##0.00;(#,##0.00)' }catch{} } }
+            else{ $val=[string]$op.val; try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; if($sync.formatOn){ Format-XlCell $cell $val }; $built++ }
           }catch{}
           if($cell){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell) }catch{} }
           Start-Sleep -Milliseconds 250
@@ -191,6 +191,7 @@ function Run-Demo($topic){
         while((Get-Date) -lt $sync.ttsBusyUntil -and ((Get-Date)-$t0).TotalSeconds -lt 18){ Start-Sleep -Milliseconds 200 }
         Start-Sleep -Milliseconds 400
       }
+      if($sync.formatOn){ $allOps=@(); foreach($s in $steps){ foreach($o in $s.ops){ $allOps+=$o } }; try{ Polish-BuiltSheet $ds $allOps }catch{} }
       if($doneSay){ $sync.ttsText=$doneSay }
       $shName=""; try{ $shName=[string]$ds.Name }catch{}
       $recap="Done on the '"+$shName+"' sheet: a worked example on the LEFT (fully solved"+$(if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ ", focused on the spot you just slipped on" }else{ "" })+") and a parallel PRACTICE version on the RIGHT with different numbers. Fill in the highlighted yellow cells yourself - I'll check each one as you go."
@@ -218,7 +219,7 @@ function Make-Drill($topic){
     if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
     if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept behind their most recent mistake (drill this): "+[string]$sync.lastNudge)} }
     if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reuse: "+[string]$sync.companyCtx)} }
-    $dsys="You are a finance/Excel tutor setting up a practice exercise on a blank sheet. Create a SIMILAR but NEW practice exercise on a blank sheet to cement the concept the student just worked on (their last sheet and recent mistake are given). Use DIFFERENT numbers but the same structure/concept. Set up the labels, the GIVEN input values, and a clear question/instruction - but LEAVE THE ANSWER CELLS EMPTY for the student to fill in. Reply ONLY with lines, nothing else: SET <cell> <label, given number, or question text>  (only the setup - do NOT fill the cells the student should solve) ; DONE <one short spoken instruction telling them what to solve>. Rules: start around B2, label rows, plain ASCII, the LAST line is the DONE line, 5-14 SET lines."
+    $dsys="You are a finance/Excel tutor setting up a practice exercise on a blank sheet. Create a SIMILAR but NEW practice exercise on a blank sheet to cement the concept the student just worked on (their last sheet and recent mistake are given). Use DIFFERENT numbers but the same structure/concept. Set up the labels, the GIVEN input values, and a clear question/instruction - but LEAVE THE ANSWER CELLS EMPTY for the student to fill in. Reply ONLY with lines, nothing else: SET <cell> <label, given number, or question text>  (only the setup - do NOT fill the cells the student should solve) ; DONE <one short spoken instruction telling them what to solve>. Rules: start around B2, label rows, plain ASCII, the LAST line is the DONE line, 5-14 SET lines. Never mention cell colors, fonts, borders, number formats or any styling - narrate only the finance and Excel logic."
     $dpay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content=$dsys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
     $dbf="$env:TEMP\xc_drill.json"; [IO.File]::WriteAllText($dbf,$dpay,(New-Object System.Text.UTF8Encoding($false)))
     $drr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
@@ -253,10 +254,11 @@ function Make-Drill($topic){
         $addr=[string]$op.addr; $val=[string]$op.val
         if(-not $addr){ continue }
         $cell=$null
-        try{ $cell=$ds.Range($addr); try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; $built++ }catch{}
+        try{ $cell=$ds.Range($addr); try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; if($sync.formatOn){ Format-XlCell $cell $val }; $built++ }catch{}
         if($cell){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell) }catch{} }
         Start-Sleep -Milliseconds 120
       }
+      if($sync.formatOn){ try{ Polish-BuiltSheet $ds $ops }catch{} }
       if($doneSay -and (-not $sync.mute)){ $sync.ttsText=$doneSay }
       $sync.text="Set up a practice problem on the '"+$shName+"' sheet - fill in the blank cells and I'll check your answer."
       $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
@@ -1053,6 +1055,7 @@ function Push-StripState {
   JS $script:wvS ("XC.setToggle('pause',"+(BoolJs $sync.paused)+")")
   JS $script:wvS ("XC.setToggle('mute',"+(BoolJs $sync.mute)+")")
   JS $script:wvS ("XC.setToggle('sound',"+(BoolJs $sync.muteSound)+")")
+  JS $script:wvS ("XC.setToggle('format',"+(BoolJs $sync.formatOn)+")")
   JS $script:wvS ("XC.busy(false)")
   $hp=$script:dotState; $script:dotState=""; if($hp -ne ""){ $c=$hp.Substring(0,7); $p=$hp.Substring(7); JS $script:wvS ("XC.setDot('"+$c+"',"+$p+")") } else { Set-Dot '#22c55e' $true }
 }
@@ -1127,6 +1130,12 @@ function Handle-Act($k){
       $sync.teachOn=-not $sync.teachOn
       JS $script:wvS ("XC.setToggle('teach',"+(BoolJs $sync.teachOn)+")")
       $script:idle=$false; Set-Msg $(if($sync.teachOn){ "Teach mode ON - ask me to show you something" }else{ "Teach mode off" }); Set-Dot $(if($sync.teachOn){ '#22c55e' }else{ '#969aa2' }) $false
+      $script:lastActive=(Get-Date); $script:idle=$true
+    }
+    'format'   {
+      $sync.formatOn=-not $sync.formatOn
+      JS $script:wvS ("XC.setToggle('format',"+(BoolJs $sync.formatOn)+")")
+      $script:idle=$false; Set-Msg $(if($sync.formatOn){ "Formatting ON - I'll style what I build (IB conventions)" }else{ "Formatting off - I'll build plain cells" }); Set-Dot $(if($sync.formatOn){ '#22c55e' }else{ '#969aa2' }) $false
       $script:lastActive=(Get-Date); $script:idle=$true
     }
     'note'     {
