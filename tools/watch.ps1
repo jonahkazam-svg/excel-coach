@@ -300,7 +300,7 @@ $lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
-      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__")
+      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__"); $isWhy=($tq -eq "__WHY__")
       $isTrace=((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})')); if($isTrace){ $tdet=$true }
       if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
         $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
@@ -329,6 +329,8 @@ while(-not $sync.stop){
       $sysA="You are a sharp, accurate finance and Excel tutor at Breaking Into Wall Street / investment-banking level. Answer the student's question or help with whatever they are doing right now. Work carefully and double-check before answering. Format cleanly with ## headers, **bold** for key terms and the final answer, - bullets, and thousands-separated numbers when useful."
       if($isKick){
         $ua="I want a kick-start on the sheet I have open. Look at my Excel and tell me, briefly and directly: what this sheet is asking me to do and the FIRST concrete step to get moving (name the actual starting cell or row from the data). If I have clearly already started, point me at the NEXT step instead. 2-3 sentences, direct and encouraging - do not solve it for me, just get me going."
+      } elseif($isWhy){
+        $ua="I am STUCK on the single cell my cursor is in right now - the ACTIVE CELL named on the first line of the Excel data (for example 'Active cell D14'). Find that cell's row and read its row label to see what item or decision it is. Teach me JUST this one thing: explain the REASONING for what this specific cell should be, and give me the general RULE I can reuse for cells like it - lead with the concept and the rule, then use the specific answer only as the example that illustrates it. Keep it to 3-5 sentences. Do NOT audit, solve, or comment on the rest of the sheet. Be concrete about WHY, at Breaking Into Wall Street level. If the active cell is empty because I have not answered it yet, that is expected - teach me how to reason it out rather than just stating the answer."
       } elseif($isAudit){
         $ua="Do a THOROUGH final audit of my Excel work, using the EXACT cell data below as the ground truth. Check EVERY cell that holds a formula or entered value against what this sheet is meant to practice and the standard investment-banking method: verify each formula's logic, references, and signs, and recompute the numbers to confirm them. Then report with these sections: '## Verdict' - one line, either correct and complete, or how many issues; '## Issues' - each one as the exact cell, what is wrong, and the exact fix (the correct formula or value); '## Still to do' - only if parts are unfinished; '## Done right' - one short line. Be rigorous; do not wave anything through."
       } else {
@@ -348,7 +350,7 @@ while(-not $sync.stop){
       if($fbB){ $ca+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail='high'}} }
       $hm=@(); foreach($h in $askHist){ $hm+=@{role='user';content=[string]$h.q}; $hm+=@{role='assistant';content=[string]$h.a} }
       $ma=@(@{role='system';content=($sysA+$sync.brain)})+$hm+@(@{role='user';content=$ca})
-      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){2800}elseif($tdet){3500}elseif($isKick){600}else{900}); reasoning_effort=$(if($isAudit){'high'}elseif($isKick){'low'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
+      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){2800}elseif($tdet){3500}elseif($isKick){600}elseif($isWhy){1100}else{900}); reasoning_effort=$(if($isAudit){'high'}elseif($isKick){'low'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
       $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
       $ar=& curl.exe -s --max-time 150 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
       $aj=$null; try{ $aj=$ar|ConvertFrom-Json }catch{}
@@ -356,7 +358,7 @@ while(-not $sync.stop){
       if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ans=Clean-Answer $ans }
       $sync.text=$ans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
       if($ans -and ($ans -notmatch '^(Error|No response|Sorry)')){
-        $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isKick){ "(kick-start on this sheet)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
+        $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isKick){ "(kick-start on this sheet)" }elseif($isWhy){ "(why is this cell what it is)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
         $arec=$(if($ans.Length -gt 1200){ $ans.Substring(0,1200) }else{ $ans })
         [void]$askHist.Add(@{q=$qrec;a=$arec}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
       }
@@ -1160,6 +1162,14 @@ function Handle-Act($k){
       Set-Msg "Getting you going..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Kick incoming"
       Show-PanelLoading
       $sync.askLabel="Kick-start"; $sync.typedDetail=$false; $sync.typedAsk="__KICK__"
+    }
+    'why'      {
+      if($script:askBusy){ return }
+      $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
+      JS $script:wvS ("XC.busy(true)")
+      Set-Msg "Explaining this cell..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Why this"
+      Show-PanelLoading
+      $sync.askLabel="Why this cell"; $sync.typedDetail=$false; $sync.typedAsk="__WHY__"
     }
     'close'    { Shutdown-Coach }
   }
