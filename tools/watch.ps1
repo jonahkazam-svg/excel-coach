@@ -408,6 +408,7 @@ while(-not $sync.stop){
         $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isKick){ "(kick-start on this sheet)" }elseif($isWhy){ "(why is this cell what it is)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
         $arec=$(if($ans.Length -gt 1200){ $ans.Substring(0,1200) }else{ $ans })
         [void]$askHist.Add(@{q=$qrec;a=$arec}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
+        try{ $alog=$(if($ans.Length -gt 600){ $ans.Substring(0,600) }else{ $ans }); [IO.File]::AppendAllText(($env:TEMP+"\xc_ask.log"),((Get-Date).ToString("HH:mm:ss")+"  "+[string]$qrec+" => "+$alog+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
       }
       if($isKick){
         try{
