@@ -719,7 +719,7 @@ function HashOf($s){ $i=([string]$s).IndexOf("`n"); if($i -gt 0){ return $s.Subs
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
 try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
 XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1; $guideOverviewSheet=""
+$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1; $guideOverviewSheet=""; $lastNudgePub=""
 while(-not $sync.stop){
  try{
   if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
@@ -829,13 +829,15 @@ while(-not $sync.stop){
       XLog ("verdict: "+$(if($t -eq ""){ "<EMPTY>" }elseif($t.Length -gt 140){ $t.Substring(0,140) }else{ $t }))
       if($t -eq ""){ }
       elseif($t -match '^\s*OK'){
-        if($lastState -ne "OK"){ $lastState="OK"; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1; XLog "cleared (fixed)" }
+        if($lastState -ne "OK"){ $lastState="OK"; $lastNudgePub=""; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1; XLog "cleared (fixed)" }
       } else {
-        if(((Get-Date)-$nudgeT).TotalSeconds -ge 20){
-          $nudgeT=(Get-Date); $lastState=$t; $sync.xlText=$t; $sync.xlStamp=$sync.xlStamp+1; XLog "PUBLISHED nudge"
+        $sameIssue=$false; if($lastNudgePub){ if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $sameIssue=(XC-SameIssue $t $lastNudgePub) }else{ $sameIssue=($t -eq $lastNudgePub) } }
+        $cool=$(if($sameIssue){ 180 }else{ 20 })
+        if(((Get-Date)-$nudgeT).TotalSeconds -ge $cool){
+          $nudgeT=(Get-Date); $lastState=$t; $lastNudgePub=$t; $sync.xlText=$t; $sync.xlStamp=$sync.xlStamp+1; XLog "PUBLISHED nudge"
           $dupS=$false; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $dupS=(XC-SameIssue $t $lastLogged) }
           if(-not $dupS){ $lastLogged=$t; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $t }catch{} } }
-        } else { XLog "suppressed by 20s cooldown" }
+        } else { XLog ("suppressed ("+$(if($sameIssue){"same issue, "+$cool+"s"}else{[string]$cool+"s cooldown"})+")") }
       }
     } elseif($jj.error){ XLog ("API error: "+$jj.error.message) } else { XLog "no API response (timeout?)" }
     if(($mode -eq "sweep") -and (((Get-Date)-$lastCoSave).TotalSeconds -ge 360)){
