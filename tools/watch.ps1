@@ -397,12 +397,13 @@ while(-not $sync.stop){
       if($fbB){ $ca+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail='high'}} }
       $hm=@(); foreach($h in $askHist){ $hm+=@{role='user';content=[string]$h.q}; $hm+=@{role='assistant';content=[string]$h.a} }
       $ma=@(@{role='system';content=($sysA+$sync.brain)})+$hm+@(@{role='user';content=$ca})
-      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){2800}elseif($tdet){3500}elseif($isKick){600}elseif($isWhy){1100}else{900}); reasoning_effort=$(if($isAudit){'high'}elseif($isKick){'low'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
+      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){4500}elseif($tdet){3500}elseif($isKick){600}elseif($isWhy){1100}else{900}); reasoning_effort=$(if($isKick){'low'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
       $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
-      $ar=& curl.exe -s --max-time 150 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
+      $ar=& curl.exe -s --max-time 220 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
       $aj=$null; try{ $aj=$ar|ConvertFrom-Json }catch{}
       $ans=if($aj.choices){ ([string]$aj.choices[0].message.content).Trim() }elseif($aj.error){ "Error: "+$aj.error.message }else{ "No response - check your connection." }
       if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ans=Clean-Answer $ans }
+      if(-not $ans){ $ans="That check came back empty - the sheet may be large or the model was slow. Try Check my sheet again." }
       $sync.text=$ans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
       if($ans -and ($ans -notmatch '^(Error|No response|Sorry)')){
         $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isKick){ "(kick-start on this sheet)" }elseif($isWhy){ "(why is this cell what it is)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
