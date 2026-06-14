@@ -105,6 +105,11 @@
   #chipTeach.alt{ color:#22c55e; }
   #chipFormat.alt{ color:#22c55e; }
   body.paused .eq i{ animation-play-state:paused; opacity:.35; }
+  .listenLbl{ display:none; align-items:center; gap:5px; flex:0 0 auto; font-size:12px; font-weight:600; color:#34d399; letter-spacing:.2px; }
+  .listenLbl::before{ content:''; width:7px; height:7px; border-radius:50%; background:#34d399; animation:lpulse 1s ease-in-out infinite; }
+  body.listening .listenLbl{ display:inline-flex; }
+  body.listening .eq i{ background:#34d399; }
+  @keyframes lpulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.35; transform:scale(.65); } }
   #timer{ font-variant-numeric:tabular-nums; font-size:13.5px; color:var(--text);
     min-width:42px; flex:0 0 auto; }
   #row1 .status{ flex:1 1 auto; cursor:pointer; }
@@ -156,6 +161,7 @@
           <svg class="alt-i" width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.6v8.8L10.6 6 3 1.6z" fill="#141418"/></svg>
         </div>
         <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="listenLbl">Listening</span>
         <span id="timer">00:00</span>
         <span class="dot pulse" id="dotBar"></span>
         <span class="status" id="statusBar" title="Click to reopen the last answer"></span>
@@ -265,6 +271,7 @@
         $('chipFormat').title = on ? 'Formatting ON - the coach styles what it builds (blue inputs, bold totals). Click to disable.' : 'Formatting OFF - the coach builds plain, unstyled cells'; }
     },
     busy(b){ document.body.classList.toggle('busy', !!b); $('assist').disabled = !!b; },
+    setListening(on){ document.body.classList.toggle('listening', !!on); },
     getAsk(){ return $('ask').value; }
   };
 
