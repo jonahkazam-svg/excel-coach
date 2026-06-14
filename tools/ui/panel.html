@@ -77,6 +77,9 @@
   #body .li .pre{ flex:0 0 auto; color:var(--text-2); }
   #body .li .pre.num{ color:var(--accent); font-weight:650; }
   #body .li .cnt{ flex:1 1 auto; }
+  #body table.md{ border-collapse:collapse; width:100%; margin:2px 0 12px; font-size:13px; }
+  #body table.md th, #body table.md td{ border:1px solid rgba(255,255,255,0.14); padding:4px 8px; text-align:left; vertical-align:top; }
+  #body table.md th{ background:rgba(255,255,255,0.06); color:#fff; font-weight:650; }
 
   /* spinner */
   #spinWrap{ position:absolute; inset:56px 0 44px 0; display:none; align-items:center; justify-content:center; }
@@ -192,8 +195,20 @@
     const out = [];
     let para = [];
     const flush = () => { if (para.length){ out.push('<p>' + para.join('<br>') + '</p>'); para = []; } };
+    let tbl = [];
+    const flushTbl = () => {
+      if (!tbl.length) return;
+      const rows = tbl.map(r => r.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map(c => c.trim()));
+      const isSep = (cells) => cells.length>0 && cells.every(c => /^:?-{2,}:?$/.test(c.replace(/\s/g,'')));
+      const body = rows.filter(r => !isSep(r));
+      let h = '<table class="md">';
+      body.forEach((cells, i) => { const tg = (i===0) ? 'th' : 'td'; h += '<tr>' + cells.map(c => '<'+tg+'>'+bold(esc(c))+'</'+tg+'>').join('') + '</tr>'; });
+      out.push(h + '</table>'); tbl = [];
+    };
     for (const raw of String(md).replace(/\r\n/g,'\n').split('\n')){
       const t = raw.trim();
+      if (/^\|.*\|$/.test(t) && t.length > 2){ flush(); tbl.push(t); continue; }
+      flushTbl();
       if (t === ''){ flush(); continue; }
       let m;
       if ((m = t.match(/^(#{1,6})\s+(.*)$/))){
@@ -211,6 +226,7 @@
       }
     }
     flush();
+    flushTbl();
     return out.join('');
   }
 
