@@ -131,6 +131,9 @@ function Invoke-XlAction($req){
 # (when playback ends) so cells appear while the coach is speaking.
 function Run-Demo($topic){
   try{
+    $xlchk=$null; try{ $xlchk=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
+    if(-not $xlchk){ $sync.text="Open your workbook in Excel first, then ask me to demonstrate."; $sync.askLabel="Teach demo"; if(-not $sync.mute){ $sync.ttsText="Open your workbook in Excel first." }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+    try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($xlchk) }catch{}
     $ctx=@(@{type='text';text=("TOPIC the student asked about: "+[string]$topic)})
     $lx=[string]$sync.lastXl; if($lx.Length -gt 1600){ $lx=$lx.Substring($lx.Length-1600) }
     if($lx){ $ctx+=@{type='text';text=("The student's last sheet data (rebuild a minimal version of THIS, using their numbers):`n"+$lx)} }
@@ -254,6 +257,9 @@ function Make-CheatSheet($topic){
 # resumes and grades the student's attempt.
 function Make-Drill($topic){
   try{
+    $xlchk=$null; try{ $xlchk=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
+    if(-not $xlchk){ $sync.text="Open your workbook in Excel first, then ask me for a practice problem."; $sync.askLabel="Practice"; if(-not $sync.mute){ $sync.ttsText="Open your workbook in Excel first." }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
+    try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($xlchk) }catch{}
     $ctx=@(@{type='text';text=("TOPIC the student asked to practice: "+[string]$topic)})
     $lx=[string]$sync.lastXl; if($lx.Length -gt 1600){ $lx=$lx.Substring($lx.Length-1600) }
     if($lx){ $ctx+=@{type='text';text=("The student's last sheet data (make a parallel exercise to THIS, same structure, different numbers):`n"+$lx)} }
