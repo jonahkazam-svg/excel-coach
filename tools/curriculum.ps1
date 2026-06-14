@@ -109,7 +109,14 @@ function Polish-BuiltSheet($ws,$ops){
     if($titleAddr){ try{ $tcell=$ws.Range($titleAddr); $tcell.Font.Bold=$true; $tcell.Font.Size=13; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tcell) }catch{} }
     $hdrRow=$null; foreach($row in ($rowCnt.Keys | Sort-Object)){ if($rowCnt[$row] -ge 2){ $hdrRow=$row; break } }
     if($hdrRow){ foreach($o in $ops){ if($o.blank){ continue }; $a=[string]$o.addr; if($a -match '^[A-Za-z]+([0-9]+)$'){ if([int]$Matches[1] -eq $hdrRow){ try{ $hc=$ws.Range($a); $hc.Font.Bold=$true; $hc.Interior.Color=16115420; $hb=$hc.Borders(9); $hb.LineStyle=1; $hb.Weight=2; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($hb) }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($hc) }catch{} } } } }
-    try{ if(($maxCi -ge $minCi) -and ($minCi -ge 1)){ for($cc=$minCi;$cc -le $maxCi;$cc++){ try{ $colObj=$ws.Columns.Item($cc); $colObj.AutoFit(); try{ if($colObj.ColumnWidth -gt 45){ $colObj.ColumnWidth=45 } }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($colObj) }catch{} } } }catch{}
+    $cappedCols=@{}
+    try{ if(($maxCi -ge $minCi) -and ($minCi -ge 1)){ for($cc=$minCi;$cc -le $maxCi;$cc++){ try{ $colObj=$ws.Columns.Item($cc); $colObj.AutoFit(); try{ if($colObj.ColumnWidth -gt 45){ $colObj.ColumnWidth=45; $cappedCols[$cc]=$true } }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($colObj) }catch{} } } }catch{}
+    # long labels in capped columns: wrap the build's OWN cells (never the student's) and fit those rows so nothing truncates
+    try{
+      $fitRows=@{}
+      foreach($o in $ops){ if($o.blank){ continue }; $a=[string]$o.addr; if($a -notmatch '^([A-Za-z]+)([0-9]+)$'){ continue }; $cl=$Matches[1].ToUpper(); $rw=[int]$Matches[2]; $ci2=0; foreach($ch in $cl.ToCharArray()){ $ci2=$ci2*26+([int][char]$ch-64) }; if($cappedCols[$ci2]){ try{ $wc=$ws.Range($a); $wc.WrapText=$true; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($wc) }catch{}; $fitRows[$rw]=$true } }
+      foreach($rw in $fitRows.Keys){ try{ $ro=$ws.Rows.Item([int]$rw); $ro.AutoFit(); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ro) }catch{} }
+    }catch{}
   }catch{}
 }
 
