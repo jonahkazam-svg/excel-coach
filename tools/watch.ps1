@@ -34,7 +34,7 @@ $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
-try{ . (Join-Path $PSScriptRoot "curriculum.ps1"); if(Get-Command Consolidate-WeakPoints -ErrorAction SilentlyContinue){ Consolidate-WeakPoints }; if(Get-Command Build-StruggleProfile -ErrorAction SilentlyContinue){ Build-StruggleProfile } }catch{}
+try{ . (Join-Path $PSScriptRoot "curriculum.ps1") }catch{}
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
 if(Test-Path $wpf){ $bt=(Get-Content $wpf -Raw); if($bt.Length -gt 1600){ $bt=$bt.Substring($bt.Length-1600) }; $sync.brain=" The student's known recurring weak points (call out by name if one recurs): "+$bt }
 $spf=Join-Path $Coaching "Struggle Profile.md"
@@ -74,6 +74,7 @@ $work=@'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type 'using System; using System.Runtime.InteropServices; public class Win2 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags); }'
 try{ . "C:\Users\jonah\Projects\excel-coach\tools\curriculum.ps1" }catch{}
+try{ if(Get-Command Consolidate-WeakPoints -ErrorAction SilentlyContinue){ Consolidate-WeakPoints }; if(Get-Command Build-StruggleProfile -ErrorAction SilentlyContinue){ Build-StruggleProfile } }catch{}
 
 # The coach's hands: turn a natural-language request into SET/SHEET ops and
 # execute them via Apply-XlOps. Returns the spoken summary, or $null if the
