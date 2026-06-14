@@ -772,7 +772,7 @@ while(-not $sync.stop){
       if($ojj.choices){ $ov=([string]$ojj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ov=Clean-Answer $ov }; if($ov){ $sync.xlText=("GUIDE: Big picture -- "+$ov); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE overview: "+$ov) } }
     }catch{ XLog ("guide overview error: "+$_.Exception.Message) }
   }
-  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($lastGuideStep -ne "DONE") -and ( (((HashOf $xl) -ne $guideHash) -and ((Get-Date)-$guideT).TotalSeconds -ge 30) -or (((Get-Date)-$guideT).TotalSeconds -ge $(if($lastGuideStep){240}else{75})) )){
+  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($lastGuideStep -ne "DONE") -and ( (((HashOf $xl) -ne $guideHash) -and ((Get-Date)-$guideT).TotalSeconds -ge 30) -or ((((Get-Date)-$guideT).TotalSeconds -ge $(if($lastGuideStep){240}else{75})) -and (((Get-Date)-$lastChange).TotalMinutes -lt 15)) )){
     $guideHash=(HashOf $xl); $guideT=(Get-Date)
     try{
       $gu=@(@{type='text';text=("Goal of this sheet: "+[string]$sync.sheetPurpose)})
