@@ -27,7 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$false; $sync.demoActive=$false; $sync.cancelled=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.wHB=(Get-Date)
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -729,7 +729,7 @@ XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -E
 $lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1; $guideOverviewSheet=""; $lastNudgePub=""
 while(-not $sync.stop){
  try{
-  if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
+  $sync.wHB=(Get-Date); if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
   if($sync.paused){ Start-Sleep -Milliseconds 800; continue }
   $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive }catch{ XLog ("read threw: "+$_.Exception.Message) } }
   if($xl -and $xl.Length -lt 130){ $xl=$null }
@@ -1110,7 +1110,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date)
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date)
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1392,8 +1392,11 @@ $ui.Add_Tick({
       try{ $script:rs=[runspacefactory]::CreateRunspace(); $script:rs.ApartmentState='STA'; $script:rs.ThreadOptions='ReuseThread'; $script:rs.Open(); $script:rs.SessionStateProxy.SetVariable('sync',$sync); $script:psw=[powershell]::Create(); $script:psw.Runspace=$script:rs; [void]$script:psw.AddScript($work); [void]$script:psw.BeginInvoke(); $script:baseStatus="Coach engine restarted - back up" }catch{}
     }
     $xS=[string]$psx.InvocationStateInfo.State
-    if($xS -eq 'Completed' -or $xS -eq 'Failed' -or $xS -eq 'Stopped'){
-      try{ $script:rsX=[runspacefactory]::CreateRunspace(); $script:rsX.ApartmentState='STA'; $script:rsX.ThreadOptions='ReuseThread'; $script:rsX.Open(); $script:rsX.SessionStateProxy.SetVariable('sync',$sync); $script:psx=[powershell]::Create(); $script:psx.Runspace=$script:rsX; [void]$script:psx.AddScript($xlWork); [void]$script:psx.BeginInvoke(); $script:baseStatus="Mistake-watcher restarted - back up" }catch{}
+    $xHung=$false
+    try{ if($sync.wHB -and (((Get-Date)-[datetime]$sync.wHB).TotalSeconds -gt 300) -and (((Get-Date)-$script:lastXWdog).TotalSeconds -gt 180)){ $xHung=$true } }catch{}
+    if($xS -eq 'Completed' -or $xS -eq 'Failed' -or $xS -eq 'Stopped' -or $xHung){
+      if($xHung){ try{ $script:psx.BeginStop($null,$null) }catch{}; try{ [IO.File]::AppendAllText((Join-Path $env:TEMP 'xc_watcher.log'),((Get-Date).ToString('HH:mm:ss')+"  WATCHDOG: watcher hung (no stamp 5min+) - force-restarting`r`n")) }catch{} }
+      try{ $script:rsX=[runspacefactory]::CreateRunspace(); $script:rsX.ApartmentState='STA'; $script:rsX.ThreadOptions='ReuseThread'; $script:rsX.Open(); $script:rsX.SessionStateProxy.SetVariable('sync',$sync); $script:psx=[powershell]::Create(); $script:psx.Runspace=$script:rsX; [void]$script:psx.AddScript($xlWork); [void]$script:psx.BeginInvoke(); $script:lastXWdog=(Get-Date); $sync.wHB=(Get-Date); $script:baseStatus="Mistake-watcher restarted - back up" }catch{}
     }
   }
   $lv=-1; if(-not $sync.paused){ $lv=Get-MicLevel }
