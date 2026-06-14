@@ -77,7 +77,7 @@ Then read `%TEMP%\xc_hands.log` (builds) and `%TEMP%\xc_watcher.log` (verdicts) 
 
 ## Backlog (reprioritize freely; logs override)
 - [FIXED 2026-06-14, commit e572cff] ~~Audit returned nothing~~ — was reasoning_effort high + 2800 cap + --max-time 150 -> reasoning ate the budget / curl timed out -> silent. Now medium effort + 4500 cap + --max-time 220 + honest empty-handling. Verified: returns in ~20s with a full line-by-line recompute. (Watch it stays fast/reliable.)
-- [reliability] **fail-honestly on Run-Demo + Make-Drill** — Excel-open check + reflect real result, like Make-CheatSheet (highest: a feature that fakes success is the worst look).
+- [FIXED 2026-06-14, commit 9b24b0c] ~~fail-honestly on Run-Demo + Make-Drill~~ — both now do the early Excel-open check before the model call (all 3 build fns consistent). Goes live next relaunch.
 - [reliability] **Watcher hang-detection** — watchdog only restarts a CRASHED runspace, not a HUNG one (blocked COM read stays State=Running). Add heartbeat-liveness: watcher stamps `$sync` each loop; tick force-restarts if no stamp > ~3 min.
 - [FIXED 2026-06-14, commit f5a5a71] ~~Same-issue nudge re-nag~~ — same issue (shared cell ref) now waits 180s before re-nagging; new issue still 20s; resets on fix. Unit-tested. (Goes live next relaunch.)
 - [quality] **Tune Guide** from the logs — watch for slug jitter (false advancement), over-firing, or guidance that's too long/short; make sure the overview fires once and the steps track real progress.
