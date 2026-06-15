@@ -762,7 +762,7 @@ while(-not $sync.stop){
       }catch{}
     }
     $lastHash=(HashOf $xl); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"; $prevXl=$xl; $sweptHash=$lastHash
-    XLog ("workbook: '"+$sync.lastWb+"'")
+    $shN=''; try{ if($xl -match "sheet '([^']+)'"){ $shN=$Matches[1] } }catch{}; $sync.lastSheet=$shN; XLog ("workbook: '"+$sync.lastWb+"' sheet '"+$shN+"'")
     Start-Sleep -Seconds 2; continue
   }
   if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($guideOverviewSheet -ne $sync.lastWb)){
@@ -993,8 +993,8 @@ function Read-ExcelLive {
   if(-not $xl){ return $null }
   $out=$null
   try {
-    $wb=$xl.ActiveWorkbook; if(-not $wb){ return $null }
-    $sh=$xl.ActiveSheet; $ur=$sh.UsedRange
+    $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { $wb=$xl.ActiveWorkbook }; if(-not $wb){ return $null }
+    $sh=$wb.ActiveSheet; $ur=$sh.UsedRange
     $rows=[int]$ur.Rows.Count; $cols=[int]$ur.Columns.Count; $r0=[int]$ur.Row; $c0=[int]$ur.Column
     $rr=[Math]::Min($rows,400); $cc=[Math]::Min($cols,80); if($rr -lt $rows -or $cc -lt $cols){ $ur=$ur.Resize($rr,$cc) }; $rows=$rr; $cols=$cc
     $act=""; $sel=""; try{ $act=$xl.ActiveCell.Address($false,$false) }catch{}; try{ $sel=$xl.Selection.Address($false,$false) }catch{}
