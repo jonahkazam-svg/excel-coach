@@ -25,9 +25,9 @@ $ff=(Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$false; $sync.demoActive=$false; $sync.cancelled=$false
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$true; $sync.demoActive=$false; $sync.cancelled=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$false; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.wHB=(Get-Date)
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.wHB=(Get-Date)
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -1156,6 +1156,9 @@ function Push-StripState {
   JS $script:wvS ("XC.setToggle('mute',"+(BoolJs $sync.mute)+")")
   JS $script:wvS ("XC.setToggle('sound',"+(BoolJs $sync.muteSound)+")")
   JS $script:wvS ("XC.setToggle('format',"+(BoolJs $sync.formatOn)+")")
+  JS $script:wvS ("XC.setToggle('hands',"+(BoolJs $sync.handsOn)+")")
+  JS $script:wvS ("XC.setToggle('teach',"+(BoolJs $sync.teachOn)+")")
+  JS $script:wvS ("XC.setToggle('guide',"+(BoolJs $sync.guideOn)+")")
   JS $script:wvS ("XC.busy(false)")
   $hp=$script:dotState; $script:dotState=""; if($hp -ne ""){ $c=$hp.Substring(0,7); $p=$hp.Substring(7); JS $script:wvS ("XC.setDot('"+$c+"',"+$p+")") } else { Set-Dot '#22c55e' $true }
 }
@@ -1240,6 +1243,7 @@ function Handle-Act($k){
     }
     'guide'    {
       $sync.guideOn=-not $sync.guideOn
+      JS $script:wvS ("XC.setToggle('guide',"+(BoolJs $sync.guideOn)+")")
       $script:idle=$false; Set-Msg $(if($sync.guideOn){ "Guide ON - I'll walk you through the next step" }else{ "Guide off - reactive checking only" }); Set-Dot $(if($sync.guideOn){ '#22c55e' }else{ '#969aa2' }) $false
       $script:lastActive=(Get-Date); $script:idle=$true
     }
