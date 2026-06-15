@@ -176,7 +176,7 @@ function Run-Demo($topic){
     $sync.demoActive=$true
     try{
       $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ $sync.text="Open Excel first so I can demonstrate."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-      $wb=$null; try{ $wb=$xl.ActiveWorkbook }catch{}
+      $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { try{ $wb=$xl.ActiveWorkbook }catch{} }; if($wb){ try{ $wb.Activate() }catch{} }
       if(-not $wb){ $sync.text="Open a workbook in Excel first so I can demonstrate."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
       $ds=$wb.Worksheets.Add(); try{ $ds.Name=("Coach Demo "+(Get-Date).ToString("HHmm")) }catch{}
       foreach($st in $steps){
@@ -299,7 +299,7 @@ function Make-Drill($topic){
     $sync.demoActive=$true
     try{
       $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ $sync.text="Open Excel first so I can set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-      $wb=$null; try{ $wb=$xl.ActiveWorkbook }catch{}
+      $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { try{ $wb=$xl.ActiveWorkbook }catch{} }; if($wb){ try{ $wb.Activate() }catch{} }
       if(-not $wb){ $sync.text="Open a workbook in Excel first so I can set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
       $ds=$wb.Worksheets.Add(); try{ $ds.Name=("Practice "+(Get-Date).ToString("HHmm")) }catch{}
       try{ $shName=[string]$ds.Name }catch{}
