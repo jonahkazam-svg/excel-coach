@@ -118,6 +118,103 @@
   .fxname{ font-size:12.5px; font-weight:650; color:#fff; }
   .fxformula{ font:12px Consolas,monospace; color:var(--accent); margin-top:2px; word-break:break-all; }
   .fxnote{ font-size:11.5px; color:var(--text-2); margin-top:1px; }
+
+  /* ---------- practice view (review + quiz) ---------- */
+  #practice{ position:absolute; inset:0; z-index:7; border-radius:20px;
+    background:var(--fill); padding:20px 24px 16px;
+    display:none; flex-direction:column; }
+  body.practice #practice{ display:flex; }
+  body.practice .card > #hdr,
+  body.practice .card > #body,
+  body.practice .card > #ftr,
+  body.practice .card > #fxDrop,
+  body.practice .card > #idDrop,
+  body.practice .card > #spinWrap{ display:none !important; }
+  #pracHdr{ flex:0 0 auto; display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  #pracHdr .ptitle{ font-size:15.5px; font-weight:600; color:#fff; flex:0 0 auto; }
+  #pracDue{
+    display:flex; align-items:center; gap:7px; flex:0 1 auto; min-width:0;
+    background:var(--hover); border:1px solid var(--hairline);
+    border-radius:16px; padding:4px 12px; font-size:12.5px; color:rgba(255,255,255,0.85);
+    white-space:nowrap; overflow:hidden;
+  }
+  #pracDue.hidden{ display:none; }
+  #pracProgress{ margin-left:auto; font-variant-numeric:tabular-nums; font-size:12px;
+    color:rgba(255,255,255,0.45); flex:0 0 auto; }
+  #pracClose{
+    height:28px; min-width:28px; border-radius:9px; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    color:rgba(255,255,255,0.72); background:transparent;
+    transition:background .16s ease, color .16s ease, transform .18s ease;
+  }
+  #pracClose:hover{ background:var(--hover); color:rgba(255,255,255,0.95); transform:scale(1.1); }
+  #pracClose:active{ background:rgba(255,255,255,0.12); transform:scale(0.94); }
+
+  #pracBody{ flex:1 1 auto; overflow-y:auto; min-height:0; padding-right:6px;
+    display:flex; flex-direction:column; }
+  #pracBody::-webkit-scrollbar{ width:7px; }
+  #pracBody::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); border-radius:4px; }
+  #pracBody::-webkit-scrollbar-track{ background:transparent; }
+
+  .pcardType{ font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
+    color:var(--accent); margin-bottom:10px; flex:0 0 auto; }
+  .pcardFront{ font-size:19px; font-weight:600; line-height:1.45; color:#fff;
+    margin-bottom:14px; user-select:text; cursor:default; flex:0 0 auto; }
+  .pcardBack{ font-size:15px; line-height:1.55; color:var(--text); user-select:text; cursor:default;
+    border-top:1px solid var(--hairline); padding-top:13px; margin-bottom:6px; }
+  .pcardBack.hidden{ display:none; }
+
+  /* shared practice button rows */
+  #pracActions{ flex:0 0 auto; margin-top:auto; padding-top:12px; }
+  .pbtnRow{ display:flex; gap:8px; flex-wrap:wrap; }
+  .pbtnRow.hidden{ display:none; }
+  .pbtn{
+    flex:1 1 auto; min-width:0; padding:10px 12px; border-radius:10px;
+    border:1px solid var(--hairline); background:var(--hover);
+    color:rgba(255,255,255,0.9); font-size:13px; font-weight:600; font-family:inherit;
+    cursor:pointer; white-space:nowrap; text-align:center;
+    transition:background .16s ease, border-color .16s ease, transform .12s ease;
+  }
+  .pbtn:hover{ background:rgba(255,255,255,0.13); }
+  .pbtn:active{ transform:scale(0.97); }
+  /* primary (Show answer / Next) */
+  .pbtn.primary{ background:#fff; color:#141418; border-color:transparent; }
+  .pbtn.primary:hover{ background:rgba(255,255,255,0.88); }
+  /* rating colors */
+  .pbtn.rate-again{ border-color:rgba(239,68,68,0.45); }
+  .pbtn.rate-again:hover{ background:rgba(239,68,68,0.18); border-color:rgba(239,68,68,0.7); }
+  .pbtn.rate-hard{ border-color:rgba(245,158,11,0.45); }
+  .pbtn.rate-hard:hover{ background:rgba(245,158,11,0.18); border-color:rgba(245,158,11,0.7); }
+  .pbtn.rate-good{ border-color:rgba(138,180,255,0.45); }
+  .pbtn.rate-good:hover{ background:rgba(138,180,255,0.18); border-color:rgba(138,180,255,0.7); }
+  .pbtn.rate-easy{ border-color:rgba(34,197,94,0.45); }
+  .pbtn.rate-easy:hover{ background:rgba(34,197,94,0.18); border-color:rgba(34,197,94,0.7); }
+
+  /* quiz choices */
+  #pracChoices{ display:flex; flex-direction:column; gap:9px; margin:4px 0 6px; flex:0 0 auto; }
+  #pracChoices.hidden{ display:none; }
+  .pchoice{
+    display:flex; align-items:flex-start; gap:10px; text-align:left;
+    padding:11px 13px; border-radius:11px;
+    border:1px solid var(--hairline); background:var(--hover);
+    color:rgba(255,255,255,0.9); font-size:14px; font-family:inherit; cursor:pointer;
+    transition:background .16s ease, border-color .16s ease;
+  }
+  .pchoice:hover:not(.locked){ background:rgba(255,255,255,0.13); }
+  .pchoice .pkey{ flex:0 0 auto; font-weight:700; color:var(--text-2); }
+  .pchoice .pval{ flex:1 1 auto; min-width:0; }
+  .pchoice.locked{ cursor:default; }
+  .pchoice.correct{ background:rgba(34,197,94,0.16); border-color:rgba(34,197,94,0.7); }
+  .pchoice.correct .pkey{ color:#22c55e; }
+  .pchoice.wrong{ background:rgba(239,68,68,0.16); border-color:rgba(239,68,68,0.7); }
+  .pchoice.wrong .pkey{ color:#ef4444; }
+
+  .pempty{ flex:1 1 auto; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; color:var(--text-2); gap:8px; padding:20px; }
+  .pempty.hidden{ display:none; }
+  .pempty .pemoji{ font-size:30px; opacity:0.7; }
+  .pempty .pmsg{ font-size:15px; color:rgba(255,255,255,0.78); }
+  .pempty .psub{ font-size:12.5px; color:var(--text-2); }
 </style>
 </head>
 <body>
@@ -160,6 +257,55 @@
         <span class="lbl">Simplify</span>
       </button>
       <span id="esc">Esc to close</span>
+    </div>
+
+    <!-- ============ PRACTICE (review + quiz) ============ -->
+    <div id="practice">
+      <div id="pracHdr">
+        <span class="ptitle" id="pracTitle">Practice</span>
+        <div id="pracDue" class="hidden">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.5"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="pracDueText"></span>
+        </div>
+        <span id="pracProgress"></span>
+        <div id="pracClose" title="Close practice (Esc)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <div id="pracBody">
+        <div class="pcardType" id="pracCardType"></div>
+        <div class="pcardFront" id="pracFront"></div>
+        <div class="pcardBack hidden" id="pracBack"></div>
+        <div id="pracChoices" class="hidden"></div>
+        <div class="pempty hidden" id="pracEmpty">
+          <span class="pemoji" id="pracEmptyEmoji"></span>
+          <span class="pmsg" id="pracEmptyMsg"></span>
+          <span class="psub" id="pracEmptySub"></span>
+        </div>
+      </div>
+
+      <div id="pracActions">
+        <!-- review: show-answer step -->
+        <div class="pbtnRow hidden" id="pracShowRow">
+          <button class="pbtn primary" id="pracShowBtn">Show answer</button>
+        </div>
+        <!-- review: rating step -->
+        <div class="pbtnRow hidden" id="pracRateRow">
+          <button class="pbtn rate-again" data-q="1">Again</button>
+          <button class="pbtn rate-hard" data-q="3">Hard</button>
+          <button class="pbtn rate-good" data-q="4">Good</button>
+          <button class="pbtn rate-easy" data-q="5">Easy</button>
+        </div>
+        <!-- quiz: next step (after answering) -->
+        <div class="pbtnRow hidden" id="pracNextRow">
+          <button class="pbtn primary" id="pracNextBtn">Next</button>
+        </div>
+        <!-- empty-state: done -->
+        <div class="pbtnRow hidden" id="pracDoneRow">
+          <button class="pbtn primary" id="pracDoneBtn">Close</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -278,7 +424,118 @@
     });
     $('idList').innerHTML = html;
   }
+  /* ---------- practice (review + quiz) ---------- */
+  var pracCard = null;      // current card object
+  var pracMode = 'review';  // 'review' | 'quiz'
+  var pracAnswered = false; // quiz: has a choice been chosen yet
+  function showRow(id){
+    ['pracShowRow','pracRateRow','pracNextRow','pracDoneRow'].forEach(function(r){
+      $(r).classList.toggle('hidden', r !== id);
+    });
+  }
+  function typeLabel(t){
+    if (t === 'definition') return 'Definition';
+    if (t === 'formula') return 'Formula';
+    return 'Flashcard';
+  }
+  function renderEmpty(mode, dueCount){
+    $('pracCardType').classList.add('hidden');
+    $('pracFront').classList.add('hidden');
+    $('pracBack').classList.add('hidden');
+    $('pracChoices').classList.add('hidden');
+    var emp = $('pracEmpty'); emp.classList.remove('hidden');
+    // mode 'nodeck' = no deck built yet; otherwise caught up
+    if (mode === 'nodeck'){
+      $('pracEmptyEmoji').textContent = '[ ]';
+      $('pracEmptyMsg').textContent = 'No deck yet - run build-deck.';
+      $('pracEmptySub').textContent = 'Build your study deck to start practicing.';
+    } else {
+      $('pracEmptyEmoji').textContent = 'OK';
+      $('pracEmptyMsg').textContent = 'No cards due - you are caught up.';
+      $('pracEmptySub').textContent = 'Come back later or start a quiz.';
+    }
+    showRow('pracDoneRow');
+  }
+  function renderCard(mode, card){
+    pracMode = mode; pracCard = card; pracAnswered = false;
+    $('pracEmpty').classList.add('hidden');
+    $('pracCardType').classList.remove('hidden');
+    $('pracFront').classList.remove('hidden');
+    $('pracCardType').textContent = typeLabel(card.type);
+    $('pracFront').textContent = String(card.front == null ? '' : card.front);
+    var back = $('pracBack'), choices = $('pracChoices');
+    if (mode === 'quiz'){
+      // QUIZ: question + four clickable choices
+      back.classList.add('hidden');
+      choices.classList.remove('hidden');
+      choices.innerHTML = '';
+      var list = card.choices || [];
+      list.forEach(function(text, i){
+        var b = document.createElement('div');
+        b.className = 'pchoice';
+        b.dataset.i = i;
+        b.innerHTML = '<span class="pkey">' + String.fromCharCode(65 + i) +
+          '</span><span class="pval"></span>';
+        b.querySelector('.pval').textContent = String(text == null ? '' : text);
+        b.addEventListener('click', function(){ chooseQuiz(i); });
+        choices.appendChild(b);
+      });
+      showRow('');           // no action row until answered
+    } else {
+      // REVIEW: front prominent, back hidden until "Show answer"
+      choices.classList.add('hidden');
+      back.classList.add('hidden');
+      back.textContent = String(card.back == null ? '' : card.back);
+      showRow('pracShowRow');
+    }
+    $('pracBody').scrollTop = 0;
+  }
+  function chooseQuiz(choice){
+    if (pracAnswered || !pracCard) return;
+    pracAnswered = true;
+    var answer = (typeof pracCard.answer === 'number') ? pracCard.answer : -1;
+    [].forEach.call($('pracChoices').children, function(b){
+      var i = +b.dataset.i;
+      b.classList.add('locked');
+      if (i === answer) b.classList.add('correct');
+      else if (i === choice) b.classList.add('wrong');
+    });
+    post({type:'panel', k:'practice', action:'quizAnswer', cardId: pracCard.id, choice: choice});
+    showRow('pracNextRow');
+  }
+  function rateCard(quality){
+    if (!pracCard) return;
+    post({type:'panel', k:'practice', action:'rate', cardId: pracCard.id, quality: quality});
+  }
+  function closePractice(){
+    document.body.classList.remove('practice');
+    post({type:'panel', k:'practice', action:'practiceClose'});
+  }
+
   window.XC = {
+    /* watch.ps1 drives one card at a time:
+       payload = { mode:"review"|"quiz", dueCount, index, total, card } */
+    openPractice(payloadJson){
+      var p;
+      try { p = (typeof payloadJson === 'string') ? JSON.parse(payloadJson) : payloadJson; }
+      catch(e){ p = {}; }
+      p = p || {};
+      document.body.classList.remove('loading');
+      document.body.classList.add('practice');
+      var mode = (p.mode === 'quiz') ? 'quiz' : 'review';
+      $('pracTitle').textContent = (mode === 'quiz') ? 'Quiz' : 'Review';
+      // header: "<dueCount> due today"
+      var due = $('pracDue'), dc = p.dueCount;
+      if (dc == null || dc < 0){ due.classList.add('hidden'); }
+      else { due.classList.remove('hidden'); $('pracDueText').textContent = dc + ' due today'; }
+      // progress: index/total (1-based display)
+      var prog = $('pracProgress');
+      if (p.total == null || p.total <= 0 || p.index == null){ prog.textContent = ''; }
+      else { prog.textContent = (Math.min(p.index + 1, p.total)) + '/' + p.total; }
+      // body
+      if (!p.card){ renderEmpty(p.empty === 'nodeck' ? 'nodeck' : 'caughtup', dc); }
+      else { renderCard(mode, p.card); }
+    },
     setAnswer(md){
       document.body.classList.remove('loading');
       $('fxDrop').classList.add('hidden');
@@ -330,10 +587,27 @@
   $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
   $('defineBtn').addEventListener('click', () => { if (defineTerm) post({type:'panel', k:'define', term: defineTerm}); });
   $('simplifyBtn').addEventListener('click', () => post({type:'panel', k:'simplify'}));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({type:'panel', k:'close'}); });
+
+  /* practice wiring */
+  $('pracClose').addEventListener('click', closePractice);
+  $('pracDoneBtn').addEventListener('click', closePractice);
+  $('pracShowBtn').addEventListener('click', () => {
+    $('pracBack').classList.remove('hidden');
+    showRow('pracRateRow');
+  });
+  $('pracNextBtn').addEventListener('click', () => post({type:'panel', k:'practice', action:'practiceNext'}));
+  document.querySelectorAll('#pracRateRow .pbtn').forEach((b) => {
+    b.addEventListener('click', () => rateCard(+b.dataset.q));
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (document.body.classList.contains('practice')){ closePractice(); }
+    else { post({type:'panel', k:'close'}); }
+  });
 
   let dragOn = false, lx = 0, ly = 0;
-  const interactive = (t) => t.closest('.ghost, .fbtn, #body, .chip');
+  const interactive = (t) => t.closest('.ghost, .fbtn, #body, .chip, #practice');
   document.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || interactive(e.target)) return;
     dragOn = true; lx = e.screenX; ly = e.screenY;
