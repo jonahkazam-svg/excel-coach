@@ -35,6 +35,10 @@ $sync.sys="You are a precise, helpful live study tutor for a student doing a Bre
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
 try{ . (Join-Path $PSScriptRoot "curriculum.ps1") }catch{}
+try{ . (Join-Path $PSScriptRoot "deck.ps1") }catch{}
+try{ . (Join-Path $PSScriptRoot "practice.ps1") }catch{}
+try{ . (Join-Path $PSScriptRoot "updater.ps1") }catch{}
+try{ . (Join-Path $PSScriptRoot "setup.ps1") }catch{}
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
 if(Test-Path $wpf){ $bt=(Get-Content $wpf -Raw); if($bt.Length -gt 1600){ $bt=$bt.Substring($bt.Length-1600) }; $sync.brain=" The student's known recurring weak points (call out by name if one recurs): "+$bt }
 $spf=Join-Path $Coaching "Struggle Profile.md"
