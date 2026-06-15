@@ -1115,7 +1115,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date)
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1164,13 +1164,13 @@ function Push-StripState {
   JS $script:wvS ("XC.busy(false)")
   $hp=$script:dotState; $script:dotState=""; if($hp -ne ""){ $c=$hp.Substring(0,7); $p=$hp.Substring(7); JS $script:wvS ("XC.setDot('"+$c+"',"+$p+")") } else { Set-Dot '#22c55e' $true }
 }
-function Show-Answer($md){
+function Show-Answer($md,$kind='answer',$id=0){
   $script:lastFull=$md
   Place-PanelHome
   if(-not $panel.Visible){ $panel.Show() }
   if($script:panelReady){
     JS $script:wvP ("XC.setTime('"+(Get-Date).ToString("HH:mm")+"')")
-    JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $md)+")")
+    JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $md)+","+(ConvertTo-Json (@{kind=$kind;id=$id}))+")")
   } else { $script:pendingAns=$md; $script:pendingLoad=$false }
 }
 function Show-PanelLoading {
@@ -1254,7 +1254,7 @@ function Handle-Act($k){
       $script:idle=$false; Set-Msg "Noting this for later..."; Set-Dot '#2563eb' $false
       Show-PanelLoading
       [System.Windows.Forms.Application]::DoEvents()
-      $nn=Add-Note; $script:lastFull=$nn; Show-Answer $nn; Set-Query "Note this"
+      $nn=Add-Note; $script:lastFull=$nn; Show-Answer $nn 'note' 0; Set-Query "Note this"
       $script:baseStatus="Noted - saved to revisit"; $script:idle=$true; Set-Dot '#22c55e' $true; $script:seen=$sync.stamp
     }
     'audit'    {
@@ -1468,12 +1468,12 @@ $ui.Add_Tick({
       if($script:collapsed){ $script:collapsed=$false; Apply-Strip }
       $script:idle=$false; Set-Dot '#2563eb' $false
       Set-Msg $(if(Get-Command Speakable -ErrorAction SilentlyContinue){ Speakable $gmsg }else{ $gmsg }); $script:lastFull=$gmsg
-      if(Get-Command Show-Answer -ErrorAction SilentlyContinue){ Show-Answer $gmsg; Set-Query "Your next step" }
+      if(Get-Command Show-Answer -ErrorAction SilentlyContinue){ Show-Answer $gmsg 'guide' 0; Set-Query "Your next step" }
       if(-not $sync.mute){ $sync.ttsText=$gmsg }
       $script:baseStatus="On track - guiding"
     }
     elseif($rx -eq "OK"){
-      if($script:xlNudgeShown){ $script:xlNudgeShown=$false; if(-not $script:askBusy){ Set-Dot '#22c55e' $true; $script:idle=$true; $script:baseStatus="Fixed - nice." } }
+      if($script:xlNudgeShown){ $script:xlNudgeShown=$false; if($script:curIssue){ try{ JS $script:wvP ("XC.markFixed("+[int]$script:curIssue+")") }catch{} }; if(-not $script:askBusy){ Set-Dot '#22c55e' $true; $script:idle=$true; $script:baseStatus="Fixed - nice." } }
     }
     elseif($rx -ne ""){
       $script:xlNudgeShown=$true; $script:lastActive=(Get-Date)
@@ -1482,6 +1482,7 @@ $ui.Add_Tick({
       $dupX=$false; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $dupX=(XC-SameIssue $rx $sync.lastNudge) } else { $dupX=($rx -eq $sync.lastNudge) }
       if(-not $dupX){ Log-Watch $rx $sync.lesson; if(-not $sync.mute){ $sync.ttsText=$rx } elseif(-not $sync.muteSound){ try{ (New-Object System.Media.SoundPlayer $sync.chime).Play() }catch{ [System.Media.SystemSounds]::Asterisk.Play() } } }
       $sync.lastNudge=$rx
+      if(Get-Command Show-Answer -ErrorAction SilentlyContinue){ $script:curIssue=([int]$script:curIssue)+1; Show-Answer $rx 'issue' $script:curIssue; Set-Query "Issue to fix" }
     }
   }
   if($sync.stamp -gt $script:seen){

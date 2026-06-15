@@ -61,6 +61,27 @@
   .ghost:hover svg{ transform:scale(1.22); }
   .ghost:active svg{ transform:scale(1.05); }
 
+  /* ---------- history nav (back / forward + position) ---------- */
+  #nav{ display:flex; align-items:center; gap:2px; flex:0 0 auto; }
+  #nav .ghost.disabled{ opacity:0.28; pointer-events:none; cursor:default; }
+  #navPos{ font-variant-numeric:tabular-nums; font-size:11.5px; color:rgba(255,255,255,0.5);
+    min-width:30px; text-align:center; }
+  #navPos.hidden{ display:none; }
+  #navNew{ font-size:10px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase;
+    color:var(--accent); margin-left:3px; opacity:0; transition:opacity .2s ease; flex:0 0 auto; }
+  #navNew.show{ opacity:1; }
+
+  /* ---------- status badge (top of body) ---------- */
+  #badge{ display:flex; align-items:center; gap:6px; flex:0 0 auto; margin-bottom:11px;
+    font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
+    padding:4px 10px; border-radius:8px; width:fit-content; }
+  #badge.hidden{ display:none; }
+  #badge svg{ flex:0 0 auto; display:block; }
+  #badge.kind-issue{ color:#f5a623; background:rgba(245,166,35,0.14); border:1px solid rgba(245,166,35,0.4); }
+  #badge.kind-fixed{ color:#22c55e; background:rgba(34,197,94,0.16); border:1px solid rgba(34,197,94,0.45); }
+  #badge.kind-guide{ color:var(--accent); background:rgba(138,180,255,0.13); border:1px solid rgba(138,180,255,0.38); }
+  #badge.kind-note{ color:var(--text-2); background:rgba(255,255,255,0.07); border:1px solid var(--hairline); }
+
   /* ---------- body ---------- */
   #body{ flex:1 1 auto; overflow-y:auto; min-height:0; padding-right:6px;
     font-size:14px; line-height:1.55; color:var(--text); user-select:text; cursor:default; }
@@ -227,6 +248,16 @@
         <span class="q" id="qtext"></span>
       </div>
       <div id="hdrIcons">
+        <div id="nav">
+          <div class="ghost disabled" id="navBack" title="Previous answer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <span id="navPos" class="hidden">0 / 0</span>
+          <div class="ghost disabled" id="navFwd" title="Next answer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <span id="navNew" title="A newer answer arrived">New</span>
+        </div>
         <div class="ghost" id="fxBtn" title="Formulas - the relevant formulas for what you're doing right now (tap one to copy)">
           <span class="fx">fx</span>
         </div>
@@ -242,6 +273,7 @@
         </div>
       </div>
     </div>
+    <div id="badge" class="hidden"></div>
     <div id="body"></div>
     <div id="fxDrop" class="hidden"><div id="fxList"></div></div>
     <div id="idDrop" class="hidden"><div id="idList"></div></div>
@@ -512,6 +544,75 @@
     post({type:'panel', k:'practice', action:'practiceClose'});
   }
 
+  /* ---------- history model ---------- */
+  // each entry: { md, kind:'issue'|'answer'|'guide'|'note', id:<number>, status:'open'|'fixed' }
+  var history = [];
+  var cursor = -1;          // index into history currently displayed (-1 = nothing yet)
+
+  var BADGE_CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none">' +
+    '<path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" ' +
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  // render only the badge for a given entry into #badge (no body re-render)
+  function renderBadge(entry){
+    var el = $('badge');
+    el.className = '';           // reset all kind-* classes
+    if (entry.kind === 'issue'){
+      if (entry.status === 'fixed'){ el.className = 'kind-fixed'; el.innerHTML = BADGE_CHECK + 'Fixed'; }
+      else { el.className = 'kind-issue'; el.textContent = 'Issue'; }
+    } else if (entry.kind === 'guide'){
+      el.className = 'kind-guide'; el.textContent = 'Next step';
+    } else if (entry.kind === 'note'){
+      el.className = 'kind-note'; el.textContent = 'Note';
+    } else {
+      el.className = 'hidden'; el.textContent = '';   // 'answer' -> no badge
+    }
+  }
+
+  // render the body markdown (same pipeline setAnswer always used) + define follow-up
+  function renderBody(md){
+    $('fxDrop').classList.add('hidden');
+    $('idDrop').classList.add('hidden');
+    $('body').innerHTML = mdToHtml(md);
+    $('body').scrollTop = 0;
+    wireTerms();
+    defineTerm = pickTerm(md);
+    $('defineBtn').classList.toggle('hidden', !defineTerm);
+    if (defineTerm){
+      const short = defineTerm.length > 26 ? defineTerm.slice(0,25) + '...' : defineTerm;
+      $('defineLbl').textContent = 'Define ' + short;
+      $('defineBtn').title = 'Define "' + defineTerm + '" in the context of what you\'re working on';
+    }
+  }
+
+  // show the history entry at index i (badge + body + nav state)
+  function renderEntry(i){
+    var entry = history[i];
+    if (!entry) return;
+    cursor = i;
+    renderBadge(entry);
+    renderBody(entry.md);
+    updateNav();
+  }
+
+  // refresh arrow enabled/disabled state + "n / N" position indicator
+  function updateNav(){
+    var n = history.length;
+    var pos = $('navPos'), back = $('navBack'), fwd = $('navFwd');
+    if (n <= 0){ pos.classList.add('hidden'); back.classList.add('disabled'); fwd.classList.add('disabled'); return; }
+    pos.classList.remove('hidden');
+    pos.textContent = (cursor + 1) + ' / ' + n;
+    back.classList.toggle('disabled', cursor <= 0);
+    fwd.classList.toggle('disabled', cursor >= n - 1);
+    // clear the "new" hint once the viewer is back at the newest entry
+    if (cursor >= n - 1) $('navNew').classList.remove('show');
+  }
+
+  function navTo(i){
+    if (i < 0 || i >= history.length || i === cursor) return;
+    renderEntry(i);
+  }
+
   window.XC = {
     /* watch.ps1 drives one card at a time:
        payload = { mode:"review"|"quiz", dueCount, index, total, card } */
@@ -536,19 +637,35 @@
       if (!p.card){ renderEmpty(p.empty === 'nodeck' ? 'nodeck' : 'caughtup', dc); }
       else { renderCard(mode, p.card); }
     },
-    setAnswer(md){
+    /* setAnswer(md) or setAnswer(md, { kind, id }) - pushes a history entry and
+       renders it. meta is optional; with no meta it behaves like before
+       (kind 'answer', id 0). */
+    setAnswer(md, meta){
       document.body.classList.remove('loading');
-      $('fxDrop').classList.add('hidden');
-      $('idDrop').classList.add('hidden');
-      $('body').innerHTML = mdToHtml(md);
-      $('body').scrollTop = 0;
-      wireTerms();
-      defineTerm = pickTerm(md);
-      $('defineBtn').classList.toggle('hidden', !defineTerm);
-      if (defineTerm){
-        const short = defineTerm.length > 26 ? defineTerm.slice(0,25) + '...' : defineTerm;
-        $('defineLbl').textContent = 'Define ' + short;
-        $('defineBtn').title = 'Define "' + defineTerm + '" in the context of what you\'re working on';
+      var atNewest = (cursor >= history.length - 1);   // following live?
+      history.push({
+        md: md,
+        kind: (meta && meta.kind) || 'answer',
+        id: (meta && meta.id) || 0,
+        status: 'open'
+      });
+      if (atNewest){
+        // auto-advance to the new entry (live)
+        renderEntry(history.length - 1);
+      } else {
+        // user is viewing an older entry - don't yank them forward
+        updateNav();                       // just refresh the "n / N" count
+        $('navNew').classList.add('show'); // subtle hint that something new arrived
+      }
+    },
+    /* mark every issue entry with this id as fixed; live-update the badge if shown */
+    markFixed(id){
+      for (var i = 0; i < history.length; i++){
+        var e = history[i];
+        if (e.kind === 'issue' && e.id === id){
+          e.status = 'fixed';
+          if (i === cursor) renderBadge(e);   // currently displayed -> live badge swap
+        }
       }
     },
     setAnswerLoading(){ document.body.classList.add('loading'); },
@@ -582,6 +699,8 @@
       post({type:'panel', k:'idents'});
     } else { d.classList.add('hidden'); }
   });
+  $('navBack').addEventListener('click', () => navTo(cursor - 1));
+  $('navFwd').addEventListener('click', () => navTo(cursor + 1));
   $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));
   $('closeBtn').addEventListener('click', () => post({type:'panel', k:'close'}));
   $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
