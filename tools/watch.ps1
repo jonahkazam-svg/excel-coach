@@ -1118,7 +1118,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1209,6 +1209,41 @@ function Handle-Ask($q){
   $sync.askLabel=$(if($q){ $q }else{ "Help with my screen" })
   $sync.typedDetail=$det; $sync.typedAsk=$(if($q){ $q }else{ "__ASSIST__" })
 }
+function Start-Practice {
+  if(-not (Get-Command Get-DueCards -ErrorAction SilentlyContinue)){ Show-Answer "Practice deck is not built yet - run build-deck.ps1 once to generate your flashcards, then click Practice again." 'note' 0; Set-Query "Practice"; return }
+  $deck=$null; if(Get-Command Get-Deck -ErrorAction SilentlyContinue){ try{ $deck=Get-Deck }catch{} }
+  $due=@(); try{ $due=@(Get-DueCards 20) }catch{}
+  Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
+  if(@($due).Count -eq 0){
+    $empty=$(if($deck){ 'caughtup' }else{ 'nodeck' })
+    JS $script:wvP ("XC.openPractice("+(ConvertTo-Json (@{mode='review';dueCount=0;empty=$empty}))+")")
+    $script:idle=$true; Set-Dot '#22c55e' $true; $script:baseStatus=$(if($deck){ "All caught up - no cards due" }else{ "No deck yet - run build-deck" }); return
+  }
+  $script:pracList=@($due); $script:pracIdx=0; Show-PracticeCard
+}
+function Show-PracticeCard {
+  if(($null -eq $script:pracList) -or ($script:pracIdx -ge @($script:pracList).Count)){
+    JS $script:wvP ("XC.openPractice("+(ConvertTo-Json (@{mode='review';dueCount=0;empty='caughtup'}))+")")
+    $script:idle=$true; Set-Dot '#22c55e' $true; $script:baseStatus="Practice complete - nice work"; return
+  }
+  $c=@($script:pracList)[$script:pracIdx]
+  $hasCh=($c.choices -and (@($c.choices).Count -ge 2) -and ($null -ne $c.answer))
+  $mode=$(if($hasCh){ 'quiz' }else{ 'review' })
+  $card=@{ id=[string]$c.id; type=[string]$c.type; front=[string]$c.front; back=[string]$c.back }
+  if($hasCh){ $card['choices']=@($c.choices); $card['answer']=[int]$c.answer }
+  $payload=@{ mode=$mode; dueCount=@($script:pracList).Count; index=$script:pracIdx; total=@($script:pracList).Count; card=$card }
+  JS $script:wvP ("XC.openPractice("+(ConvertTo-Json $payload -Depth 6)+")")
+  Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
+  $script:idle=$false; $script:lastActive=(Get-Date)
+}
+function Handle-Practice($action,$cardId,$quality,$choice){
+  switch([string]$action){
+    'rate' { if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$quality) }catch{} }; $script:pracIdx=([int]$script:pracIdx)+1; Show-PracticeCard }
+    'quizAnswer' { $cc=$null; foreach($x in @($script:pracList)){ if([string]$x.id -eq [string]$cardId){ $cc=$x; break } }; $ok=($cc -and ([int]$choice -eq [int]$cc.answer)); if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$(if($ok){4}else{1})) }catch{} } }
+    'practiceNext' { $script:pracIdx=([int]$script:pracIdx)+1; Show-PracticeCard }
+    'practiceClose' { try{ $panel.Hide() }catch{}; $script:idle=$true; Set-Dot '#22c55e' $true; $script:baseStatus="On track" }
+  }
+}
 function Handle-Act($k){
   $script:lastActive=(Get-Date)
   switch($k){
@@ -1277,7 +1312,7 @@ function Handle-Act($k){
       $sync.askLabel="Kick-start"; $sync.typedDetail=$false; $sync.typedAsk="__KICK__"
     }
     'practice' {
-      Handle-Ask "make me a practice exercise and walk me through it"
+      if(Get-Command Start-Practice -ErrorAction SilentlyContinue){ Start-Practice } else { Handle-Ask "make me a practice exercise and walk me through it" }
     }
     'why'      {
       if($script:askBusy){ return }
@@ -1378,7 +1413,7 @@ $wvP.add_WebMessageReceived({
       if($script:pendingAns){ $a=$script:pendingAns; $script:pendingAns=$null; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $a)+")") }
       if($null -ne $script:pendingQ){ JS $script:wvP ("XC.setQuery("+(ConvertTo-Json $script:pendingQ)+")"); $script:pendingQ=$null }
     }
-    'panel' { Handle-Panel ([string]$m.k) ([string]$m.term) }
+    'panel' { if(([string]$m.k) -eq 'practice'){ Handle-Practice ([string]$m.action) ([string]$m.cardId) $m.quality $m.choice } else { Handle-Panel ([string]$m.k) ([string]$m.term) } }
     'drag'  { $script:lastActive=(Get-Date); $script:panel.Left+=[int]([double]$m.dx*$script:S); $script:panel.Top+=[int]([double]$m.dy*$script:S) }
   }
 })

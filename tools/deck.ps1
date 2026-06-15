@@ -141,7 +141,7 @@ function Build-Deck {
 
   $key = XCDeck-ReadEnv "OPENAI_API_KEY" ""
   if(-not $key -or $key -like '*REPLACE_ME*'){ Write-Host "Build-Deck: no OPENAI_API_KEY in .env - cannot build."; return $null }
-  $model = XCDeck-ReadEnv "WATCH_MODEL" "gpt-5.5"
+  $model = XCDeck-ReadEnv "DECK_MODEL" "gpt-4o-mini"
 
   if(-not (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){ Write-Host "Build-Deck: Get-Curriculum not available - is curriculum.ps1 present?"; return $null }
   $cur = @(Get-Curriculum)
