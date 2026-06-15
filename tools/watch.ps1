@@ -1133,7 +1133,7 @@ function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne 
 function Apply-Strip {
   if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  if($script:collapsed){ $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80) }
+  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 230 }else{ 0 }) }
   $nl=$wa4.Left+[int](($wa4.Width-$nw)/2); $nt=$wa4.Bottom-$nh-(Px 14)
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
@@ -1352,6 +1352,7 @@ $wvS.add_WebMessageReceived({
     'ask'   { Handle-Ask ([string]$m.q) }
     'drag'  { $script:lastActive=(Get-Date); $script:strip.Left+=[int]([double]$m.dx*$script:S); $script:strip.Top+=[int]([double]$m.dy*$script:S) }
     'panel' { if(([string]$m.k) -eq 'close'){ try{ $script:panel.Hide() }catch{} } }
+    'menu'  { $script:menuOpen=[bool]$m.open; Apply-Strip }
   }
 })
 $wvP.add_CoreWebView2InitializationCompleted({

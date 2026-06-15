@@ -44,7 +44,7 @@
 
   /* ---------- modes ---------- */
   #barUI,#pillUI{ position:absolute; inset:0; display:none; }
-  body.bar #barUI{ display:flex; flex-direction:column; }
+  body.bar #barUI{ display:flex; flex-direction:column; justify-content:flex-end; }
   body.pill #pillUI{ display:flex; flex-direction:row; align-items:center; }
 
   /* ---------- shared ---------- */
@@ -101,9 +101,6 @@
   .eq i:nth-child(5){ height:5px; animation-delay:.6s; }
   @keyframes eq{ 0%,100%{ transform:scaleY(.55);} 50%{ transform:scaleY(1);} }
   .eq.live i{ animation:none; transition:transform .12s ease; transform-origin:bottom; }
-  #chipHands.alt{ color:#22c55e; }
-  #chipTeach.alt{ color:#22c55e; }
-  #chipFormat.alt{ color:#22c55e; }
   body.paused .eq i{ animation-play-state:paused; opacity:.35; }
   .listenLbl{ display:none; align-items:center; gap:5px; flex:0 0 auto; font-size:12px; font-weight:600; color:#34d399; letter-spacing:.2px; }
   .listenLbl::before{ content:''; width:7px; height:7px; border-radius:50%; background:#34d399; animation:lpulse 1s ease-in-out infinite; }
@@ -113,6 +110,37 @@
   #timer{ font-variant-numeric:tabular-nums; font-size:13.5px; color:var(--text);
     min-width:42px; flex:0 0 auto; }
   #row1 .status{ flex:1 1 auto; cursor:pointer; }
+  #chipMore.alt{ color:rgba(255,255,255,0.95); }
+
+  /* ---------- bar: overflow menu (opens upward) ---------- */
+  #menu{
+    display:none; flex:1 1 auto; min-height:0; flex-direction:column; gap:2px;
+    padding:8px 8px 4px 8px; overflow-y:auto;
+  }
+  body.menu-open #menu{ display:flex; }
+  .menu-row{
+    display:flex; align-items:center; gap:10px; height:32px; flex:0 0 auto;
+    padding:0 8px 0 10px; border-radius:9px; cursor:pointer;
+    color:rgba(255,255,255,0.82);
+    transition:background .16s ease, color .16s ease;
+  }
+  .menu-row:hover{ background:var(--hover); color:rgba(255,255,255,0.95); }
+  .menu-row:active{ background:rgba(255,255,255,0.12); }
+  .menu-row .m-ico{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:18px; height:18px; }
+  .menu-row .m-ico svg{ display:block; }
+  .menu-row .m-lbl{ flex:1 1 auto; font-size:13px; font-weight:600; letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sw{
+    flex:0 0 auto; width:34px; height:18px; border-radius:999px;
+    background:rgba(255,255,255,0.16); position:relative;
+    transition:background .16s ease;
+  }
+  .sw::after{
+    content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%;
+    background:#fff; transition:transform .16s ease;
+  }
+  .menu-row.on .sw{ background:#22c55e; }
+  .menu-row.on .sw::after{ transform:translateX(16px); }
+  .menu-row.on .m-ico{ color:#22c55e; }
 
   /* ---------- bar: row 2 ---------- */
   #row2{ height:36px; display:flex; align-items:center; gap:12px; padding:0 14px 6px 16px; }
@@ -155,6 +183,39 @@
 
     <!-- ============ BAR ============ -->
     <div id="barUI">
+      <!-- overflow menu: toggles live here, opens upward above the bar -->
+      <div id="menu">
+        <div class="menu-row act" id="rowHands" data-k="hands" title="Hands - let the coach write into Excel (empty cells only)">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 11.5V4.8a1.5 1.5 0 0 1 3 0v5.7m0-3.2a1.5 1.5 0 0 1 3 0v3.2m0-1.7a1.5 1.5 0 0 1 3 0v5.2c0 3.6-2.5 6.2-6 6.2-2.6 0-4.3-1-5.6-3l-2.7-4.2a1.45 1.45 0 0 1 2.3-1.7l1.5 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="m-lbl">Edits</span>
+          <span class="sw"></span>
+        </div>
+        <div class="menu-row act" id="rowFormat" data-k="format" title="Formatting - the coach styles what it builds">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15.5 4.5l4 4-8.5 8.5-4-4 8.5-8.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 13l-2.5 2.5a2.1 2.1 0 0 0 0 3 2.1 2.1 0 0 0 3 0L10 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="m-lbl">Formatting</span>
+          <span class="sw"></span>
+        </div>
+        <div class="menu-row act" id="rowTeach" data-k="teach" title="Teach mode - demos in Excel while explaining">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5L12 4.5l9.5 4-9.5 4-9.5-4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6.5 10.3v4.2c0 1.3 2.5 2.5 5.5 2.5s5.5-1.2 5.5-2.5v-4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.5 8.5v4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+          <span class="m-lbl">Coaching/Teach</span>
+          <span class="sw"></span>
+        </div>
+        <div class="menu-row act" id="rowGuide" data-k="guide" title="Guide - step-by-step guided walkthrough">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 21s-7-4.3-7-10a7 7 0 0 1 14 0c0 5.7-7 10-7 10z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="11" r="2.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          <span class="m-lbl">Guide</span>
+          <span class="sw"></span>
+        </div>
+        <div class="menu-row act" id="rowMute" data-k="mute" title="Mute the coach voice">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9c1 .8 1.6 1.8 1.6 3s-.6 2.2-1.6 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M17.8 6.6c1.7 1.3 2.7 3.2 2.7 5.4s-1 4.1-2.7 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+          <span class="m-lbl">Mute voice</span>
+          <span class="sw"></span>
+        </div>
+        <div class="menu-row act" id="rowSound" data-k="sound" title="Mute the notification sound">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3 0-5 2.2-5 5v4l-1.6 2.7c-.3.5 0 1.1.6 1.1h12c.6 0 .9-.6.6-1.1L17 12.5v-4c0-2.8-2-5-5-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.7a2.1 2.1 0 0 0 4 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+          <span class="m-lbl">Mute sounds</span>
+          <span class="sw"></span>
+        </div>
+      </div>
       <div id="row1">
         <div id="pauseBtn" class="act" data-k="pause" title="Pause coaching">
           <svg class="pri-i" width="11" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="3.2" height="9" rx="1.2" fill="#141418"/><rect x="7.3" y="1.5" width="3.2" height="9" rx="1.2" fill="#141418"/></svg>
@@ -166,25 +227,8 @@
         <span class="dot pulse" id="dotBar"></span>
         <span class="status" id="statusBar" title="Click to reopen the last answer"></span>
         <span class="divider"></span>
-        <div class="ghost act" id="chipMute" data-k="mute" title="Mute coach voice">
-          <svg class="pri-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9c1 .8 1.6 1.8 1.6 3s-.6 2.2-1.6 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M17.8 6.6c1.7 1.3 2.7 3.2 2.7 5.4s-1 4.1-2.7 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          <svg class="alt-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </div>
-        <div class="ghost act" id="chipSound" data-k="sound" title="Mute the notification sound">
-          <svg class="pri-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3 0-5 2.2-5 5v4l-1.6 2.7c-.3.5 0 1.1.6 1.1h12c.6 0 .9-.6.6-1.1L17 12.5v-4c0-2.8-2-5-5-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.7a2.1 2.1 0 0 0 4 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          <svg class="alt-i" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3.5c-3 0-5 2.2-5 5v4l-1.6 2.7c-.3.5 0 1.1.6 1.1h12c.6 0 .9-.6.6-1.1L17 12.5v-4c0-2.8-2-5-5-5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M4.5 4l15 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </div>
-        <div class="ghost act" id="chipHands" data-k="hands" title="Hands OFF - let the coach write into Excel (builds only into empty cells)">
-          <svg class="pri-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 11.5V4.8a1.5 1.5 0 0 1 3 0v5.7m0-3.2a1.5 1.5 0 0 1 3 0v3.2m0-1.7a1.5 1.5 0 0 1 3 0v5.2c0 3.6-2.5 6.2-6 6.2-2.6 0-4.3-1-5.6-3l-2.7-4.2a1.45 1.45 0 0 1 2.3-1.7l1.5 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          <svg class="alt-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 11.5V4.8a1.5 1.5 0 0 1 3 0v5.7m0-3.2a1.5 1.5 0 0 1 3 0v3.2m0-1.7a1.5 1.5 0 0 1 3 0v5.2c0 3.6-2.5 6.2-6 6.2-2.6 0-4.3-1-5.6-3l-2.7-4.2a1.45 1.45 0 0 1 2.3-1.7l1.5 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="ghost act" id="chipTeach" data-k="teach" title="Teach mode OFF - demos in Excel while explaining">
-          <svg class="pri-i" width="15" height="14" viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5L12 4.5l9.5 4-9.5 4-9.5-4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6.5 10.3v4.2c0 1.3 2.5 2.5 5.5 2.5s5.5-1.2 5.5-2.5v-4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.5 8.5v4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          <svg class="alt-i" width="15" height="14" viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5L12 4.5l9.5 4-9.5 4-9.5-4z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6.5 10.3v4.2c0 1.3 2.5 2.5 5.5 2.5s5.5-1.2 5.5-2.5v-4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.5 8.5v4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </div>
-        <div class="ghost act" id="chipFormat" data-k="format" title="Formatting ON - the coach styles what it builds (blue inputs, bold totals). Click to disable.">
-          <svg class="pri-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15.5 4.5l4 4-8.5 8.5-4-4 8.5-8.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 13l-2.5 2.5a2.1 2.1 0 0 0 0 3 2.1 2.1 0 0 0 3 0L10 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 4l17 16.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          <svg class="alt-i" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15.5 4.5l4 4-8.5 8.5-4-4 8.5-8.5z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 13l-2.5 2.5a2.1 2.1 0 0 0 0 3 2.1 2.1 0 0 0 3 0L10 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="ghost" id="chipMore" title="More toggles">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></svg>
         </div>
         <div class="ghost act" data-k="note" title="Note this - flag what I'm doing now to revisit and practice later">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14.5 3l6.5 6.5-2.2 2.2-.9-.3-3.8 3.8.3 2.5-1.6 1.6-4.2-4.2L4 19.7 3.3 19l4.6-4.6-4.2-4.2 1.6-1.6 2.5.3 3.8-3.8-.3-.9L14.5 3z" fill="currentColor"/></svg>
@@ -262,16 +306,12 @@
     setToggle(k, on){
       if (k === 'pause'){ $('pauseBtn').classList.toggle('alt', !!on); document.body.classList.toggle('paused', !!on);
         $('pauseBtn').title = on ? 'Resume coaching' : 'Pause coaching'; }
-      if (k === 'mute'){ $('chipMute').classList.toggle('alt', !!on);
-        $('chipMute').title = on ? 'Unmute coach voice' : 'Mute coach voice'; }
-      if (k === 'sound'){ $('chipSound').classList.toggle('alt', !!on);
-        $('chipSound').title = on ? 'Unmute the notification sound' : 'Mute the notification sound'; }
-      if (k === 'hands'){ $('chipHands').classList.toggle('alt', !!on);
-        $('chipHands').title = on ? 'Hands ON - the coach may write into Excel (empty cells only). Click to disable.' : 'Hands OFF - let the coach write into Excel (builds only into empty cells)'; }
-      if (k === 'teach'){ $('chipTeach').classList.toggle('alt', !!on);
-        $('chipTeach').title = on ? 'Teach mode ON - ask me to show you something. Click to disable.' : 'Teach mode OFF - demos in Excel while explaining'; }
-      if (k === 'format'){ $('chipFormat').classList.toggle('alt', !!on);
-        $('chipFormat').title = on ? 'Formatting ON - the coach styles what it builds (blue inputs, bold totals). Click to disable.' : 'Formatting OFF - the coach builds plain, unstyled cells'; }
+      // menu toggle rows: mute, sound, hands, teach, format, guide
+      const rows = { mute:'rowMute', sound:'rowSound', hands:'rowHands', teach:'rowTeach', format:'rowFormat', guide:'rowGuide' };
+      if (rows[k]){ const r = $(rows[k]); if (r) r.classList.toggle('on', !!on); }
+      // keep working for any matching chip still on the bar
+      const chips = { mute:'chipMute', sound:'chipSound', hands:'chipHands', teach:'chipTeach', format:'chipFormat' };
+      if (chips[k]){ const c = $(chips[k]); if (c) c.classList.toggle('alt', !!on); }
     },
     busy(b){ document.body.classList.toggle('busy', !!b); $('assist').disabled = !!b; },
     setListening(on){ document.body.classList.toggle('listening', !!on); },
@@ -282,6 +322,25 @@
     el.addEventListener('click', (e) => { e.stopPropagation(); post({type:'act', k: el.dataset.k}); });
   });
   $('statusBar').addEventListener('click', (e) => { e.stopPropagation(); post({type:'act', k:'reopen'}); });
+
+  /* overflow menu open/close (grows the window upward via the 'menu' message) */
+  function setMenu(open){
+    const was = document.body.classList.contains('menu-open');
+    if (was === !!open) return;
+    document.body.classList.toggle('menu-open', !!open);
+    $('chipMore').classList.toggle('alt', !!open);
+    post({type:'menu', open: !!open});
+  }
+  $('chipMore').addEventListener('click', (e) => {
+    e.stopPropagation();
+    setMenu(!document.body.classList.contains('menu-open'));
+  });
+  // close when clicking anything that is not the menu or the more button
+  document.addEventListener('pointerdown', (e) => {
+    if (!document.body.classList.contains('menu-open')) return;
+    if (e.target.closest('#menu, #chipMore')) return;
+    setMenu(false);
+  }, true);
   function sendAsk(){
     const q = $('ask').value.trim();
     $('ask').value = '';
