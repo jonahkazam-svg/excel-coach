@@ -588,7 +588,7 @@ while(-not $sync.stop){
           $sync.askLabel="Chat"; $sync.text=$cans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
           continue
         }
-        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 6){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{} }
+        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 6){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{}; $sync.lessonNoteAt=(Get-Date); $sync.lessonNotes=([int]$sync.lessonNotes)+1 }
         $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
         $fgh=[Win2]::GetForegroundWindow(); $excelFg=$false; try{ $excelFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
         $working=($excelFg -or $paused)
@@ -601,7 +601,7 @@ while(-not $sync.stop){
             if($jj2.choices){ $jt=([string]$jj2.choices[0].message.content).Trim(); if($jt -match '(?s)^YES:\s*(.+)$'){ $lastJumpT=(Get-Date); $sync.ackPing=$true; $sync.askLabel="You sounded unsure - jumping in"; $sync.typedDetail=$false; $sync.typedAsk=$Matches[1].Trim() } }
           }catch{}
         }
-        $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
+        $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }; if($coB){ $sync.courseSeenAt=(Get-Date) }
         $fbB=$null; if((-not $exB -and -not $coB) -or (-not $excelFg)){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
         $xlLive=$null; if($asked -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
         $doCheck=($asked -or (-not $working))
@@ -1423,6 +1423,8 @@ $ui.Add_Tick({
   if($listenNow -ne $script:listenState){ $script:listenState=$listenNow; JS $script:wvS ("XC.setListening("+(BoolJs $listenNow)+")") }
   if($script:idle){
     if($script:heardAt -and (((Get-Date)-$script:heardAt).TotalSeconds -lt 1.6)){ Set-Msg $(if($sync.chatOn){ "Hearing you (chat)..." }else{ "Hearing you..." }) }
+    elseif($sync.lessonNoteAt -and (((Get-Date)-[datetime]$sync.lessonNoteAt).TotalSeconds -lt 2.5)){ Set-Msg "Noting the lesson..." }
+    elseif($script:baseStatus -eq "Listening to the lesson"){ $cw=$false; try{ if(($sync.lessonNoteAt -and (((Get-Date)-[datetime]$sync.lessonNoteAt).TotalSeconds -lt 45)) -or ($sync.courseSeenAt -and (((Get-Date)-[datetime]$sync.courseSeenAt).TotalSeconds -lt 120))){ $cw=$true } }catch{}; Set-Msg $(if($cw){ "Watching the course" }else{ "Listening for the course" }) }
     else { Set-Msg $script:baseStatus }
   }
   if(-not $script:collapsed){
