@@ -55,6 +55,8 @@ $e=$null; [void][System.Management.Automation.PSParser]::Tokenize($src,[ref]$e) 
 ```
 Require: `non-ascii=0`, `parse-errors=0` for the outer file AND all 3 here-strings. For strip.html JS: `node --check` the extracted `<script>`.
 
+**ASSURANCE SUITE (run EVERY iteration):** `powershell -NoProfile -ExecutionPolicy Bypass -File tools\tests.ps1`. ~50 pure-logic assertions (no Excel/mic/API): parse+ASCII on every .ps1 incl. all 3 here-strings, the REAL exercise-routing regexes (build phrasings must build, questions must stay questions), every library module dot-sources with its key functions (Get-XlBook/Apply-XlOps/Build-Deck/Rate-Card/Check-Update/...), Get-XlBook null-safety, UI ASCII. Exit 0 = green. **Any FAIL is a regression — fix it before committing, and if it's something Jonah hit, PushNotification him.** This is the standing answer to "how do we make sure it works." Add a new assertion here whenever a new bug is found, so it can never silently come back.
+
 ## Drive channel (how you test/demo features without Jonah clicking)
 The running coach's UI tick watches `%TEMP%\xc_cmd.txt`. Write one line (UTF8 **no BOM**), it dispatches + deletes:
 - `act:cheat` / `act:why` / `act:audit` / `act:kick` / `act:hands` / `act:teach` -> Handle-Act (button)
