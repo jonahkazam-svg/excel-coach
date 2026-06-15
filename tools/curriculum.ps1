@@ -120,13 +120,33 @@ function Polish-BuiltSheet($ws,$ops){
   }catch{}
 }
 
+function Get-XlBook($xl){
+  # Pick the workbook the student is really using, surviving edit-mode freezes and stray blank Book1s.
+  if(-not $xl){ return $null }
+  for($t=0;$t -lt 4;$t++){
+    try{
+      $cnt=0; try{ $cnt=$xl.Workbooks.Count }catch{}
+      if($cnt -gt 0){
+        try{ $aw=$xl.ActiveWorkbook; if($aw -and $aw.Path){ return $aw } }catch{}
+        $want=''; try{ $want=[string]$sync.lastWb }catch{}
+        if($want){ foreach($w in $xl.Workbooks){ try{ if($w.Name -eq $want){ return $w } }catch{} } }
+        foreach($w in $xl.Workbooks){ try{ if($w.Path){ return $w } }catch{} }
+        try{ if($xl.ActiveWorkbook){ return $xl.ActiveWorkbook } }catch{}
+        try{ return $xl.Workbooks.Item(1) }catch{}
+      }
+    }catch{}
+    Start-Sleep -Milliseconds 400
+  }
+  return $null
+}
 function Apply-XlOps($ops,[switch]$Plan){
   $written=0; $skipped=0; $sheets=0; $done=""; $failed=@(); $planned=@(); $putUsed=0; $builtOps=New-Object System.Collections.ArrayList
   $xl=$null; $wb=$null; $sh=$null
   if(-not $Plan){
     try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ return "Excel is not open - open your workbook first." }
-    try{ $wb=$xl.ActiveWorkbook }catch{}
-    if(-not $wb){ return "No active workbook in Excel." }
+    $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { try{ $wb=$xl.ActiveWorkbook }catch{} }
+    if(-not $wb){ return "I can see Excel but cannot reach your workbook - if you are editing a cell, press Enter or Esc (or close any open dialog in Excel), then try again." }
+    try{ $wb.Activate() }catch{}
     $ready=$false
     for($w=0;$w -lt 8;$w++){ try{ $sh=$xl.ActiveSheet; $null=$sh.Name; $ready=$true; break }catch{ Start-Sleep -Milliseconds 500 } }
     if(-not $ready){ return "Excel would not let me in (are you editing a cell?) - press Enter or Esc and ask me again." }
@@ -472,8 +492,8 @@ function Read-ExcelLive {
   if(-not $xl){ return $null }
   $out=$null
   try {
-    $wb=$xl.ActiveWorkbook; if(-not $wb){ return $null }
-    $sh=$xl.ActiveSheet; $ur=$sh.UsedRange
+    $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { $wb=$xl.ActiveWorkbook }; if(-not $wb){ return $null }
+    $sh=$wb.ActiveSheet; $ur=$sh.UsedRange
     $rows=[int]$ur.Rows.Count; $cols=[int]$ur.Columns.Count; $r0=[int]$ur.Row; $c0=[int]$ur.Column
     $rr=[Math]::Min($rows,400); $cc=[Math]::Min($cols,80); if($rr -lt $rows -or $cc -lt $cols){ $ur=$ur.Resize($rr,$cc) }; $rows=$rr; $cols=$cc
     $act=""; $sel=""; try{ $act=$xl.ActiveCell.Address($false,$false) }catch{}; try{ $sel=$xl.Selection.Address($false,$false) }catch{}
