@@ -364,11 +364,11 @@ while(-not $sync.stop){
         Make-CheatSheet $tq
         continue
       }
-      if($sync.teachOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
+      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk ?through|how do (i|you) build|show me a|demo|worked example)\b')){
         Run-Demo $tq
         continue
       }
-      if($sync.teachOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|let me (try|practice)|give me (a|another) (problem|exercise|practice)|drill me|quiz me on this|make me a)\b')){
+      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|practice exercise|let me (try|practice)|give me (a|another) (problem|exercise|practice|drill|workout)|generate (me )?(a|an|one)?\s*(demo|practice|drill|workout|exercise|problem)|build (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|make (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|drill me|quiz me on this|make me a|make me one|build me one)\b')){
         Make-Drill $tq
         continue
       }
@@ -504,11 +504,11 @@ while(-not $sync.stop){
         $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and (-not $inChatWin) -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
         $asked=($sync.micMode -and (-not $sync.muteMe) -and (-not $heyHit) -and (-not $inChatWin) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
         if($asked){ $sync.ackPing=$true }
-        if($asked -and $sync.teachOn -and ($txt -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
+        if($asked -and ($txt -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk ?through|how do (i|you) build|show me a|demo|worked example)\b')){
           Run-Demo $txt
           continue
         }
-        if($asked -and $sync.teachOn -and ($txt -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|let me (try|practice)|give me (a|another) (problem|exercise|practice)|drill me|quiz me on this|make me a)\b')){
+        if($asked -and ($txt -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|practice exercise|let me (try|practice)|give me (a|another) (problem|exercise|practice|drill|workout)|generate (me )?(a|an|one)?\s*(demo|practice|drill|workout|exercise|problem)|build (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|make (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|drill me|quiz me on this|make me a|make me one|build me one)\b')){
           Make-Drill $txt
           continue
         }
@@ -545,12 +545,12 @@ while(-not $sync.stop){
           $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
           continue
         }
-        if($isChat -and $sync.teachOn -and ($chatQ -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk through|how do (i|you) build|show me a)\b')){
+        if($isChat -and ($chatQ -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk ?through|how do (i|you) build|show me a|demo|worked example)\b')){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
           Run-Demo $chatQ
           continue
         }
-        if($isChat -and $sync.teachOn -and ($chatQ -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|let me (try|practice)|give me (a|another) (problem|exercise|practice)|drill me|quiz me on this|make me a)\b')){
+        if($isChat -and ($chatQ -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|practice exercise|let me (try|practice)|give me (a|another) (problem|exercise|practice|drill|workout)|generate (me )?(a|an|one)?\s*(demo|practice|drill|workout|exercise|problem)|build (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|make (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|drill me|quiz me on this|make me a|make me one|build me one)\b')){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
           Make-Drill $chatQ
           continue
