@@ -504,6 +504,7 @@ while(-not $sync.stop){
         $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and (-not $inChatWin) -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
         $asked=($sync.micMode -and (-not $sync.muteMe) -and (-not $heyHit) -and (-not $inChatWin) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
         if($asked){ $sync.ackPing=$true }
+        try{ if($txt -and $txt.Length -gt 2){ [IO.File]::AppendAllText(($env:TEMP+"\xc_voice.log"),((Get-Date).ToString("HH:mm:ss")+"  hey="+[int][bool]$heyHit+" ask="+[int][bool]$asked+" chat="+[int][bool]$inChatWin+" | "+$txt+"`r`n"),(New-Object System.Text.UTF8Encoding($false))) } }catch{}
         if($asked -and ($txt -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk ?through|how do (i|you) build|show me a|demo|worked example)\b')){
           Run-Demo $txt
           continue
@@ -1264,6 +1265,9 @@ function Handle-Act($k){
       Set-Msg "Getting you going..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Kick incoming"
       Show-PanelLoading
       $sync.askLabel="Kick-start"; $sync.typedDetail=$false; $sync.typedAsk="__KICK__"
+    }
+    'practice' {
+      Handle-Ask "make me a practice exercise and walk me through it"
     }
     'why'      {
       if($script:askBusy){ return }
