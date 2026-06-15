@@ -27,7 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$true; $sync.demoActive=$false; $sync.cancelled=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.wHB=(Get-Date)
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.ttsVol=1.0; $sync.micMute=$false; $sync.wHB=(Get-Date)
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -483,7 +483,7 @@ while(-not $sync.stop){
     $sync.idStamp=$sync.idStamp+1
     continue
   }
-  if($sync.paused){ Start-Sleep -Milliseconds 400; continue }
+  if($sync.paused -or $sync.micMute){ Start-Sleep -Milliseconds 400; continue }
   try {
     $segs=@(Get-ChildItem $sync.segdir -Filter "seg_*.wav" -ErrorAction SilentlyContinue | Sort-Object Name)
     if($segs.Count -ge 2){
@@ -908,7 +908,7 @@ while(-not $sync.stop){
         & curl.exe -s --max-time 30 "https://api.fish.audio/v1/tts" -H ("Authorization: Bearer "+$sync.fishKey) -H "Content-Type: application/json" -d ("@"+$fbf) -o $fraw 2>$null
         if((Test-Path $fraw) -and ((Get-Item $fraw).Length -gt 800)){
           $pcm="$env:TEMP\xc_tts_pcm.wav"; if(Test-Path $pcm){ Remove-Item $pcm -Force -ErrorAction SilentlyContinue }
-          & $sync.ff -hide_banner -loglevel error -y -i $fraw -ar 44100 -ac 2 -c:a pcm_s16le $pcm 2>$null
+          & $sync.ff -hide_banner -loglevel error -y -i $fraw -af ("volume="+[string]::Format([Globalization.CultureInfo]::InvariantCulture,"{0:0.##}",[double]$sync.ttsVol)) -ar 44100 -ac 2 -c:a pcm_s16le $pcm 2>$null
           if((Test-Path $pcm) -and ((Get-Item $pcm).Length -gt 1000) -and (-not $sync.mute)){ $cur=New-Object System.Media.SoundPlayer $pcm; try{ $cur.Play(); $spoke=$true; $sync.ttsBusyUntil=(Get-Date).AddSeconds(((Get-Item $pcm).Length/176400.0)+1.5) }catch{} }
         }
       }catch{}
@@ -921,12 +921,12 @@ while(-not $sync.stop){
         & curl.exe -s --max-time 30 "https://api.openai.com/v1/audio/speech" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf) -o $raw 2>$null
         if((Test-Path $raw) -and ((Get-Item $raw).Length -gt 1000)){
           $pcm="$env:TEMP\xc_tts_pcm.wav"; if(Test-Path $pcm){ Remove-Item $pcm -Force -ErrorAction SilentlyContinue }
-          & $sync.ff -hide_banner -loglevel error -y -i $raw -ar 44100 -ac 2 -c:a pcm_s16le $pcm 2>$null
+          & $sync.ff -hide_banner -loglevel error -y -i $raw -af ("volume="+[string]::Format([Globalization.CultureInfo]::InvariantCulture,"{0:0.##}",[double]$sync.ttsVol)) -ar 44100 -ac 2 -c:a pcm_s16le $pcm 2>$null
           if((Test-Path $pcm) -and ((Get-Item $pcm).Length -gt 1000) -and (-not $sync.mute)){ $cur=New-Object System.Media.SoundPlayer $pcm; try{ $cur.Play(); $spoke=$true; $sync.ttsBusyUntil=(Get-Date).AddSeconds(((Get-Item $pcm).Length/176400.0)+1.5) }catch{} }
         }
       }catch{}
     }
-    if((-not $spoke) -and (-not $sync.mute)){ try{ $sp.SpeakAsync($t)|Out-Null; $sync.ttsBusyUntil=(Get-Date).AddSeconds(($t.Length/12.0)+1.5) }catch{} }
+    if((-not $spoke) -and (-not $sync.mute)){ try{ $sp.Volume=[int]([math]::Max(0,[math]::Min(100,[double]$sync.ttsVol*100))) }catch{}; try{ $sp.SpeakAsync($t)|Out-Null; $sync.ttsBusyUntil=(Get-Date).AddSeconds(($t.Length/12.0)+1.5) }catch{} }
   }
   Start-Sleep -Milliseconds 150
 }
@@ -1133,7 +1133,7 @@ function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne 
 function Apply-Strip {
   if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 230 }else{ 0 }) }
+  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 300 }else{ 0 }) }
   $nl=$wa4.Left+[int](($wa4.Width-$nw)/2); $nt=$wa4.Bottom-$nh-(Px 14)
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
@@ -1159,6 +1159,8 @@ function Push-StripState {
   JS $script:wvS ("XC.setToggle('hands',"+(BoolJs $sync.handsOn)+")")
   JS $script:wvS ("XC.setToggle('teach',"+(BoolJs $sync.teachOn)+")")
   JS $script:wvS ("XC.setToggle('guide',"+(BoolJs $sync.guideOn)+")")
+  JS $script:wvS ("XC.setToggle('micmute',"+(BoolJs $sync.micMute)+")")
+  JS $script:wvS ("XC.setVol("+[int]([double]$sync.ttsVol*100)+")")
   JS $script:wvS ("XC.busy(false)")
   $hp=$script:dotState; $script:dotState=""; if($hp -ne ""){ $c=$hp.Substring(0,7); $p=$hp.Substring(7); JS $script:wvS ("XC.setDot('"+$c+"',"+$p+")") } else { Set-Dot '#22c55e' $true }
 }
@@ -1216,6 +1218,7 @@ function Handle-Act($k){
       if($sync.paused){ $script:idle=$false; Set-Msg "Paused"; Set-Dot '#969aa2' $false } else { $script:baseStatus="Listening to the lesson"; $script:idle=$true; Set-Dot '#22c55e' $true }
     }
     'mute'     { $sync.mute=-not $sync.mute; JS $script:wvS ("XC.setToggle('mute',"+(BoolJs $sync.mute)+")"); if($sync.mute){ $sync.ttsStop=$true } }
+    'micmute'  { $sync.micMute=-not $sync.micMute; JS $script:wvS ("XC.setToggle('micmute',"+(BoolJs $sync.micMute)+")"); $script:lastActive=(Get-Date); Set-Msg $(if($sync.micMute){ "Mic muted - not listening" }else{ "Mic on - listening" }) }
     'sound'    { $sync.muteSound=-not $sync.muteSound; JS $script:wvS ("XC.setToggle('sound',"+(BoolJs $sync.muteSound)+")") }
     'cancel'   {
       try{ Get-CimInstance Win32_Process -Filter "Name='curl.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ParentProcessId -eq $PID } | ForEach-Object { try{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }catch{} } }catch{}
@@ -1353,6 +1356,7 @@ $wvS.add_WebMessageReceived({
     'drag'  { $script:lastActive=(Get-Date); $script:strip.Left+=[int]([double]$m.dx*$script:S); $script:strip.Top+=[int]([double]$m.dy*$script:S) }
     'panel' { if(([string]$m.k) -eq 'close'){ try{ $script:panel.Hide() }catch{} } }
     'menu'  { $script:menuOpen=[bool]$m.open; Apply-Strip }
+    'vol'   { try{ $sync.ttsVol=[math]::Max(0.0,[math]::Min(1.0,[double]$m.value/100.0)) }catch{} }
   }
 })
 $wvP.add_CoreWebView2InitializationCompleted({
@@ -1412,7 +1416,7 @@ $ui.Add_Tick({
       try{ $script:rsX=[runspacefactory]::CreateRunspace(); $script:rsX.ApartmentState='STA'; $script:rsX.ThreadOptions='ReuseThread'; $script:rsX.Open(); $script:rsX.SessionStateProxy.SetVariable('sync',$sync); $script:psx=[powershell]::Create(); $script:psx.Runspace=$script:rsX; [void]$script:psx.AddScript($xlWork); [void]$script:psx.BeginInvoke(); $script:lastXWdog=(Get-Date); $sync.wHB=(Get-Date); $script:baseStatus="Mistake-watcher restarted - back up" }catch{}
     }
   }
-  $lv=-1; if(-not $sync.paused){ $lv=Get-MicLevel }
+  $lv=-1; if((-not $sync.paused) -and (-not $sync.micMute)){ $lv=Get-MicLevel }
   if($lv -ge 0){ JS $script:wvS ("XC.setEq("+[string]::Format([Globalization.CultureInfo]::InvariantCulture,"{0:0.00}",$lv)+")") } else { JS $script:wvS ("XC.setEq(-1)") }
   if($lv -ge 0.12){ $script:heardAt=(Get-Date) }
   $listenNow=[bool]$sync.chatOn

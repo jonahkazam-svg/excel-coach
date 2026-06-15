@@ -142,6 +142,24 @@
   .menu-row.on .sw::after{ transform:translateX(16px); }
   .menu-row.on .m-ico{ color:#22c55e; }
 
+  /* volume slider row (non-toggle): label on left, range on right */
+  .menu-row.slider{ cursor:default; }
+  .menu-row.slider:hover{ background:transparent; color:rgba(255,255,255,0.82); }
+  .menu-row.slider:active{ background:transparent; }
+  .menu-row .m-rng{
+    flex:0 0 auto; width:96px; height:18px; -webkit-appearance:none; appearance:none;
+    background:transparent; cursor:pointer; margin:0;
+  }
+  .menu-row .m-rng::-webkit-slider-runnable-track{
+    height:4px; border-radius:999px; background:rgba(255,255,255,0.16);
+  }
+  .menu-row .m-rng::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none; margin-top:-5px;
+    width:14px; height:14px; border-radius:50%; background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,0.35);
+  }
+  .menu-row .m-rng:focus{ outline:none; }
+
   /* ---------- bar: row 2 ---------- */
   #row2{ height:36px; display:flex; align-items:center; gap:12px; padding:0 14px 6px 16px; }
   #askWrap{
@@ -185,6 +203,11 @@
     <div id="barUI">
       <!-- overflow menu: toggles live here, opens upward above the bar -->
       <div id="menu">
+        <div class="menu-row slider" id="rowVol" title="Voice volume - how loud the coach speaks">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9c1 .8 1.6 1.8 1.6 3s-.6 2.2-1.6 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+          <span class="m-lbl">Voice volume</span>
+          <input class="m-rng" id="volRange" type="range" min="0" max="100" step="1" value="100" aria-label="Voice volume">
+        </div>
         <div class="menu-row act" id="rowHands" data-k="hands" title="Hands - let the coach write into Excel (empty cells only)">
           <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 11.5V4.8a1.5 1.5 0 0 1 3 0v5.7m0-3.2a1.5 1.5 0 0 1 3 0v3.2m0-1.7a1.5 1.5 0 0 1 3 0v5.2c0 3.6-2.5 6.2-6 6.2-2.6 0-4.3-1-5.6-3l-2.7-4.2a1.45 1.45 0 0 1 2.3-1.7l1.5 1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <span class="m-lbl">Edits</span>
@@ -208,6 +231,11 @@
         <div class="menu-row act" id="rowMute" data-k="mute" title="Mute the coach voice">
           <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9c1 .8 1.6 1.8 1.6 3s-.6 2.2-1.6 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M17.8 6.6c1.7 1.3 2.7 3.2 2.7 5.4s-1 4.1-2.7 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
           <span class="m-lbl">Mute voice</span>
+          <span class="sw"></span>
+        </div>
+        <div class="menu-row act" id="rowMicMute" data-k="micmute" title="Mute mic - stop the coach from hearing you">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5V21M9 21h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="m-lbl">Mute mic</span>
           <span class="sw"></span>
         </div>
         <div class="menu-row act" id="rowSound" data-k="sound" title="Mute the notification sound">
@@ -306,8 +334,8 @@
     setToggle(k, on){
       if (k === 'pause'){ $('pauseBtn').classList.toggle('alt', !!on); document.body.classList.toggle('paused', !!on);
         $('pauseBtn').title = on ? 'Resume coaching' : 'Pause coaching'; }
-      // menu toggle rows: mute, sound, hands, teach, format, guide
-      const rows = { mute:'rowMute', sound:'rowSound', hands:'rowHands', teach:'rowTeach', format:'rowFormat', guide:'rowGuide' };
+      // menu toggle rows: mute, micmute, sound, hands, teach, format, guide
+      const rows = { mute:'rowMute', micmute:'rowMicMute', sound:'rowSound', hands:'rowHands', teach:'rowTeach', format:'rowFormat', guide:'rowGuide' };
       if (rows[k]){ const r = $(rows[k]); if (r) r.classList.toggle('on', !!on); }
       // keep working for any matching chip still on the bar
       const chips = { mute:'chipMute', sound:'chipSound', hands:'chipHands', teach:'chipTeach', format:'chipFormat' };
@@ -315,6 +343,7 @@
     },
     busy(b){ document.body.classList.toggle('busy', !!b); $('assist').disabled = !!b; },
     setListening(on){ document.body.classList.toggle('listening', !!on); },
+    setVol(n){ const r = $('volRange'); if (r) r.value = Math.max(0, Math.min(100, Number(n))); },
     getAsk(){ return $('ask').value; }
   };
 
@@ -322,6 +351,10 @@
     el.addEventListener('click', (e) => { e.stopPropagation(); post({type:'act', k: el.dataset.k}); });
   });
   $('statusBar').addEventListener('click', (e) => { e.stopPropagation(); post({type:'act', k:'reopen'}); });
+
+  /* voice volume slider: report 0-100 on every input change */
+  $('volRange').addEventListener('input', (e) => { post({type:'vol', value: Number(e.target.value)}); });
+  $('volRange').addEventListener('pointerdown', (e) => { e.stopPropagation(); });
 
   /* overflow menu open/close (grows the window upward via the 'menu' message) */
   function setMenu(open){
