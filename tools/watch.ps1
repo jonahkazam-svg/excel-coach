@@ -844,7 +844,7 @@ while(-not $sync.stop){
         if($lastState -ne "OK"){ $lastState="OK"; $lastNudgePub=""; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1; XLog "cleared (fixed)" }
       } else {
         $sameIssue=$false; if($lastNudgePub){ if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $sameIssue=(XC-SameIssue $t $lastNudgePub) }else{ $sameIssue=($t -eq $lastNudgePub) } }
-        $cool=$(if($sameIssue){ 180 }else{ 20 })
+        $cool=$(if($sameIssue){ 180 }elseif($lastNudgePub){ 150 }else{ 20 })
         if(((Get-Date)-$nudgeT).TotalSeconds -ge $cool){
           $nudgeT=(Get-Date); $lastState=$t; $lastNudgePub=$t; $sync.xlText=$t; $sync.xlStamp=$sync.xlStamp+1; XLog "PUBLISHED nudge"
           $dupS=$false; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $dupS=(XC-SameIssue $t $lastLogged) }
