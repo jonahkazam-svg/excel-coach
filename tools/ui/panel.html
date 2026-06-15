@@ -546,7 +546,7 @@
       defineTerm = pickTerm(md);
       $('defineBtn').classList.toggle('hidden', !defineTerm);
       if (defineTerm){
-        const short = defineTerm.length > 26 ? defineTerm.slice(0,25) + '…' : defineTerm;
+        const short = defineTerm.length > 26 ? defineTerm.slice(0,25) + '...' : defineTerm;
         $('defineLbl').textContent = 'Define ' + short;
         $('defineBtn').title = 'Define "' + defineTerm + '" in the context of what you\'re working on';
       }
