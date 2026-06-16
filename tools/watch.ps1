@@ -1124,7 +1124,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false; $script:pendingExercise=$null
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''; $script:rtSession=$false
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1169,6 +1169,9 @@ function Push-StripState {
 }
 function Show-Answer($md,$kind='answer',$id=0){
   $script:lastFull=$md
+  # A normal answer/nudge takes over the pill, so step out of the drill view (but keep
+  # rtSession + rtCur so picking Run-through resumes the exercise where you left off).
+  if($script:woActive){ $script:woActive=$false; $sync.woActive=$false }
   Place-PanelHome
   if(-not $panel.Visible){ $panel.Show() }
   if($script:panelReady){
@@ -1332,8 +1335,32 @@ function Gen-WorkoutEx {
   $ex=$null; try{ $ex=Make-Exercise $topicId 2 ("v"+$script:woSeq) }catch{}
   return $ex
 }
+# Re-open the CURRENT run-through exercise's pill view - used to RESUME after the
+# student used another feature (which closes the view). Does NOT re-render the Excel
+# Workout sheet, so any in-progress work is preserved.
+function Show-CurrentEx($ex){
+  if(-not $ex){ return }
+  $script:woActive=$true; $sync.woActive=$true
+  $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
+  if([string]$ex.surface -eq 'excel'){
+    $ttl=[string]$ex.layout.title; if(-not $ttl){ $ttl='Excel exercise' }
+    $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=('Level '+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
+    Open-Ex $pl
+  } else {
+    $chs=@(); if($ex.choices){ $chs=@($ex.choices | ForEach-Object { [string]$_ }) }
+    $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ 'Concept' }); topicName=$tn; progress=('Level '+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
+    if($chs.Count -ge 2){ $pl['choices']=$chs } else { $pl['answer']=[string]$ex.answer }
+    Open-Ex $pl
+  }
+}
 function Start-Workout {
   if($script:woBusy){ return }
+  # Resume a paused run-through (the view was closed by using another feature)
+  # instead of generating a new one - keeps your place AND your Excel work.
+  if($script:rtSession -and $script:rtCur -and (-not $script:woActive)){
+    Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
+    Set-Query "Run-through"; Show-CurrentEx $script:rtCur; return
+  }
   if(-not (Get-Command Make-Exercise -ErrorAction SilentlyContinue)){ Show-Answer "The run-through is not available in this build yet." 'note' 0; return }
   $script:woBusy=$true
   Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
@@ -1347,13 +1374,13 @@ function Start-Workout {
     $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
     if(-not $xl){ $script:woBusy=$false; $script:woActive=$false; $sync.woActive=$false; Show-Answer "Open Excel first, then pick **Run-through** in the menu so I can set up the Workout sheet." 'note' 0; return }
     try{ RT-RenderExcel $ex $xl | Out-Null }catch{}
-    $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true
+    $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true; $script:rtSession=$true
     $ttl=[string]$ex.layout.title; if(-not $ttl){ $ttl="Excel exercise" }
     $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
     $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
     Open-Ex $pl
   } else {
-    $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true
+    $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true; $script:rtSession=$true
     $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
     $chs=@(); if($ex.choices){ $chs=@($ex.choices | ForEach-Object { [string]$_ }) }
     $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ "Concept" }); topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
@@ -1515,7 +1542,7 @@ function Handle-Panel($k,$term){
     'copytext' { try{ if($term){ [System.Windows.Forms.Clipboard]::SetText([string]$term) } }catch{} }
     'workoutcheck' { if(Get-Command Check-Workout -ErrorAction SilentlyContinue){ Check-Workout } }
     'workoutnext'  { if(Get-Command Start-Workout -ErrorAction SilentlyContinue){ Start-Workout } }
-    'workoutend'   { $script:woActive=$false; $sync.woActive=$false; $script:rtCur=$null; $script:woNext=$null; JS $script:wvP ("XC.closeExercise()"); $sb=(WO-Scoreboard); Show-Answer ("Run-through paused - your progress is saved."+$(if($sb){ "  You're at "+$sb+" of the course." }else{ "" })+"  Open the ... menu and pick Run-through any time to keep going.") 'note' 0 }
+    'workoutend'   { $script:woActive=$false; $sync.woActive=$false; $script:rtSession=$false; $script:rtCur=$null; $script:woNext=$null; JS $script:wvP ("XC.closeExercise()"); $sb=(WO-Scoreboard); Show-Answer ("Run-through ended - your progress is saved."+$(if($sb){ "  You're at "+$sb+" of the course." }else{ "" })+"  Open the ... menu and pick Run-through any time to keep going.") 'note' 0 }
     'formulas' {
       $fxKey=[string]$sync.sheetPurpose
       if($fxKey -and $script:fxCache.ContainsKey($fxKey)){ JS $script:wvP ("XC.setFormulas("+$script:fxCache[$fxKey]+")") }

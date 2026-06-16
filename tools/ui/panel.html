@@ -874,6 +874,7 @@
     setAnswer(md, meta){
       document.body.classList.remove('loading');
       document.body.classList.remove('practice');
+      document.body.classList.remove('exercise');
       var atNewest = (cursor >= history.length - 1);   // following live?
       history.push({
         md: md,
