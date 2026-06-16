@@ -745,7 +745,7 @@ while(-not $sync.stop){
   if($xl -and $xl.Length -lt 130){ $xl=$null }
   if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 3; continue }
   if($nullStreak){ $nullStreak=$false; XLog "Excel readable again" }
-  if($sync.demoActive -or $sync.woActive){ Start-Sleep -Seconds 2; continue }
+  if($sync.demoActive){ Start-Sleep -Seconds 2; continue }
   $sync.lastXl=$xl
   if(($xl -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
     $sync.lastWb=$Matches[1]
@@ -770,6 +770,10 @@ while(-not $sync.stop){
     $shN=''; try{ if($xl -match "sheet '([^']+)'"){ $shN=$Matches[1] } }catch{}; $sync.lastSheet=$shN; XLog ("workbook: '"+$sync.lastWb+"' sheet '"+$shN+"'")
     Start-Sleep -Seconds 2; continue
   }
+  # During a live drill exercise, stay silent (skip the error-check + guide nudges)
+  # so the coach does not interrupt or pre-grade the Workout sheet. Workbook tracking
+  # above still runs every iteration, so generation/grading target the right book.
+  if($sync.woActive){ Start-Sleep -Seconds 2; continue }
   if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($guideOverviewSheet -ne $sync.lastWb)){
     $guideOverviewSheet=$sync.lastWb; $guideT=(Get-Date)
     try{
@@ -1370,7 +1374,7 @@ function Check-Workout {
 }
 function Handle-Act($k){
   $script:lastActive=(Get-Date)
-  if($k -ne 'workout'){ $sync.woActive=$false }
+  if($k -ne 'workout'){ $sync.woActive=$false; if($script:panelReady){ try{ JS $script:wvP ("XC.setWorkoutBar(false)") }catch{} } }
   switch($k){
     'collapse' { $script:collapsed=$true; Apply-Strip }
     'expand'   { $script:collapsed=$false; Apply-Strip }
