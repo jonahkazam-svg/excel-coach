@@ -1,0 +1,2192 @@
+{
+    "version":  1,
+    "generatedAt":  "2026-06-16T00:44:21Z",
+    "topics":  [
+                   {
+                       "id":  "ACC-01",
+                       "name":  "Income statement structure, top to bottom (Rev to Net Income)",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-01-1",
+                                         "type":  "flashcard",
+                                         "front":  "Revenue",
+                                         "back":  "Revenue is the total income generated from the sale of goods or services before any expenses are deducted. It is the starting point of the income statement and indicates the company\u0027s ability to generate sales."
+                                     },
+                                     {
+                                         "id":  "ACC-01-2",
+                                         "type":  "flashcard",
+                                         "front":  "Cost of Goods Sold (COGS)",
+                                         "back":  "COGS represents the direct costs attributable to the production of the goods sold by a company. It is subtracted from revenue to calculate gross profit, reflecting the efficiency of production."
+                                     },
+                                     {
+                                         "id":  "ACC-01-3",
+                                         "type":  "formula",
+                                         "front":  "Gross Profit",
+                                         "back":  "Gross Profit = Revenue - COGS"
+                                     },
+                                     {
+                                         "id":  "ACC-01-4",
+                                         "type":  "flashcard",
+                                         "front":  "Operating Expenses",
+                                         "back":  "Operating Expenses are the costs required to run the business that are not directly tied to the production of goods or services. These include selling, general, and administrative expenses, and are deducted from gross profit to determine operating income."
+                                     },
+                                     {
+                                         "id":  "ACC-01-5",
+                                         "type":  "flashcard",
+                                         "front":  "Net Income",
+                                         "back":  "Net Income is the final profit of a company after all expenses, including operating expenses, interest, and taxes, have been deducted from total revenue. It represents the company\u0027s profitability and is a key indicator for investors."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-02",
+                       "name":  "Balance sheet and the accounting equation (A = L + E)",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-02-1",
+                                         "type":  "definition",
+                                         "front":  "Balance sheet",
+                                         "back":  "A financial statement that summarizes a company\u0027s assets, liabilities, and equity at a specific point in time. It provides a snapshot of what the company owns and owes, which is crucial for assessing financial health."
+                                     },
+                                     {
+                                         "id":  "ACC-02-2",
+                                         "type":  "formula",
+                                         "front":  "Accounting equation",
+                                         "back":  "Assets = Liabilities + Equity. This fundamental equation shows that a company\u0027s resources (assets) are financed either by borrowing (liabilities) or by the owners\u0027 investments (equity)."
+                                     },
+                                     {
+                                         "id":  "ACC-02-3",
+                                         "type":  "flashcard",
+                                         "front":  "What category does \u0027Accounts Payable\u0027 fall under?",
+                                         "back":  "Accounts Payable is classified as a liability, as it represents money owed to suppliers for goods and services received.",
+                                         "choices":  [
+                                                         "Asset",
+                                                         "Liability",
+                                                         "Equity",
+                                                         "Revenue"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "ACC-02-4",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in cash - effect on the accounting equation?",
+                                         "back":  "Increases assets - cash is an asset, and an increase in cash will also require an increase in either liabilities or equity to maintain the balance.",
+                                         "choices":  [
+                                                         "Increases liabilities",
+                                                         "Decreases equity",
+                                                         "Increases assets",
+                                                         "Decreases assets"
+                                                     ],
+                                         "answer":  2
+                                     },
+                                     {
+                                         "id":  "ACC-02-5",
+                                         "type":  "definition",
+                                         "front":  "Equity",
+                                         "back":  "The residual interest in the assets of a company after deducting liabilities. It represents the ownership value held by shareholders and is important for understanding the net worth of the company."
+                                     },
+                                     {
+                                         "id":  "ACC-02-6",
+                                         "type":  "flashcard",
+                                         "front":  "What category does \u0027Inventory\u0027 fall under?",
+                                         "back":  "Inventory is classified as an asset, as it represents goods available for sale that a company owns.",
+                                         "choices":  [
+                                                         "Asset",
+                                                         "Liability",
+                                                         "Equity",
+                                                         "Expense"
+                                                     ],
+                                         "answer":  0
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-03",
+                       "name":  "Cash flow statement and its three sections (CFO/CFI/CFF)",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-03-1",
+                                         "type":  "definition",
+                                         "front":  "Cash Flow Statement",
+                                         "back":  "A financial statement that provides aggregate data regarding all cash inflows and outflows a company receives. It is crucial for assessing the liquidity, flexibility, and overall financial health of a business."
+                                     },
+                                     {
+                                         "id":  "ACC-03-2",
+                                         "type":  "definition",
+                                         "front":  "Cash Flow from Operating Activities (CFO)",
+                                         "back":  "The section of the cash flow statement that reports the cash generated or used by a company\u0027s core business operations. It is important because it indicates whether a company can generate sufficient cash from its operations to maintain and grow its business."
+                                     },
+                                     {
+                                         "id":  "ACC-03-3",
+                                         "type":  "definition",
+                                         "front":  "Cash Flow from Investing Activities (CFI)",
+                                         "back":  "The section of the cash flow statement that reflects cash transactions for the purchase and sale of physical and financial investments. This section is significant as it shows how much cash is being invested in the future growth of the company."
+                                     },
+                                     {
+                                         "id":  "ACC-03-4",
+                                         "type":  "definition",
+                                         "front":  "Cash Flow from Financing Activities (CFF)",
+                                         "back":  "The section of the cash flow statement that includes cash transactions related to borrowing and repaying debt, issuing and repurchasing stock, and paying dividends. It is essential for understanding how a company finances its operations and growth."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-04",
+                       "name":  "How the 3 statements link (the integration)",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-04-1",
+                                         "type":  "definition",
+                                         "front":  "Income Statement",
+                                         "back":  "The Income Statement summarizes a company\u0027s revenues and expenses over a specific period, resulting in net income or loss. It is crucial for analysts to assess profitability and operational efficiency."
+                                     },
+                                     {
+                                         "id":  "ACC-04-2",
+                                         "type":  "definition",
+                                         "front":  "Balance Sheet",
+                                         "back":  "The Balance Sheet provides a snapshot of a company\u0027s assets, liabilities, and equity at a specific point in time. It is essential for understanding the financial position and capital structure of the company."
+                                     },
+                                     {
+                                         "id":  "ACC-04-3",
+                                         "type":  "definition",
+                                         "front":  "Cash Flow Statement",
+                                         "back":  "The Cash Flow Statement details the cash inflows and outflows from operating, investing, and financing activities over a period. It is vital for analysts to evaluate liquidity and cash management."
+                                     },
+                                     {
+                                         "id":  "ACC-04-4",
+                                         "type":  "formula",
+                                         "front":  "Net Income",
+                                         "back":  "Net Income = Revenue - Expenses. This figure is the starting point for the Cash Flow Statement and affects retained earnings on the Balance Sheet."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-05",
+                       "name":  "Operating vs investing vs financing classification",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-05-1",
+                                         "type":  "flashcard",
+                                         "front":  "Operating activities",
+                                         "back":  "Operating activities are the primary revenue-generating activities of a business, including sales of goods and services, and expenses related to production and delivery. Analysts focus on these activities to assess the core profitability of a company."
+                                     },
+                                     {
+                                         "id":  "ACC-05-2",
+                                         "type":  "flashcard",
+                                         "front":  "Investing activities",
+                                         "back":  "Investing activities involve the acquisition and disposal of long-term assets and investments. This includes purchasing property, equipment, or securities. Analysts evaluate these activities to understand a company\u0027s growth strategy and capital expenditures."
+                                     },
+                                     {
+                                         "id":  "ACC-05-3",
+                                         "type":  "flashcard",
+                                         "front":  "Financing activities",
+                                         "back":  "Financing activities relate to transactions that affect a company\u0027s capital structure, such as issuing debt or equity, and paying dividends. Analysts analyze these activities to assess how a company funds its operations and growth."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-06",
+                       "name":  "EBIT, EBITDA, and why they matter",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-06-1",
+                                         "type":  "definition",
+                                         "front":  "EBIT",
+                                         "back":  "EBIT stands for Earnings Before Interest and Taxes. It measures a company\u0027s profitability from operations without considering the effects of capital structure and tax rates. Analysts use EBIT to assess operational efficiency and compare profitability across companies."
+                                     },
+                                     {
+                                         "id":  "ACC-06-2",
+                                         "type":  "definition",
+                                         "front":  "EBITDA",
+                                         "back":  "EBITDA stands for Earnings Before Interest, Taxes, Depreciation, and Amortization. It provides a clearer view of operational performance by excluding non-cash expenses and financial costs. Analysts often use EBITDA to evaluate a company\u0027s cash flow and operational profitability."
+                                     },
+                                     {
+                                         "id":  "ACC-06-3",
+                                         "type":  "formula",
+                                         "front":  "EBITDA",
+                                         "back":  "EBITDA = Revenue - COGS - Operating Expenses + Depreciation + Amortization"
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-07",
+                       "name":  "Working capital and its cash-flow effect",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-07-1",
+                                         "type":  "definition",
+                                         "front":  "Working capital",
+                                         "back":  "Working capital is the difference between current assets and current liabilities. It measures a company\u0027s short-term liquidity and operational efficiency, indicating whether it can cover its short-term obligations with its short-term assets."
+                                     },
+                                     {
+                                         "id":  "ACC-07-2",
+                                         "type":  "formula",
+                                         "front":  "Working capital formula",
+                                         "back":  "Working Capital = Current Assets - Current Liabilities"
+                                     },
+                                     {
+                                         "id":  "ACC-07-3",
+                                         "type":  "flashcard",
+                                         "front":  "Increase in accounts receivable",
+                                         "back":  "An increase in accounts receivable decreases cash flow. This occurs because sales are made on credit, meaning cash has not yet been collected despite the revenue being recognized."
+                                     },
+                                     {
+                                         "id":  "ACC-07-4",
+                                         "type":  "flashcard",
+                                         "front":  "What effect does an increase in inventory have on cash flow?",
+                                         "back":  "Choose the correct effect on cash flow.",
+                                         "choices":  [
+                                                         "Increases cash flow",
+                                                         "Decreases cash flow",
+                                                         "No effect on cash flow",
+                                                         "Increases working capital"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "ACC-07-5",
+                                         "type":  "flashcard",
+                                         "front":  "What category does accounts payable fall under?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Current asset",
+                                                         "Current liability",
+                                                         "Long-term asset",
+                                                         "Equity"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "ACC-07-6",
+                                         "type":  "flashcard",
+                                         "front":  "Decrease in accounts payable",
+                                         "back":  "A decrease in accounts payable decreases cash flow. This happens when a company pays off its short-term debts, resulting in an outflow of cash."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-08",
+                       "name":  "Accrual vs cash accounting (the core concept)",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-08-1",
+                                         "type":  "definition",
+                                         "front":  "Accrual Accounting",
+                                         "back":  "Accrual accounting recognizes revenue and expenses when they are incurred, regardless of when cash is exchanged. This method provides a more accurate picture of a company\u0027s financial position and performance, which is crucial for analysts when evaluating profitability and financial health."
+                                     },
+                                     {
+                                         "id":  "ACC-08-2",
+                                         "type":  "definition",
+                                         "front":  "Cash Accounting",
+                                         "back":  "Cash accounting recognizes revenue and expenses only when cash is actually received or paid. This method is simpler and often used by small businesses, but it can provide a misleading view of financial performance, making it less useful for analysts assessing long-term viability."
+                                     },
+                                     {
+                                         "id":  "ACC-08-3",
+                                         "type":  "formula",
+                                         "front":  "Revenue Recognition in Accrual Accounting",
+                                         "back":  "Revenue is recognized when earned, not when cash is received. This means that sales made on credit are recorded as revenue at the time of sale, impacting financial statements even if cash has not yet been collected."
+                                     },
+                                     {
+                                         "id":  "ACC-08-4",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in accounts receivable - effect on cash?",
+                                         "back":  "Increases accounts receivable indicate that sales have been made on credit, which does not immediately affect cash. This can lead to a temporary cash shortfall, making it important for analysts to monitor cash flow alongside accrual-based revenue."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "ACC-09",
+                       "name":  "Non-recurring items and normalizing earnings",
+                       "category":  "Accounting",
+                       "cards":  [
+                                     {
+                                         "id":  "ACC-09-1",
+                                         "type":  "definition",
+                                         "front":  "Non-recurring items",
+                                         "back":  "Non-recurring items are revenues or expenses that are not expected to occur regularly in the future, such as gains from asset sales or one-time restructuring costs. Analysts exclude these items to assess a company\u0027s sustainable earnings."
+                                     },
+                                     {
+                                         "id":  "ACC-09-2",
+                                         "type":  "definition",
+                                         "front":  "Normalizing earnings",
+                                         "back":  "Normalizing earnings involves adjusting a company\u0027s financial results to remove the effects of non-recurring items, providing a clearer picture of ongoing operational performance. This helps investors make better comparisons across periods."
+                                     },
+                                     {
+                                         "id":  "ACC-09-3",
+                                         "type":  "formula",
+                                         "front":  "Normalized Earnings",
+                                         "back":  "Normalized Earnings = Reported Earnings + Non-recurring Expenses - Non-recurring Income"
+                                     },
+                                     {
+                                         "id":  "ACC-09-4",
+                                         "type":  "flashcard",
+                                         "front":  "Impact of non-recurring items on financial analysis",
+                                         "back":  "Non-recurring items can distort a company\u0027s financial performance, making it appear more or less profitable than it truly is. Analysts must adjust for these items to provide accurate valuations and forecasts."
+                                     },
+                                     {
+                                         "id":  "ACC-09-5",
+                                         "type":  "flashcard",
+                                         "front":  "Examples of non-recurring items",
+                                         "back":  "Examples include gains from the sale of assets, costs related to natural disasters, or expenses from one-time legal settlements. Recognizing these helps in understanding the true earnings potential of a business."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-01",
+                       "name":  "The three statements and how they connect in a model",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-01-1",
+                                         "type":  "definition",
+                                         "front":  "Income Statement",
+                                         "back":  "The Income Statement summarizes a company\u0027s revenues and expenses over a specific period, resulting in net income or loss. It is crucial for analysts to assess profitability and operational efficiency."
+                                     },
+                                     {
+                                         "id":  "MOD-01-2",
+                                         "type":  "definition",
+                                         "front":  "Balance Sheet",
+                                         "back":  "The Balance Sheet provides a snapshot of a company\u0027s assets, liabilities, and equity at a specific point in time. It is essential for understanding the financial position and capital structure of the company."
+                                     },
+                                     {
+                                         "id":  "MOD-01-3",
+                                         "type":  "formula",
+                                         "front":  "Cash Flow from Operations",
+                                         "back":  "Cash Flow from Operations = Net Income + Non-Cash Expenses + Changes in Working Capital. This formula helps analysts evaluate the cash generated from core business activities."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-02",
+                       "name":  "Drivers and assumptions (building the engine)",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-02-1",
+                                         "type":  "definition",
+                                         "front":  "Drivers",
+                                         "back":  "Drivers are the key variables that influence a company\u0027s financial performance, such as revenue growth rates, cost of goods sold, and operating expenses. Understanding these drivers is crucial for building accurate financial models and forecasts."
+                                     },
+                                     {
+                                         "id":  "MOD-02-2",
+                                         "type":  "definition",
+                                         "front":  "Assumptions",
+                                         "back":  "Assumptions are the underlying beliefs or estimates about future performance that are used in financial modeling, such as market growth rates or pricing strategies. They are essential for projecting financial statements and assessing potential outcomes."
+                                     },
+                                     {
+                                         "id":  "MOD-02-3",
+                                         "type":  "formula",
+                                         "front":  "Revenue Projection",
+                                         "back":  "Revenue = Previous Year Revenue * (1 + Growth Rate)"
+                                     },
+                                     {
+                                         "id":  "MOD-02-4",
+                                         "type":  "flashcard",
+                                         "front":  "Impact of increasing revenue growth assumption",
+                                         "back":  "Increasing the revenue growth assumption typically leads to higher projected revenues, which can significantly affect profitability and cash flow in financial models. Analysts must carefully evaluate the realism of growth assumptions."
+                                     },
+                                     {
+                                         "id":  "MOD-02-5",
+                                         "type":  "flashcard",
+                                         "front":  "Operating Expense Drivers",
+                                         "back":  "Operating expenses can be driven by factors such as headcount growth, inflation, and fixed vs. variable cost structures. Understanding these drivers helps analysts predict how expenses will change with revenue fluctuations."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-03",
+                       "name":  "Projecting the income statement",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-03-1",
+                                         "type":  "flashcard",
+                                         "front":  "Revenue",
+                                         "back":  "Revenue is the total income generated from the sale of goods or services before any expenses are deducted. It is crucial for analysts as it indicates the company\u0027s ability to generate sales and is the starting point for income statement projections."
+                                     },
+                                     {
+                                         "id":  "MOD-03-2",
+                                         "type":  "formula",
+                                         "front":  "Net Income",
+                                         "back":  "Net Income = Revenue - COGS - Operating Expenses - Interest - Taxes"
+                                     },
+                                     {
+                                         "id":  "MOD-03-3",
+                                         "type":  "flashcard",
+                                         "front":  "Gross Profit",
+                                         "back":  "Gross Profit is calculated as Revenue minus Cost of Goods Sold (COGS). It measures how efficiently a company uses its resources to produce goods and is important for assessing profitability before operating expenses."
+                                     },
+                                     {
+                                         "id":  "MOD-03-4",
+                                         "type":  "definition",
+                                         "front":  "Operating Income",
+                                         "back":  "Operating Income is the profit realized from a business\u0027s core operations, calculated as Gross Profit minus Operating Expenses. It is a key indicator of operational efficiency and is used to assess the profitability of the company\u0027s primary business activities."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-04",
+                       "name":  "Working capital and the supporting schedules",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-04-1",
+                                         "type":  "definition",
+                                         "front":  "Working capital",
+                                         "back":  "Working capital is the difference between current assets and current liabilities. It measures a company\u0027s short-term liquidity and operational efficiency, indicating whether it can cover its short-term obligations with its short-term assets."
+                                     },
+                                     {
+                                         "id":  "MOD-04-2",
+                                         "type":  "formula",
+                                         "front":  "Working capital formula",
+                                         "back":  "Working Capital = Current Assets - Current Liabilities"
+                                     },
+                                     {
+                                         "id":  "MOD-04-3",
+                                         "type":  "flashcard",
+                                         "front":  "Current assets",
+                                         "back":  "Current assets are assets that are expected to be converted into cash or used up within one year. They include cash, accounts receivable, and inventory, and are crucial for assessing a company\u0027s liquidity."
+                                     },
+                                     {
+                                         "id":  "MOD-04-4",
+                                         "type":  "flashcard",
+                                         "front":  "Current liabilities",
+                                         "back":  "Current liabilities are obligations that a company expects to settle within one year. They include accounts payable and short-term debt, and are important for understanding a company\u0027s short-term financial health."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-05",
+                       "name":  "Building the cash flow statement and closing the loop",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-05-1",
+                                         "type":  "definition",
+                                         "front":  "Cash Flow Statement",
+                                         "back":  "A financial statement that summarizes the amount of cash and cash equivalents entering and leaving a company. It is crucial for understanding the liquidity position of a business and how well it generates cash to fund its operations and pay debts."
+                                     },
+                                     {
+                                         "id":  "MOD-05-2",
+                                         "type":  "formula",
+                                         "front":  "Free Cash Flow",
+                                         "back":  "Free Cash Flow = Operating Cash Flow - Capital Expenditures. This metric indicates how much cash a company generates after accounting for capital expenditures, which is important for assessing the company\u0027s ability to generate cash for shareholders."
+                                     },
+                                     {
+                                         "id":  "MOD-05-3",
+                                         "type":  "flashcard",
+                                         "front":  "Operating Cash Flow",
+                                         "back":  "The cash generated from normal business operations, calculated as net income plus non-cash expenses and changes in working capital. It is a key indicator of a company\u0027s financial health and operational efficiency."
+                                     },
+                                     {
+                                         "id":  "MOD-05-4",
+                                         "type":  "flashcard",
+                                         "front":  "Investing Cash Flow",
+                                         "back":  "Cash flow related to the acquisition and disposal of long-term assets and investments. It reflects the company\u0027s investment in its future growth and is important for understanding how much cash is being used for capital expenditures."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-06",
+                       "name":  "The balance sheet and making it balance",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-06-1",
+                                         "type":  "definition",
+                                         "front":  "Balance Sheet",
+                                         "back":  "A financial statement that summarizes a company\u0027s assets, liabilities, and equity at a specific point in time. It provides a snapshot of what the company owns and owes, which is crucial for assessing financial health."
+                                     },
+                                     {
+                                         "id":  "MOD-06-2",
+                                         "type":  "formula",
+                                         "front":  "Accounting Equation",
+                                         "back":  "Assets = Liabilities + Equity. This fundamental equation ensures that the balance sheet is balanced, meaning that all resources are financed either by borrowing or by shareholders\u0027 investments."
+                                     },
+                                     {
+                                         "id":  "MOD-06-3",
+                                         "type":  "flashcard",
+                                         "front":  "Assets",
+                                         "back":  "Resources owned by a company that have economic value, such as cash, inventory, and property. Analysts assess assets to evaluate a company\u0027s ability to generate future cash flows."
+                                     },
+                                     {
+                                         "id":  "MOD-06-4",
+                                         "type":  "flashcard",
+                                         "front":  "What category does \u0027Accounts Payable\u0027 fall under?",
+                                         "back":  "Accounts Payable is classified as a liability, as it represents money owed to suppliers for goods and services received.",
+                                         "choices":  [
+                                                         "Asset",
+                                                         "Liability",
+                                                         "Equity",
+                                                         "Revenue"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "MOD-06-5",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in inventory - effect on cash?",
+                                         "back":  "Decreases cash - cash is used to purchase inventory, which is not yet converted into sales.",
+                                         "choices":  [
+                                                         "Increases cash",
+                                                         "Decreases cash",
+                                                         "No effect on cash",
+                                                         "Increases equity"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "MOD-06-6",
+                                         "type":  "flashcard",
+                                         "front":  "Equity",
+                                         "back":  "The residual interest in the assets of a company after deducting liabilities. It represents the ownership value held by shareholders and is important for understanding the company\u0027s net worth."
+                                     },
+                                     {
+                                         "id":  "MOD-06-7",
+                                         "type":  "flashcard",
+                                         "front":  "What happens to the balance sheet if a company issues new shares?",
+                                         "back":  "Equity increases - the cash received from issuing shares adds to the company\u0027s equity, balancing the increase in assets.",
+                                         "choices":  [
+                                                         "Assets decrease",
+                                                         "Liabilities increase",
+                                                         "Equity increases",
+                                                         "No change"
+                                                     ],
+                                         "answer":  2
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-07",
+                       "name":  "Circularity, interest, and the circ switch",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-07-1",
+                                         "type":  "definition",
+                                         "front":  "Circularity",
+                                         "back":  "Circularity in financial modeling refers to the situation where the output of a model feeds back into its inputs, creating a loop. This is important for accurately forecasting financial statements, as it allows for the interdependence of variables like net income, cash flow, and balance sheet items."
+                                     },
+                                     {
+                                         "id":  "MOD-07-2",
+                                         "type":  "formula",
+                                         "front":  "Interest Expense Calculation",
+                                         "back":  "Interest Expense = Total Debt x Interest Rate. This formula is crucial for determining the cost of debt in a financial model, impacting net income and cash flow."
+                                     },
+                                     {
+                                         "id":  "MOD-07-3",
+                                         "type":  "flashcard",
+                                         "front":  "Circ Switch",
+                                         "back":  "The circ switch is a tool used in financial models to toggle circular references on or off. It helps analysts manage circularity by allowing them to see how changes in one part of the model affect other parts, ensuring that calculations remain accurate."
+                                     },
+                                     {
+                                         "id":  "MOD-07-4",
+                                         "type":  "flashcard",
+                                         "front":  "What is the effect of circularity on cash flow?",
+                                         "back":  "Increases cash flow - cash flow is directly influenced by net income, which is affected by interest expense, creating a circular relationship.",
+                                         "choices":  [
+                                                         "Increases cash flow",
+                                                         "Decreases cash flow",
+                                                         "No effect on cash flow",
+                                                         "Only affects net income"
+                                                     ],
+                                         "answer":  0
+                                     },
+                                     {
+                                         "id":  "MOD-07-5",
+                                         "type":  "flashcard",
+                                         "front":  "Which of the following is a characteristic of circularity in financial models?",
+                                         "back":  "The output of one calculation directly influences another input, creating a feedback loop.",
+                                         "choices":  [
+                                                         "All calculations are independent",
+                                                         "Outputs do not affect inputs",
+                                                         "The output of one calculation directly influences another input",
+                                                         "Only affects the balance sheet"
+                                                     ],
+                                         "answer":  2
+                                     },
+                                     {
+                                         "id":  "MOD-07-6",
+                                         "type":  "flashcard",
+                                         "front":  "What happens when the circ switch is turned off?",
+                                         "back":  "The model will not calculate circular references, potentially leading to errors in financial projections.",
+                                         "choices":  [
+                                                         "The model calculates circular references",
+                                                         "The model will not calculate circular references",
+                                                         "The model becomes more complex",
+                                                         "The model runs faster"
+                                                     ],
+                                         "answer":  1
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-08",
+                       "name":  "Scenario toggles and sensitivities",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-08-1",
+                                         "type":  "definition",
+                                         "front":  "Scenario toggles",
+                                         "back":  "Scenario toggles are tools used in financial modeling to switch between different sets of assumptions or scenarios, such as best case, worst case, and base case. They allow analysts to quickly assess the impact of varying key inputs on financial outcomes."
+                                     },
+                                     {
+                                         "id":  "MOD-08-2",
+                                         "type":  "definition",
+                                         "front":  "Sensitivity analysis",
+                                         "back":  "Sensitivity analysis is a technique used to determine how different values of an independent variable affect a particular dependent variable under a given set of assumptions. It helps analysts understand the risk and potential variability in financial projections."
+                                     },
+                                     {
+                                         "id":  "MOD-08-3",
+                                         "type":  "formula",
+                                         "front":  "Sensitivity calculation",
+                                         "back":  "Sensitivity = (Change in Output / Change in Input) * (Input / Output). This formula helps quantify how sensitive a financial model\u0027s output is to changes in its inputs."
+                                     },
+                                     {
+                                         "id":  "MOD-08-4",
+                                         "type":  "flashcard",
+                                         "front":  "Best case scenario",
+                                         "back":  "A best case scenario is an optimistic projection that assumes the most favorable conditions for a business, such as higher revenues and lower costs. Analysts use this scenario to evaluate potential upside and inform strategic decisions."
+                                     },
+                                     {
+                                         "id":  "MOD-08-5",
+                                         "type":  "flashcard",
+                                         "front":  "Worst case scenario",
+                                         "back":  "A worst case scenario is a pessimistic projection that assumes the least favorable conditions for a business, such as lower revenues and higher costs. This scenario helps analysts assess risk and prepare for potential downturns."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MOD-09",
+                       "name":  "Model structure, formatting, and best practices",
+                       "category":  "3-Stmt Modeling",
+                       "cards":  [
+                                     {
+                                         "id":  "MOD-09-1",
+                                         "type":  "definition",
+                                         "front":  "Three-Statement Model",
+                                         "back":  "A financial model that integrates the income statement, balance sheet, and cash flow statement into a cohesive framework. It allows analysts to forecast a company\u0027s financial performance and assess its financial health."
+                                     },
+                                     {
+                                         "id":  "MOD-09-2",
+                                         "type":  "formula",
+                                         "front":  "Cash Flow from Operations",
+                                         "back":  "Cash Flow from Operations = Net Income + Non-Cash Expenses + Changes in Working Capital. This formula helps analysts understand the cash generated from core business operations."
+                                     },
+                                     {
+                                         "id":  "MOD-09-3",
+                                         "type":  "flashcard",
+                                         "front":  "Best Practices in Financial Modeling",
+                                         "back":  "Best practices include using consistent formatting, clear labeling, and color coding for inputs, calculations, and outputs. This enhances readability and reduces errors in the model."
+                                     },
+                                     {
+                                         "id":  "MOD-09-4",
+                                         "type":  "flashcard",
+                                         "front":  "Model Formatting",
+                                         "back":  "Proper model formatting involves using a clear structure with sections for inputs, calculations, and outputs, as well as consistent font sizes and colors. This makes the model easier to navigate and understand."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "CMP-01",
+                       "name":  "Enterprise value vs equity value (the bridge)",
+                       "category":  "Valuation/Comps",
+                       "cards":  [
+                                     {
+                                         "id":  "CMP-01-1",
+                                         "type":  "definition",
+                                         "front":  "Enterprise Value",
+                                         "back":  "Enterprise Value (EV) is the total value of a business, including its equity and debt, minus cash and cash equivalents. It represents the theoretical takeover price of a company and is crucial for assessing the overall worth of a business in acquisition scenarios."
+                                     },
+                                     {
+                                         "id":  "CMP-01-2",
+                                         "type":  "definition",
+                                         "front":  "Equity Value",
+                                         "back":  "Equity Value is the value of a company\u0027s shares outstanding, representing the ownership interest of shareholders. It is calculated as the share price multiplied by the total number of outstanding shares and is important for investors to understand their stake in the company."
+                                     },
+                                     {
+                                         "id":  "CMP-01-3",
+                                         "type":  "formula",
+                                         "front":  "Enterprise Value Calculation",
+                                         "back":  "Enterprise Value = Equity Value + Total Debt - Cash and Cash Equivalents"
+                                     },
+                                     {
+                                         "id":  "CMP-01-4",
+                                         "type":  "flashcard",
+                                         "front":  "Which of the following is included in the calculation of Enterprise Value?",
+                                         "back":  "Select the correct option.",
+                                         "choices":  [
+                                                         "Only equity value",
+                                                         "Total debt and cash equivalents",
+                                                         "Total debt, cash equivalents, and equity value",
+                                                         "Only cash equivalents"
+                                                     ],
+                                         "answer":  2
+                                     },
+                                     {
+                                         "id":  "CMP-01-5",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in debt - effect on Enterprise Value?",
+                                         "back":  "Increases Enterprise Value - as debt increases, the total value of the business rises, reflecting higher financial obligations.",
+                                         "choices":  [
+                                                         "Decreases Enterprise Value",
+                                                         "Increases Enterprise Value",
+                                                         "No effect on Enterprise Value",
+                                                         "Decreases Equity Value"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "CMP-01-6",
+                                         "type":  "flashcard",
+                                         "front":  "If a company has significant cash reserves, how does this affect its Enterprise Value?",
+                                         "back":  "Decreases Enterprise Value - cash reserves are subtracted in the calculation, reducing the overall value of the business.",
+                                         "choices":  [
+                                                         "Increases Enterprise Value",
+                                                         "Decreases Enterprise Value",
+                                                         "No effect on Enterprise Value",
+                                                         "Increases Equity Value"
+                                                     ],
+                                         "answer":  1
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "CMP-02",
+                       "name":  "Key multiples and numerator/denominator consistency",
+                       "category":  "Valuation/Comps",
+                       "cards":  [
+                                     {
+                                         "id":  "CMP-02-1",
+                                         "type":  "definition",
+                                         "front":  "EV/EBITDA",
+                                         "back":  "EV/EBITDA is a valuation multiple that compares a company\u0027s enterprise value to its earnings before interest, taxes, depreciation, and amortization. It is commonly used to assess the value of a company relative to its operational performance, making it useful for comparing companies in the same industry."
+                                     },
+                                     {
+                                         "id":  "CMP-02-2",
+                                         "type":  "definition",
+                                         "front":  "P/E Ratio",
+                                         "back":  "The Price-to-Earnings (P/E) Ratio is a valuation metric that compares a company\u0027s current share price to its earnings per share (EPS). It helps investors gauge the market\u0027s expectations of a company\u0027s future financial performance and is widely used in equity valuation."
+                                     },
+                                     {
+                                         "id":  "CMP-02-3",
+                                         "type":  "formula",
+                                         "front":  "EV",
+                                         "back":  "EV = Market Capitalization + Total Debt - Cash",
+                                         "choices":  [
+                                                         "Market Capitalization + Total Debt + Cash",
+                                                         "Market Capitalization - Total Debt + Cash",
+                                                         "Market Capitalization + Total Debt - Cash",
+                                                         "Market Capitalization - Total Debt - Cash"
+                                                     ],
+                                         "answer":  2
+                                     },
+                                     {
+                                         "id":  "CMP-02-4",
+                                         "type":  "flashcard",
+                                         "front":  "Which of the following is a correct classification of the P/E Ratio?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Valuation multiple based on cash flow",
+                                                         "Valuation multiple based on earnings",
+                                                         "Valuation multiple based on revenue",
+                                                         "Valuation multiple based on assets"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "CMP-02-5",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in EV/EBITDA - effect on valuation?",
+                                         "back":  "Indicates a higher valuation - suggests that the market values the company more highly relative to its earnings, which could imply growth expectations.",
+                                         "choices":  [
+                                                         "Indicates a lower valuation",
+                                                         "Indicates a higher valuation",
+                                                         "No effect on valuation",
+                                                         "Indicates a stable valuation"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "CMP-02-6",
+                                         "type":  "definition",
+                                         "front":  "Numerator/Denominator Consistency",
+                                         "back":  "Numerator/Denominator Consistency refers to the need for the components of a valuation multiple to be derived from the same financial statement or accounting basis. This ensures that comparisons between companies or time periods are valid and meaningful."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "CMP-03",
+                       "name":  "Choosing the peer set (comparable universe)",
+                       "category":  "Valuation/Comps",
+                       "cards":  [
+                                     {
+                                         "id":  "CMP-03-1",
+                                         "type":  "flashcard",
+                                         "front":  "Comparable companies",
+                                         "back":  "Comparable companies are firms that operate in the same industry and have similar characteristics, such as size, growth rate, and financial metrics. They are used in valuation to provide a benchmark for assessing a company\u0027s value relative to its peers."
+                                     },
+                                     {
+                                         "id":  "CMP-03-2",
+                                         "type":  "definition",
+                                         "front":  "Peer set",
+                                         "back":  "A peer set is a group of companies selected for comparison in valuation analysis. Analysts choose peers based on industry, geography, and financial metrics to ensure relevant comparisons that reflect market conditions."
+                                     },
+                                     {
+                                         "id":  "CMP-03-3",
+                                         "type":  "formula",
+                                         "front":  "Selection criteria for peer set",
+                                         "back":  "Selection criteria for a peer set include industry classification, market capitalization, revenue size, growth rates, and geographic location. These criteria help ensure that the selected companies are truly comparable."
+                                     },
+                                     {
+                                         "id":  "CMP-03-4",
+                                         "type":  "flashcard",
+                                         "front":  "Market capitalization",
+                                         "back":  "Market capitalization is the total market value of a company\u0027s outstanding shares. It is a key factor in selecting a peer set, as it helps ensure that the companies being compared are of similar size and market influence."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "CMP-04",
+                       "name":  "Calendarization and LTM/forward metrics",
+                       "category":  "Valuation/Comps",
+                       "cards":  [
+                                     {
+                                         "id":  "CMP-04-1",
+                                         "type":  "definition",
+                                         "front":  "Calendarization",
+                                         "back":  "Calendarization is the process of adjusting financial data to align with a specific time period, typically to facilitate comparisons across different companies or time frames. It is important for analysts to ensure that metrics reflect the same time frame for accurate valuation and analysis."
+                                     },
+                                     {
+                                         "id":  "CMP-04-2",
+                                         "type":  "formula",
+                                         "front":  "LTM",
+                                         "back":  "LTM stands for Last Twelve Months and is calculated as the sum of the most recent four quarters of financial data. It provides a more current view of a company\u0027s performance than annual data, which is crucial for valuation."
+                                     },
+                                     {
+                                         "id":  "CMP-04-3",
+                                         "type":  "flashcard",
+                                         "front":  "Forward Metrics",
+                                         "back":  "Forward metrics are projections of a company\u0027s financial performance for future periods, often based on estimates of revenue, earnings, or cash flow. Analysts use forward metrics to assess growth potential and make investment decisions."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "CMP-05",
+                       "name":  "From multiples to implied value (the output)",
+                       "category":  "Valuation/Comps",
+                       "cards":  [
+                                     {
+                                         "id":  "CMP-05-1",
+                                         "type":  "definition",
+                                         "front":  "Implied Value",
+                                         "back":  "Implied value is the estimated worth of a company derived from valuation multiples applied to its financial metrics, such as earnings or revenue. Analysts use implied value to assess whether a stock is overvalued or undervalued compared to its peers."
+                                     },
+                                     {
+                                         "id":  "CMP-05-2",
+                                         "type":  "formula",
+                                         "front":  "Implied Equity Value",
+                                         "back":  "Implied Equity Value = Multiple x Financial Metric (e.g., EBITDA, Earnings). This formula helps analysts determine the market value of a company\u0027s equity based on its financial performance and comparable company multiples."
+                                     },
+                                     {
+                                         "id":  "CMP-05-3",
+                                         "type":  "flashcard",
+                                         "front":  "EV/EBITDA Multiple",
+                                         "back":  "The EV/EBITDA multiple is a valuation ratio that compares a company\u0027s enterprise value to its earnings before interest, taxes, depreciation, and amortization. It is commonly used to evaluate the value of a company relative to its cash flow generation."
+                                     },
+                                     {
+                                         "id":  "CMP-05-4",
+                                         "type":  "flashcard",
+                                         "front":  "P/E Ratio",
+                                         "back":  "The price-to-earnings (P/E) ratio measures a company\u0027s current share price relative to its earnings per share. It is a key indicator for investors to assess the relative value of a company\u0027s stock compared to its earnings."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "CMP-06",
+                       "name":  "Comps vs precedents: control premium and when each applies",
+                       "category":  "Valuation/Comps",
+                       "cards":  [
+                                     {
+                                         "id":  "CMP-06-1",
+                                         "type":  "definition",
+                                         "front":  "Comps",
+                                         "back":  "Comps, or comparable company analysis, is a valuation method that compares a company\u0027s financial metrics to those of similar companies in the industry. It helps analysts determine a relative value based on market perceptions and performance of peers."
+                                     },
+                                     {
+                                         "id":  "CMP-06-2",
+                                         "type":  "definition",
+                                         "front":  "Precedent Transactions",
+                                         "back":  "Precedent transactions analysis involves evaluating past transactions involving similar companies to derive a valuation multiple. This method reflects the premiums paid in actual acquisitions and is useful for understanding market trends in M\u0026A activity."
+                                     },
+                                     {
+                                         "id":  "CMP-06-3",
+                                         "type":  "formula",
+                                         "front":  "Control Premium",
+                                         "back":  "Control Premium = (Acquisition Price - Market Value) / Market Value. This formula calculates the additional amount an acquirer is willing to pay over the market value to gain control of a company, reflecting the value of synergies and strategic advantages."
+                                     },
+                                     {
+                                         "id":  "CMP-06-4",
+                                         "type":  "flashcard",
+                                         "front":  "When to use Comps",
+                                         "back":  "Comps are best used when there is a large pool of similar companies available for comparison, and the market is stable. They provide a quick snapshot of relative valuation but may not account for unique company circumstances."
+                                     },
+                                     {
+                                         "id":  "CMP-06-5",
+                                         "type":  "flashcard",
+                                         "front":  "When to use Precedent Transactions",
+                                         "back":  "Precedent transactions are more appropriate in M\u0026A scenarios where control premiums are relevant, as they reflect actual market behavior and acquisition prices. They are particularly useful when assessing the value of a target company in a potential acquisition."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "CMP-07",
+                       "name":  "The valuation football field",
+                       "category":  "Valuation/Comps",
+                       "cards":  [
+                                     {
+                                         "id":  "CMP-07-1",
+                                         "type":  "definition",
+                                         "front":  "Valuation football field",
+                                         "back":  "A valuation football field is a visual representation that compares different valuation methods for a company, typically including metrics like DCF, precedent transactions, and comparable company analysis. It helps analysts quickly assess the range of valuations and identify discrepancies among methods."
+                                     },
+                                     {
+                                         "id":  "CMP-07-2",
+                                         "type":  "formula",
+                                         "front":  "Enterprise Value",
+                                         "back":  "Enterprise Value = Equity Value + Total Debt - Cash. This formula is crucial for understanding a company\u0027s total value, especially in M\u0026A transactions."
+                                     },
+                                     {
+                                         "id":  "CMP-07-3",
+                                         "type":  "flashcard",
+                                         "front":  "Comparable company analysis",
+                                         "back":  "Comparable company analysis involves evaluating the valuation multiples of similar companies to estimate the value of a target company. Analysts use this method to derive a market-based valuation benchmark."
+                                     },
+                                     {
+                                         "id":  "CMP-07-4",
+                                         "type":  "flashcard",
+                                         "front":  "Discounted Cash Flow (DCF)",
+                                         "back":  "Discounted Cash Flow (DCF) is a valuation method that estimates the value of an investment based on its expected future cash flows, discounted back to their present value. It is essential for understanding the intrinsic value of a company."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-01",
+                       "name":  "DCF big picture: what it is and why unlevered",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-01-1",
+                                         "type":  "definition",
+                                         "front":  "Discounted Cash Flow (DCF)",
+                                         "back":  "A valuation method used to estimate the value of an investment based on its expected future cash flows, which are adjusted for the time value of money. Analysts use DCF to determine the intrinsic value of a company or asset, helping to make informed investment decisions."
+                                     },
+                                     {
+                                         "id":  "DCF-01-2",
+                                         "type":  "definition",
+                                         "front":  "Unlevered Free Cash Flow (UFCF)",
+                                         "back":  "The cash generated by a company\u0027s operations that is available to all capital providers, excluding the effects of debt financing. UFCF is important because it provides a clearer picture of a company\u0027s operational performance without the influence of capital structure."
+                                     },
+                                     {
+                                         "id":  "DCF-01-3",
+                                         "type":  "formula",
+                                         "front":  "UFCF Calculation",
+                                         "back":  "UFCF = Operating Cash Flow - Capital Expenditures. This formula helps analysts assess the cash available for distribution to investors after necessary investments in the business."
+                                     },
+                                     {
+                                         "id":  "DCF-01-4",
+                                         "type":  "flashcard",
+                                         "front":  "Why use unlevered cash flows in DCF?",
+                                         "back":  "Using unlevered cash flows allows analysts to evaluate a company\u0027s performance without the impact of its capital structure, providing a more accurate assessment of its operational efficiency and value."
+                                     },
+                                     {
+                                         "id":  "DCF-01-5",
+                                         "type":  "flashcard",
+                                         "front":  "Components of DCF analysis",
+                                         "back":  "DCF analysis typically includes estimating future cash flows, determining the appropriate discount rate, and calculating the present value of those cash flows. This process is crucial for valuing investments and making strategic financial decisions."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-02",
+                       "name":  "Unlevered free cash flow (UFCF) build",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-02-1",
+                                         "type":  "definition",
+                                         "front":  "Unlevered Free Cash Flow (UFCF)",
+                                         "back":  "Unlevered Free Cash Flow is the cash generated by a company\u0027s operations that is available to all investors, both equity and debt holders, before any interest payments are made. It is crucial for valuation purposes as it reflects the company\u0027s ability to generate cash from its core operations."
+                                     },
+                                     {
+                                         "id":  "DCF-02-2",
+                                         "type":  "formula",
+                                         "front":  "UFCF Calculation",
+                                         "back":  "UFCF = Operating Income (EBIT) * (1 - Tax Rate) + Depreciation \u0026 Amortization - Change in Working Capital - Capital Expenditures. This formula helps analysts determine the cash flow available to investors without the impact of capital structure."
+                                     },
+                                     {
+                                         "id":  "DCF-02-3",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in capital expenditures - effect on UFCF?",
+                                         "back":  "Decreases UFCF - capital expenditures are subtracted in the UFCF calculation, reflecting cash outflows for investments in long-term assets."
+                                     },
+                                     {
+                                         "id":  "DCF-02-4",
+                                         "type":  "definition",
+                                         "front":  "Change in Working Capital",
+                                         "back":  "Change in Working Capital represents the difference in current assets and current liabilities over a period. It is important for UFCF as it indicates how much cash is tied up in the business operations."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-03",
+                       "name":  "Discounting, mid-year convention, and the discount factor",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-03-1",
+                                         "type":  "definition",
+                                         "front":  "Discount factor",
+                                         "back":  "The discount factor is a multiplier used to convert future cash flows into their present value. It reflects the time value of money, allowing analysts to assess the value of cash flows received at different times."
+                                     },
+                                     {
+                                         "id":  "DCF-03-2",
+                                         "type":  "formula",
+                                         "front":  "Discount factor formula",
+                                         "back":  "Discount Factor = 1 / (1 + r)^n, where r is the discount rate and n is the number of periods until the cash flow is received."
+                                     },
+                                     {
+                                         "id":  "DCF-03-3",
+                                         "type":  "definition",
+                                         "front":  "Mid-year convention",
+                                         "back":  "The mid-year convention assumes that cash flows occur at the midpoint of each period rather than at the end. This approach provides a more accurate present value calculation for cash flows that are expected to be received throughout the year."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-04",
+                       "name":  "Cost of equity via CAPM",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-04-1",
+                                         "type":  "definition",
+                                         "front":  "Cost of equity",
+                                         "back":  "The return that investors require for investing in a company\u0027s equity, reflecting the risk of the investment. It is crucial for determining the discount rate in DCF analysis and assessing whether an investment is worthwhile."
+                                     },
+                                     {
+                                         "id":  "DCF-04-2",
+                                         "type":  "formula",
+                                         "front":  "Cost of equity via CAPM",
+                                         "back":  "Cost of equity = Risk-free rate + Beta * (Market return - Risk-free rate)"
+                                     },
+                                     {
+                                         "id":  "DCF-04-3",
+                                         "type":  "flashcard",
+                                         "front":  "What category does the cost of equity fall into?",
+                                         "back":  "Select the correct classification.",
+                                         "choices":  [
+                                                         "Operating expense",
+                                                         "Financing cost",
+                                                         "Investing activity",
+                                                         "Non-current liability"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "DCF-04-4",
+                                         "type":  "definition",
+                                         "front":  "Beta",
+                                         "back":  "A measure of a stock\u0027s volatility in relation to the overall market. It indicates the risk associated with the equity compared to the market, which is essential for calculating the cost of equity using CAPM."
+                                     },
+                                     {
+                                         "id":  "DCF-04-5",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in the risk-free rate - effect on cost of equity?",
+                                         "back":  "Select the correct impact.",
+                                         "choices":  [
+                                                         "Decreases cost of equity",
+                                                         "Increases cost of equity",
+                                                         "No effect on cost of equity",
+                                                         "Increases market return"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "DCF-04-6",
+                                         "type":  "definition",
+                                         "front":  "Market return",
+                                         "back":  "The expected return of the market as a whole, typically represented by a market index. It is a key component in the CAPM formula, influencing the cost of equity calculation."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-05",
+                       "name":  "Cost of debt, capital weights, and WACC",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-05-1",
+                                         "type":  "definition",
+                                         "front":  "Cost of debt",
+                                         "back":  "The cost of debt is the effective rate that a company pays on its borrowed funds. It is important for analysts to understand this cost as it impacts the overall cost of capital and the valuation of the company."
+                                     },
+                                     {
+                                         "id":  "DCF-05-2",
+                                         "type":  "formula",
+                                         "front":  "WACC",
+                                         "back":  "WACC = (E/V * Re) + (D/V * Rd * (1 - Tc)) where E is equity, D is debt, V is total value (E + D), Re is cost of equity, Rd is cost of debt, and Tc is corporate tax rate."
+                                     },
+                                     {
+                                         "id":  "DCF-05-3",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in the cost of debt - effect on WACC?",
+                                         "back":  "Increases WACC - a higher cost of debt raises the overall cost of capital, making investments less attractive."
+                                     },
+                                     {
+                                         "id":  "DCF-05-4",
+                                         "type":  "definition",
+                                         "front":  "Capital weights",
+                                         "back":  "Capital weights refer to the proportion of debt and equity in a company\u0027s capital structure. Analysts use capital weights to calculate WACC and assess the risk and return profile of the company."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-06",
+                       "name":  "Terminal value: Gordon growth vs exit multiple",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-06-1",
+                                         "type":  "definition",
+                                         "front":  "Terminal value",
+                                         "back":  "Terminal value is the estimated value of a business at the end of a forecast period, capturing the present value of all future cash flows beyond that point. It is crucial for DCF analysis as it often represents a significant portion of the total valuation."
+                                     },
+                                     {
+                                         "id":  "DCF-06-2",
+                                         "type":  "formula",
+                                         "front":  "Gordon growth model for terminal value",
+                                         "back":  "Terminal Value = Final Year Cash Flow x (1 + g) / (r - g), where g is the growth rate and r is the discount rate. This formula is used to estimate the value of a business assuming perpetual growth."
+                                     },
+                                     {
+                                         "id":  "DCF-06-3",
+                                         "type":  "formula",
+                                         "front":  "Exit multiple method for terminal value",
+                                         "back":  "Terminal Value = Final Year Metric (e.g., EBITDA) x Chosen Multiple. This method estimates terminal value based on a multiple of a financial metric, reflecting market conditions at the time of exit."
+                                     },
+                                     {
+                                         "id":  "DCF-06-4",
+                                         "type":  "flashcard",
+                                         "front":  "Gordon growth vs exit multiple",
+                                         "back":  "Gordon growth model assumes a constant growth rate into perpetuity, while the exit multiple method relies on market comparables to determine value. Analysts choose between them based on the business\u0027s growth prospects and market conditions."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-07",
+                       "name":  "Enterprise-to-equity bridge and implied share price",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-07-1",
+                                         "type":  "definition",
+                                         "front":  "Enterprise Value",
+                                         "back":  "Enterprise Value is the total value of a business, calculated as the market capitalization plus total debt minus cash and cash equivalents. It represents the theoretical takeover price of a company and is crucial for valuation in mergers and acquisitions."
+                                     },
+                                     {
+                                         "id":  "DCF-07-2",
+                                         "type":  "definition",
+                                         "front":  "Equity Value",
+                                         "back":  "Equity Value is the value of a company\u0027s shareholders\u0027 equity, calculated as the market capitalization of the company\u0027s stock. It is important for investors as it reflects the value attributable to shareholders after all debts have been paid."
+                                     },
+                                     {
+                                         "id":  "DCF-07-3",
+                                         "type":  "formula",
+                                         "front":  "Equity Value Calculation",
+                                         "back":  "Equity Value = Enterprise Value - Total Debt + Cash"
+                                     },
+                                     {
+                                         "id":  "DCF-07-4",
+                                         "type":  "flashcard",
+                                         "front":  "What is the classification of \u0027Enterprise Value\u0027?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Asset",
+                                                         "Liability",
+                                                         "Equity",
+                                                         "Valuation Metric"
+                                                     ],
+                                         "answer":  3
+                                     },
+                                     {
+                                         "id":  "DCF-07-5",
+                                         "type":  "flashcard",
+                                         "front":  "Effect of increasing debt on Equity Value",
+                                         "back":  "Increasing debt decreases Equity Value, as it raises the total debt in the Enterprise Value calculation, assuming Enterprise Value remains constant."
+                                     },
+                                     {
+                                         "id":  "DCF-07-6",
+                                         "type":  "flashcard",
+                                         "front":  "What is the implied share price if Equity Value is 100 million and shares outstanding are 10 million?",
+                                         "back":  "Choose the correct implied share price.",
+                                         "choices":  [
+                                                         "5",
+                                                         "10",
+                                                         "15",
+                                                         "20"
+                                                     ],
+                                         "answer":  1
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "DCF-08",
+                       "name":  "Sensitivity / data tables",
+                       "category":  "DCF",
+                       "cards":  [
+                                     {
+                                         "id":  "DCF-08-1",
+                                         "type":  "definition",
+                                         "front":  "Sensitivity Analysis",
+                                         "back":  "Sensitivity analysis is a technique used to determine how different values of an independent variable affect a particular dependent variable under a given set of assumptions. In finance, it helps analysts understand how changes in key assumptions impact valuation outcomes, such as DCF results."
+                                     },
+                                     {
+                                         "id":  "DCF-08-2",
+                                         "type":  "formula",
+                                         "front":  "Sensitivity Table",
+                                         "back":  "A sensitivity table displays the results of varying key inputs, such as discount rates and growth rates, to show how these changes affect the net present value (NPV) or internal rate of return (IRR). It is structured with one variable along the rows and another along the columns."
+                                     },
+                                     {
+                                         "id":  "DCF-08-3",
+                                         "type":  "flashcard",
+                                         "front":  "Data Table",
+                                         "back":  "A data table is a tool used in financial modeling to summarize the results of multiple scenarios by varying two or more input variables. It allows analysts to visualize how changes in assumptions impact financial metrics, facilitating better decision-making."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "LBO-01",
+                       "name":  "What an LBO is and why it works",
+                       "category":  "LBO",
+                       "cards":  [
+                                     {
+                                         "id":  "LBO-01-1",
+                                         "type":  "definition",
+                                         "front":  "LBO",
+                                         "back":  "A Leveraged Buyout (LBO) is a financial transaction where a company is acquired using a significant amount of borrowed money, with the assets of the company being used as collateral. It allows investors to purchase a company with a relatively small amount of equity, amplifying potential returns."
+                                     },
+                                     {
+                                         "id":  "LBO-01-2",
+                                         "type":  "formula",
+                                         "front":  "LBO IRR Calculation",
+                                         "back":  "IRR = (Exit Value - Initial Investment) / Initial Investment, where Exit Value is the sale price of the company after a holding period. This formula helps analysts assess the profitability of the LBO investment."
+                                     },
+                                     {
+                                         "id":  "LBO-01-3",
+                                         "type":  "flashcard",
+                                         "front":  "Debt Financing",
+                                         "back":  "Debt financing in an LBO refers to the loans taken to fund the acquisition. It is crucial because it allows the acquirer to leverage the company\u0027s cash flows to pay off the debt, enhancing returns on equity if the investment performs well."
+                                     },
+                                     {
+                                         "id":  "LBO-01-4",
+                                         "type":  "flashcard",
+                                         "front":  "Equity Contribution",
+                                         "back":  "Equity contribution is the portion of the purchase price that is financed with the acquirer\u0027s own funds. It is important because it determines the level of risk the investors are taking and influences the overall return on investment."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "LBO-02",
+                       "name":  "Sources and uses",
+                       "category":  "LBO",
+                       "cards":  [
+                                     {
+                                         "id":  "LBO-02-1",
+                                         "type":  "definition",
+                                         "front":  "Sources of funds",
+                                         "back":  "Sources of funds refer to the various means through which capital is raised to finance an acquisition in a leveraged buyout (LBO). This typically includes debt financing, equity contributions from sponsors, and sometimes seller financing. Understanding sources is crucial for analysts to assess the capital structure of the deal."
+                                     },
+                                     {
+                                         "id":  "LBO-02-2",
+                                         "type":  "definition",
+                                         "front":  "Uses of funds",
+                                         "back":  "Uses of funds represent how the capital raised in an LBO is allocated. This includes the purchase price of the target company, transaction fees, and any refinancing of existing debt. Analysts must clearly outline uses to ensure that all costs are accounted for in the financial model."
+                                     },
+                                     {
+                                         "id":  "LBO-02-3",
+                                         "type":  "formula",
+                                         "front":  "Total Sources of Funds",
+                                         "back":  "Total Sources of Funds = Debt Financing + Equity Contribution + Seller Financing"
+                                     },
+                                     {
+                                         "id":  "LBO-02-4",
+                                         "type":  "formula",
+                                         "front":  "Total Uses of Funds",
+                                         "back":  "Total Uses of Funds = Purchase Price + Transaction Fees + Refinancing Costs"
+                                     },
+                                     {
+                                         "id":  "LBO-02-5",
+                                         "type":  "flashcard",
+                                         "front":  "Debt Financing",
+                                         "back":  "Debt financing is a key source of funds in an LBO, where loans or bonds are issued to raise capital. It is important because it allows the acquirer to leverage the investment, increasing potential returns but also risk."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "LBO-03",
+                       "name":  "Debt tranches and the capital structure",
+                       "category":  "LBO",
+                       "cards":  [
+                                     {
+                                         "id":  "LBO-03-1",
+                                         "type":  "flashcard",
+                                         "front":  "Debt tranches",
+                                         "back":  "Debt tranches are different layers of debt in a capital structure, each with varying levels of risk, interest rates, and repayment priorities. Understanding tranches is crucial for analysts as it affects the overall risk and return profile of an investment."
+                                     },
+                                     {
+                                         "id":  "LBO-03-2",
+                                         "type":  "formula",
+                                         "front":  "Weighted Average Cost of Capital (WACC)",
+                                         "back":  "WACC = (E/V * Re) + (D/V * Rd * (1 - Tc)) where E = market value of equity, D = market value of debt, V = E + D, Re = cost of equity, Rd = cost of debt, Tc = corporate tax rate."
+                                     },
+                                     {
+                                         "id":  "LBO-03-3",
+                                         "type":  "flashcard",
+                                         "front":  "Senior debt",
+                                         "back":  "Senior debt is the highest-ranking debt in a capital structure, which must be repaid first in the event of liquidation. It typically has lower interest rates due to its lower risk, making it a critical component for financing in leveraged buyouts."
+                                     },
+                                     {
+                                         "id":  "LBO-03-4",
+                                         "type":  "flashcard",
+                                         "front":  "Mezzanine financing",
+                                         "back":  "Mezzanine financing is a hybrid of debt and equity financing that is typically used to finance the expansion of existing companies. It is subordinate to senior debt but has higher returns, making it an important option for LBOs."
+                                     },
+                                     {
+                                         "id":  "LBO-03-5",
+                                         "type":  "flashcard",
+                                         "front":  "Equity tranche",
+                                         "back":  "The equity tranche is the lowest-ranking layer in a capital structure, absorbing the first losses. It typically offers the highest potential returns but comes with the highest risk, making it essential for investors to understand their risk appetite."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "LBO-04",
+                       "name":  "The debt schedule, cash sweep, and circularity",
+                       "category":  "LBO",
+                       "cards":  [
+                                     {
+                                         "id":  "LBO-04-1",
+                                         "type":  "definition",
+                                         "front":  "Debt schedule",
+                                         "back":  "A debt schedule outlines the repayment terms of a company\u0027s debt, including principal and interest payments over time. It is crucial for understanding cash flow requirements and the timing of debt obligations in an LBO model."
+                                     },
+                                     {
+                                         "id":  "LBO-04-2",
+                                         "type":  "formula",
+                                         "front":  "Cash sweep calculation",
+                                         "back":  "Cash Sweep = Excess Cash Flow - Required Debt Payments. This formula determines how much excess cash will be used to pay down debt, impacting the overall leverage and financial health of the company."
+                                     },
+                                     {
+                                         "id":  "LBO-04-3",
+                                         "type":  "flashcard",
+                                         "front":  "Circularity in LBO models",
+                                         "back":  "Circularity refers to the interdependence between cash flow, debt repayment, and interest expense in an LBO model. Analysts must manage this circularity to ensure accurate projections and avoid errors in financial modeling."
+                                     },
+                                     {
+                                         "id":  "LBO-04-4",
+                                         "type":  "flashcard",
+                                         "front":  "Cash sweep effect on debt",
+                                         "back":  "A cash sweep reduces outstanding debt by using excess cash flow to pay down principal. This is important for improving leverage ratios and reducing interest expenses over time."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "LBO-05",
+                       "name":  "Returns: IRR and MOIC (and the bridge between them)",
+                       "category":  "LBO",
+                       "cards":  [
+                                     {
+                                         "id":  "LBO-05-1",
+                                         "type":  "definition",
+                                         "front":  "IRR",
+                                         "back":  "Internal Rate of Return (IRR) is the discount rate that makes the net present value (NPV) of all cash flows from an investment equal to zero. It is a key metric used by analysts to evaluate the profitability of an investment, with higher IRR indicating a more attractive investment opportunity."
+                                     },
+                                     {
+                                         "id":  "LBO-05-2",
+                                         "type":  "definition",
+                                         "front":  "MOIC",
+                                         "back":  "Multiple on Invested Capital (MOIC) measures the total value returned to investors relative to the amount of capital invested. It is calculated as total distributions divided by total invested capital, and it helps analysts assess the overall return on an investment without considering the time value of money."
+                                     },
+                                     {
+                                         "id":  "LBO-05-3",
+                                         "type":  "formula",
+                                         "front":  "IRR Calculation",
+                                         "back":  "IRR is calculated by solving the equation: 0 = Sum of (Cash Flow_t / (1 + IRR)^t) for t = 0 to n, where Cash Flow_t is the cash flow at time t and n is the total number of periods."
+                                     },
+                                     {
+                                         "id":  "LBO-05-4",
+                                         "type":  "flashcard",
+                                         "front":  "What does a higher MOIC indicate?",
+                                         "back":  "A higher MOIC indicates a better return on invested capital.",
+                                         "choices":  [
+                                                         "A lower risk investment",
+                                                         "A better return on invested capital",
+                                                         "A longer investment horizon",
+                                                         "A higher IRR"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "LBO-05-5",
+                                         "type":  "flashcard",
+                                         "front":  "How does IRR relate to MOIC?",
+                                         "back":  "IRR reflects the annualized rate of return, while MOIC shows total return; both are used to evaluate investment performance but from different perspectives.",
+                                         "choices":  [
+                                                         "IRR is always higher than MOIC",
+                                                         "MOIC is a time-adjusted measure",
+                                                         "IRR is a percentage, MOIC is a ratio",
+                                                         "They are unrelated metrics"
+                                                     ],
+                                         "answer":  2
+                                     },
+                                     {
+                                         "id":  "LBO-05-6",
+                                         "type":  "flashcard",
+                                         "front":  "If an investment has an IRR of 15% and a MOIC of 2.0x, what does this imply?",
+                                         "back":  "This implies that the investment is expected to return twice the invested capital over its life, with an annualized return of 15%.",
+                                         "choices":  [
+                                                         "The investment is losing money",
+                                                         "The investment is expected to break even",
+                                                         "The investment is expected to return twice the capital with a 15% annual return",
+                                                         "The investment has no cash flows"
+                                                     ],
+                                         "answer":  2
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "LBO-06",
+                       "name":  "Returns attribution: what actually drives the return",
+                       "category":  "LBO",
+                       "cards":  [
+                                     {
+                                         "id":  "LBO-06-1",
+                                         "type":  "flashcard",
+                                         "front":  "Returns attribution",
+                                         "back":  "Returns attribution refers to the analysis of the factors that contribute to the overall return on an investment, particularly in leveraged buyouts (LBOs). Understanding what drives returns helps analysts assess the effectiveness of their investment strategies and identify key value creation levers."
+                                     },
+                                     {
+                                         "id":  "LBO-06-2",
+                                         "type":  "formula",
+                                         "front":  "IRR",
+                                         "back":  "IRR = Cash Flows / (1 + r)^t, where r is the discount rate and t is the time period. The Internal Rate of Return (IRR) is a critical measure in LBOs, indicating the annualized effective compounded return rate that makes the net present value of all cash flows equal to zero."
+                                     },
+                                     {
+                                         "id":  "LBO-06-3",
+                                         "type":  "flashcard",
+                                         "front":  "Debt repayment",
+                                         "back":  "Debt repayment is a significant driver of returns in LBOs, as paying down debt increases equity value. Analysts must consider how quickly debt can be repaid to enhance returns for equity holders."
+                                     },
+                                     {
+                                         "id":  "LBO-06-4",
+                                         "type":  "flashcard",
+                                         "front":  "Exit multiple",
+                                         "back":  "The exit multiple is the valuation metric used to determine the sale price of a company at the end of an investment period. A higher exit multiple can significantly enhance returns, making it crucial for analysts to project market conditions and comparable company valuations accurately."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "LBO-07",
+                       "name":  "The paper LBO (the interview drill)",
+                       "category":  "LBO",
+                       "cards":  [
+                                     {
+                                         "id":  "LBO-07-1",
+                                         "type":  "flashcard",
+                                         "front":  "LBO",
+                                         "back":  "A Leveraged Buyout (LBO) is a financial transaction where a company is purchased primarily with borrowed funds, using the company\u0027s assets as collateral. Analysts use LBOs to assess the feasibility of acquiring a company and the potential returns on investment."
+                                     },
+                                     {
+                                         "id":  "LBO-07-2",
+                                         "type":  "formula",
+                                         "front":  "IRR",
+                                         "back":  "Internal Rate of Return (IRR) is the discount rate that makes the net present value (NPV) of all cash flows from an investment equal to zero. Analysts calculate IRR to evaluate the profitability of an LBO investment."
+                                     },
+                                     {
+                                         "id":  "LBO-07-3",
+                                         "type":  "flashcard",
+                                         "front":  "Debt-to-Equity Ratio",
+                                         "back":  "The Debt-to-Equity Ratio is a measure of a company\u0027s financial leverage, calculated as total debt divided by total equity. In an LBO, a higher ratio indicates more leverage, which can amplify returns but also increases risk."
+                                     },
+                                     {
+                                         "id":  "LBO-07-4",
+                                         "type":  "flashcard",
+                                         "front":  "Exit Strategy",
+                                         "back":  "An exit strategy in an LBO refers to the method by which investors plan to realize their returns, typically through a sale, IPO, or recapitalization. Analysts must consider exit strategies to project potential returns and assess the investment\u0027s success."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MNA-01",
+                       "name":  "What a merger model is and why accretion/dilution matters",
+                       "category":  "M\u0026A",
+                       "cards":  [
+                                     {
+                                         "id":  "MNA-01-1",
+                                         "type":  "definition",
+                                         "front":  "Merger Model",
+                                         "back":  "A merger model is a financial model used to evaluate the financial implications of a merger or acquisition, including the impact on earnings per share (EPS) and overall valuation. Analysts use it to assess whether a deal will be accretive or dilutive to the acquiring company\u0027s shareholders."
+                                     },
+                                     {
+                                         "id":  "MNA-01-2",
+                                         "type":  "formula",
+                                         "front":  "Accretion/Dilution Analysis",
+                                         "back":  "Accretion/Dilution = (New EPS - Old EPS) / Old EPS. This formula helps determine if the merger will increase (accretion) or decrease (dilution) the acquiring company\u0027s EPS, which is crucial for shareholder value."
+                                     },
+                                     {
+                                         "id":  "MNA-01-3",
+                                         "type":  "flashcard",
+                                         "front":  "Accretion",
+                                         "back":  "Accretion occurs when a merger or acquisition increases the acquiring company\u0027s earnings per share (EPS). This is important because it indicates that the deal is beneficial for shareholders, potentially leading to a higher stock price."
+                                     },
+                                     {
+                                         "id":  "MNA-01-4",
+                                         "type":  "flashcard",
+                                         "front":  "Dilution",
+                                         "back":  "Dilution happens when a merger or acquisition decreases the acquiring company\u0027s earnings per share (EPS). This is a concern for shareholders as it may lead to a lower stock price and indicate that the deal is not favorable."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MNA-02",
+                       "name":  "Pro-forma combined EPS build (Net Income to EPS)",
+                       "category":  "M\u0026A",
+                       "cards":  [
+                                     {
+                                         "id":  "MNA-02-1",
+                                         "type":  "definition",
+                                         "front":  "Pro-forma EPS",
+                                         "back":  "Pro-forma EPS is the earnings per share calculated based on projected or estimated financial results after a merger or acquisition. It helps analysts assess the potential impact of a transaction on a company\u0027s profitability on a per-share basis."
+                                     },
+                                     {
+                                         "id":  "MNA-02-2",
+                                         "type":  "formula",
+                                         "front":  "Pro-forma EPS calculation",
+                                         "back":  "Pro-forma EPS = Pro-forma Net Income / Pro-forma Shares Outstanding"
+                                     },
+                                     {
+                                         "id":  "MNA-02-3",
+                                         "type":  "flashcard",
+                                         "front":  "What is included in Pro-forma Net Income?",
+                                         "back":  "Select the correct components of Pro-forma Net Income.",
+                                         "choices":  [
+                                                         "Only historical net income",
+                                                         "Historical net income plus synergies and adjustments",
+                                                         "Only projected net income",
+                                                         "Historical net income minus taxes"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "MNA-02-4",
+                                         "type":  "flashcard",
+                                         "front":  "Effect of increased shares on Pro-forma EPS?",
+                                         "back":  "How does an increase in shares outstanding affect Pro-forma EPS?",
+                                         "choices":  [
+                                                         "Increases Pro-forma EPS",
+                                                         "Decreases Pro-forma EPS",
+                                                         "Has no effect on Pro-forma EPS",
+                                                         "Only affects historical EPS"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "MNA-02-5",
+                                         "type":  "definition",
+                                         "front":  "Net Income",
+                                         "back":  "Net Income is the total profit of a company after all expenses, taxes, and costs have been deducted from total revenue. It is a key component in calculating Pro-forma EPS as it reflects the profitability of the combined entity."
+                                     },
+                                     {
+                                         "id":  "MNA-02-6",
+                                         "type":  "flashcard",
+                                         "front":  "What is the purpose of calculating Pro-forma EPS?",
+                                         "back":  "Select the main reason for calculating Pro-forma EPS.",
+                                         "choices":  [
+                                                         "To determine the historical performance of a company",
+                                                         "To assess the potential impact of a merger or acquisition on shareholder value",
+                                                         "To calculate the company\u0027s tax obligations",
+                                                         "To evaluate the company\u0027s cash flow"
+                                                     ],
+                                         "answer":  1
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MNA-03",
+                       "name":  "Consideration mix: cash vs stock vs debt",
+                       "category":  "M\u0026A",
+                       "cards":  [
+                                     {
+                                         "id":  "MNA-03-1",
+                                         "type":  "definition",
+                                         "front":  "Cash consideration",
+                                         "back":  "Cash consideration refers to the payment made in cash during a merger or acquisition. It is straightforward and provides immediate liquidity to the selling shareholders, making it a common choice for acquirers looking to simplify the transaction."
+                                     },
+                                     {
+                                         "id":  "MNA-03-2",
+                                         "type":  "definition",
+                                         "front":  "Stock consideration",
+                                         "back":  "Stock consideration involves the acquirer offering its own shares as payment for the target company. This method can align the interests of both parties and allows the seller to participate in the future growth of the combined entity."
+                                     },
+                                     {
+                                         "id":  "MNA-03-3",
+                                         "type":  "formula",
+                                         "front":  "Total consideration",
+                                         "back":  "Total consideration = Cash consideration + Stock consideration + Debt assumption. This formula helps analysts evaluate the total value being exchanged in a transaction."
+                                     },
+                                     {
+                                         "id":  "MNA-03-4",
+                                         "type":  "flashcard",
+                                         "front":  "Debt consideration - effect on acquirer\u0027s balance sheet?",
+                                         "back":  "Increases liabilities - when an acquirer assumes the target\u0027s debt, it adds to its own liabilities, which can affect leverage ratios and overall financial health."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MNA-04",
+                       "name":  "The accretion/dilution rule of thumb (P/E comparison)",
+                       "category":  "M\u0026A",
+                       "cards":  [
+                                     {
+                                         "id":  "MNA-04-1",
+                                         "type":  "definition",
+                                         "front":  "Accretion",
+                                         "back":  "Accretion occurs when a company\u0027s earnings per share (EPS) increases as a result of an acquisition. This is important for analysts as it indicates that the deal is financially beneficial and enhances shareholder value."
+                                     },
+                                     {
+                                         "id":  "MNA-04-2",
+                                         "type":  "definition",
+                                         "front":  "Dilution",
+                                         "back":  "Dilution happens when a company\u0027s EPS decreases following an acquisition. This is a critical concern for analysts as it suggests that the acquisition may not be favorable for shareholders."
+                                     },
+                                     {
+                                         "id":  "MNA-04-3",
+                                         "type":  "formula",
+                                         "front":  "Accretion/Dilution Analysis",
+                                         "back":  "If the acquirer\u0027s P/E ratio is greater than the target\u0027s P/E ratio, the deal is likely accretive. If the acquirer\u0027s P/E ratio is less than the target\u0027s P/E ratio, the deal is likely dilutive."
+                                     },
+                                     {
+                                         "id":  "MNA-04-4",
+                                         "type":  "flashcard",
+                                         "front":  "P/E Ratio",
+                                         "back":  "The price-to-earnings (P/E) ratio is a valuation metric calculated by dividing the market price per share by the earnings per share. It helps analysts assess the relative value of companies and is crucial in determining the accretion or dilution of an acquisition."
+                                     },
+                                     {
+                                         "id":  "MNA-04-5",
+                                         "type":  "flashcard",
+                                         "front":  "An acquisition with a higher P/E ratio than the acquirer\u0027s P/E ratio - effect on EPS?",
+                                         "back":  "Dilutive - the acquisition will decrease the acquirer\u0027s EPS, indicating a potentially unfavorable deal for shareholders."
+                                     },
+                                     {
+                                         "id":  "MNA-04-6",
+                                         "type":  "flashcard",
+                                         "front":  "An acquisition with a lower P/E ratio than the acquirer\u0027s P/E ratio - effect on EPS?",
+                                         "back":  "Accretive - the acquisition will increase the acquirer\u0027s EPS, suggesting a beneficial deal for shareholders."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MNA-05",
+                       "name":  "Synergies (revenue and cost)",
+                       "category":  "M\u0026A",
+                       "cards":  [
+                                     {
+                                         "id":  "MNA-05-1",
+                                         "type":  "definition",
+                                         "front":  "Synergies",
+                                         "back":  "Synergies refer to the potential financial benefits that can be realized when two companies merge or acquire each other. They can be classified into revenue synergies, which increase sales, and cost synergies, which reduce expenses. Understanding synergies is crucial for analysts to evaluate the potential value of a merger or acquisition."
+                                     },
+                                     {
+                                         "id":  "MNA-05-2",
+                                         "type":  "definition",
+                                         "front":  "Revenue Synergies",
+                                         "back":  "Revenue synergies are the additional revenues that a combined company expects to generate as a result of a merger or acquisition. This can occur through cross-selling opportunities, expanded market reach, or enhanced product offerings. Analysts assess revenue synergies to forecast future sales growth post-transaction."
+                                     },
+                                     {
+                                         "id":  "MNA-05-3",
+                                         "type":  "formula",
+                                         "front":  "Cost Synergies Calculation",
+                                         "back":  "Cost Synergies = Pre-Merger Costs - Post-Merger Costs. This formula helps analysts quantify the expected savings from eliminating duplicate functions or optimizing operations after a merger."
+                                     },
+                                     {
+                                         "id":  "MNA-05-4",
+                                         "type":  "flashcard",
+                                         "front":  "Cost Synergies",
+                                         "back":  "Cost synergies are the savings that result from reduced operating costs after a merger or acquisition. These savings can come from layoffs, streamlined operations, or better procurement practices. Analysts focus on cost synergies to determine how much a merger can improve profitability."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MNA-06",
+                       "name":  "Purchase accounting and PPA (high level)",
+                       "category":  "M\u0026A",
+                       "cards":  [
+                                     {
+                                         "id":  "MNA-06-1",
+                                         "type":  "definition",
+                                         "front":  "Purchase accounting",
+                                         "back":  "Purchase accounting is a method used in mergers and acquisitions to allocate the purchase price of an acquired company to its identifiable assets and liabilities. This method is crucial for accurately reflecting the financial position of the combined entity post-acquisition."
+                                     },
+                                     {
+                                         "id":  "MNA-06-2",
+                                         "type":  "definition",
+                                         "front":  "Purchase Price Allocation (PPA)",
+                                         "back":  "Purchase Price Allocation (PPA) is the process of assigning the fair value of the acquired company\u0027s assets and liabilities to determine goodwill. It is essential for financial reporting and impacts future earnings through amortization and depreciation."
+                                     },
+                                     {
+                                         "id":  "MNA-06-3",
+                                         "type":  "formula",
+                                         "front":  "Goodwill calculation",
+                                         "back":  "Goodwill = Purchase Price - Fair Value of Net Identifiable Assets. This formula helps analysts understand the premium paid over the fair value of the acquired company\u0027s net assets."
+                                     },
+                                     {
+                                         "id":  "MNA-06-4",
+                                         "type":  "flashcard",
+                                         "front":  "Identifiable assets",
+                                         "back":  "Identifiable assets are assets that can be separated from the acquired company and sold, transferred, or licensed. They include tangible assets like property and equipment, as well as intangible assets like patents and trademarks, and are critical in the PPA process."
+                                     },
+                                     {
+                                         "id":  "MNA-06-5",
+                                         "type":  "flashcard",
+                                         "front":  "Effect of PPA on financial statements",
+                                         "back":  "PPA affects financial statements by increasing the value of assets on the balance sheet and creating goodwill. This can lead to higher depreciation and amortization expenses, impacting net income in future periods."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "MNA-07",
+                       "name":  "Sources and uses and the breakeven premium / synergies",
+                       "category":  "M\u0026A",
+                       "cards":  [
+                                     {
+                                         "id":  "MNA-07-1",
+                                         "type":  "definition",
+                                         "front":  "Sources and Uses",
+                                         "back":  "Sources and Uses refer to the breakdown of how funds are raised (sources) and how they are allocated (uses) in a transaction. This is crucial for understanding the financing structure of a deal and ensuring that all capital requirements are met."
+                                     },
+                                     {
+                                         "id":  "MNA-07-2",
+                                         "type":  "formula",
+                                         "front":  "Breakeven Premium",
+                                         "back":  "Breakeven Premium = (Synergies / Target\u0027s EBITDA) * 100. This formula helps analysts determine the maximum premium that can be paid for a target while still achieving a positive return on investment based on expected synergies."
+                                     },
+                                     {
+                                         "id":  "MNA-07-3",
+                                         "type":  "flashcard",
+                                         "front":  "What category does \u0027Cash from operations\u0027 fall under?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Source",
+                                                         "Use",
+                                                         "Neither",
+                                                         "Both"
+                                                     ],
+                                         "answer":  0
+                                     },
+                                     {
+                                         "id":  "MNA-07-4",
+                                         "type":  "flashcard",
+                                         "front":  "An increase in expected synergies - effect on breakeven premium?",
+                                         "back":  "Increases breakeven premium - higher expected synergies allow for a higher premium to be justified in the acquisition, enhancing the potential return on investment."
+                                     },
+                                     {
+                                         "id":  "MNA-07-5",
+                                         "type":  "flashcard",
+                                         "front":  "What counts as a \u0027Use\u0027 in a transaction?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Debt repayment",
+                                                         "Issuing new equity",
+                                                         "Cash inflow from sales",
+                                                         "Investment income"
+                                                     ],
+                                         "answer":  0
+                                     },
+                                     {
+                                         "id":  "MNA-07-6",
+                                         "type":  "definition",
+                                         "front":  "Synergies",
+                                         "back":  "Synergies are the expected cost savings or revenue enhancements that result from the combination of two companies. They are a key driver in M\u0026A transactions, as they can justify a higher purchase price and improve overall financial performance."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-01",
+                       "name":  "Accelerator keys (Alt-key ribbon sequences)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-01-1",
+                                         "type":  "flashcard",
+                                         "front":  "Alt + F",
+                                         "back":  "Opens the File menu, allowing access to file-related commands such as opening, saving, and printing documents. This is essential for managing files efficiently."
+                                     },
+                                     {
+                                         "id":  "XL-01-2",
+                                         "type":  "flashcard",
+                                         "front":  "Alt + H",
+                                         "back":  "Opens the Home tab on the ribbon, providing quick access to formatting options, clipboard functions, and font settings. Analysts use this to format reports and presentations."
+                                     },
+                                     {
+                                         "id":  "XL-01-3",
+                                         "type":  "formula",
+                                         "front":  "Alt + N",
+                                         "back":  "Opens the Insert tab, allowing users to insert various elements like charts, tables, and pictures into their spreadsheet. This is crucial for enhancing data visualization."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-02",
+                       "name":  "Worksheet navigation (Ctrl+Arrows, Ctrl+PgUp/PgDn)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-02-1",
+                                         "type":  "flashcard",
+                                         "front":  "Ctrl + Arrow Keys",
+                                         "back":  "Using Ctrl with the arrow keys allows you to quickly navigate to the edge of data regions in Excel. This is useful for efficiently moving through large datasets without scrolling manually."
+                                     },
+                                     {
+                                         "id":  "XL-02-2",
+                                         "type":  "flashcard",
+                                         "front":  "Ctrl + PgUp/PgDn",
+                                         "back":  "Ctrl + PgUp and Ctrl + PgDn are shortcuts for navigating between worksheet tabs in Excel. This helps analysts quickly switch between different sheets in a workbook, enhancing workflow efficiency."
+                                     },
+                                     {
+                                         "id":  "XL-02-3",
+                                         "type":  "definition",
+                                         "front":  "Data region",
+                                         "back":  "A data region in Excel refers to a contiguous block of cells that contain data. Understanding how to navigate these regions efficiently is crucial for data analysis and reporting."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-03",
+                       "name":  "Selection (Shift, Ctrl+Shift+Arrows, Ctrl+Shift+End)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-03-1",
+                                         "type":  "flashcard",
+                                         "front":  "Shift key",
+                                         "back":  "The Shift key is used in Excel to select a range of cells. Holding Shift while clicking or using arrow keys allows you to expand or contract your selection. This is essential for quickly selecting data for analysis or formatting."
+                                     },
+                                     {
+                                         "id":  "XL-03-2",
+                                         "type":  "flashcard",
+                                         "front":  "Ctrl+Shift+Arrows",
+                                         "back":  "Using Ctrl+Shift with arrow keys allows you to select an entire range of contiguous cells in a direction (up, down, left, right) until the edge of the data. This is useful for quickly selecting large datasets without dragging the mouse."
+                                     },
+                                     {
+                                         "id":  "XL-03-3",
+                                         "type":  "formula",
+                                         "front":  "Ctrl+Shift+End",
+                                         "back":  "Ctrl+Shift+End selects all cells from the current position to the last used cell in the worksheet. This is helpful for quickly selecting all relevant data in a worksheet for copying or formatting."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-04",
+                       "name":  "Cell references and anchoring with $ (F4)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-04-1",
+                                         "type":  "definition",
+                                         "front":  "Cell reference",
+                                         "back":  "A cell reference refers to the unique identifier for a cell in a spreadsheet, typically denoted by its column letter and row number (e.g., A1). It is crucial for formulas and functions to identify which data to use in calculations."
+                                     },
+                                     {
+                                         "id":  "XL-04-2",
+                                         "type":  "definition",
+                                         "front":  "Absolute reference",
+                                         "back":  "An absolute reference is a cell reference that remains constant when a formula is copied to another cell, indicated by a dollar sign (e.g., $A$1). This is important for maintaining fixed references in calculations across multiple cells."
+                                     },
+                                     {
+                                         "id":  "XL-04-3",
+                                         "type":  "formula",
+                                         "front":  "Mixed reference",
+                                         "back":  "A mixed reference is a cell reference that has one part fixed and the other part relative, such as $A1 or A$1. This allows for flexibility in formulas while keeping one dimension constant."
+                                     },
+                                     {
+                                         "id":  "XL-04-4",
+                                         "type":  "flashcard",
+                                         "front":  "F4 key",
+                                         "back":  "The F4 key in Excel is used to toggle between different types of cell references (relative, absolute, and mixed) when editing a formula. This is essential for quickly adjusting references without manually typing dollar signs."
+                                     },
+                                     {
+                                         "id":  "XL-04-5",
+                                         "type":  "flashcard",
+                                         "front":  "Relative reference",
+                                         "back":  "A relative reference is a cell reference that adjusts based on the position of the cell where the formula is copied (e.g., A1 changes to B1 when moved one column to the right). This is useful for dynamic calculations across rows or columns."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-05",
+                       "name":  "Lookup functions: INDEX/MATCH (and XLOOKUP)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-05-1",
+                                         "type":  "definition",
+                                         "front":  "INDEX function",
+                                         "back":  "The INDEX function returns the value of a cell in a specified row and column of a given range. It is useful for retrieving data from large datasets based on specific criteria."
+                                     },
+                                     {
+                                         "id":  "XL-05-2",
+                                         "type":  "definition",
+                                         "front":  "MATCH function",
+                                         "back":  "The MATCH function searches for a specified item in a range and returns its relative position. It is often used in conjunction with INDEX to find the location of data within a dataset."
+                                     },
+                                     {
+                                         "id":  "XL-05-3",
+                                         "type":  "formula",
+                                         "front":  "INDEX/MATCH",
+                                         "back":  "To retrieve a value using INDEX and MATCH, use the formula: INDEX(array, MATCH(lookup_value, lookup_array, match_type)). This combination allows for more flexible lookups than VLOOKUP."
+                                     },
+                                     {
+                                         "id":  "XL-05-4",
+                                         "type":  "definition",
+                                         "front":  "XLOOKUP function",
+                                         "back":  "The XLOOKUP function is a modern replacement for VLOOKUP and HLOOKUP, allowing for more versatile lookups. It can search both vertically and horizontally and return values from any column or row."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-06",
+                       "name":  "Conditional/logical functions (IF, SUMIF/SUMIFS, COUNTIF, AND/OR)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-06-1",
+                                         "type":  "definition",
+                                         "front":  "IF function",
+                                         "back":  "The IF function is a logical function that returns one value if a condition is true and another value if it is false. It is essential for decision-making in spreadsheets, allowing analysts to create dynamic models based on varying inputs."
+                                     },
+                                     {
+                                         "id":  "XL-06-2",
+                                         "type":  "formula",
+                                         "front":  "SUMIF function",
+                                         "back":  "SUMIF(range, criteria, [sum_range]) - This function sums the values in a specified range that meet a given condition. It is useful for aggregating data based on specific criteria, such as summing sales for a particular product."
+                                     },
+                                     {
+                                         "id":  "XL-06-3",
+                                         "type":  "flashcard",
+                                         "front":  "What does the COUNTIF function do?",
+                                         "back":  "Counts the number of cells that meet a specified condition.",
+                                         "choices":  [
+                                                         "Counts all cells in a range",
+                                                         "Counts the number of unique values",
+                                                         "Counts the number of cells that meet a specified condition",
+                                                         "Counts the total number of rows in a dataset"
+                                                     ],
+                                         "answer":  2
+                                     },
+                                     {
+                                         "id":  "XL-06-4",
+                                         "type":  "flashcard",
+                                         "front":  "Which of the following functions can be used to evaluate multiple conditions?",
+                                         "back":  "AND/OR functions can be used to evaluate multiple conditions in logical tests.",
+                                         "choices":  [
+                                                         "SUMIF",
+                                                         "IF",
+                                                         "AND/OR",
+                                                         "COUNTIF"
+                                                     ],
+                                         "answer":  2
+                                     },
+                                     {
+                                         "id":  "XL-06-5",
+                                         "type":  "definition",
+                                         "front":  "SUMIFS function",
+                                         "back":  "The SUMIFS function sums the values in a range that meet multiple specified criteria. This is particularly useful for complex data analysis where multiple conditions need to be satisfied, such as summing sales by region and product type."
+                                     },
+                                     {
+                                         "id":  "XL-06-6",
+                                         "type":  "flashcard",
+                                         "front":  "What is the result of using the AND function with conditions that are all true?",
+                                         "back":  "Returns TRUE, indicating that all conditions are satisfied.",
+                                         "choices":  [
+                                                         "Returns FALSE",
+                                                         "Returns TRUE",
+                                                         "Returns an error",
+                                                         "Returns 0"
+                                                     ],
+                                         "answer":  1
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-07",
+                       "name":  "Formatting and color conventions (the IB standard)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-07-1",
+                                         "type":  "definition",
+                                         "front":  "Formatting",
+                                         "back":  "Formatting refers to the way data is presented in Excel, including font styles, colors, borders, and number formats. Proper formatting enhances readability and helps convey information clearly in financial models and presentations."
+                                     },
+                                     {
+                                         "id":  "XL-07-2",
+                                         "type":  "definition",
+                                         "front":  "Color conventions",
+                                         "back":  "Color conventions in Excel refer to the standardized use of colors to represent different types of data, such as blue for inputs, black for calculations, and red for negative numbers. These conventions help analysts quickly identify the nature of data in financial models."
+                                     },
+                                     {
+                                         "id":  "XL-07-3",
+                                         "type":  "formula",
+                                         "front":  "Conditional Formatting",
+                                         "back":  "Conditional Formatting allows users to apply specific formatting to cells based on their values. For example, you can set a rule to color cells red if they contain negative values, which is useful for quickly identifying problem areas in financial data."
+                                     },
+                                     {
+                                         "id":  "XL-07-4",
+                                         "type":  "flashcard",
+                                         "front":  "Input cells",
+                                         "back":  "Input cells are typically formatted in blue to indicate that they are user-modifiable. This helps analysts and users easily identify where to enter data in a financial model."
+                                     },
+                                     {
+                                         "id":  "XL-07-5",
+                                         "type":  "flashcard",
+                                         "front":  "Calculation cells",
+                                         "back":  "Calculation cells are usually formatted in black to signify that they contain formulas or calculations. This distinction helps users understand which cells are derived from inputs and which are static."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-08",
+                       "name":  "Paste special (values, formats, transpose)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-08-1",
+                                         "type":  "definition",
+                                         "front":  "Paste Special",
+                                         "back":  "Paste Special is a feature in Excel that allows users to paste specific attributes of copied data, such as values, formats, or formulas, rather than pasting everything. This is important for maintaining data integrity and formatting in financial models."
+                                     },
+                                     {
+                                         "id":  "XL-08-2",
+                                         "type":  "definition",
+                                         "front":  "Values",
+                                         "back":  "Pasting as Values means that only the raw data is pasted, stripping away any formulas or references. This is crucial when you want to keep the results of calculations without linking back to the original data."
+                                     },
+                                     {
+                                         "id":  "XL-08-3",
+                                         "type":  "formula",
+                                         "front":  "Transpose",
+                                         "back":  "To transpose data in Excel, use the Paste Special feature and select the Transpose option. This allows you to switch rows to columns and vice versa, which is useful for reorganizing data for analysis."
+                                     },
+                                     {
+                                         "id":  "XL-08-4",
+                                         "type":  "flashcard",
+                                         "front":  "What does pasting as Formats do?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Pastes only the cell colors and borders",
+                                                         "Pastes only the formulas from the copied cells",
+                                                         "Pastes only the raw data without any formatting",
+                                                         "Pastes the entire cell content including formulas and values"
+                                                     ],
+                                         "answer":  0
+                                     },
+                                     {
+                                         "id":  "XL-08-5",
+                                         "type":  "flashcard",
+                                         "front":  "Effect of pasting values on formulas?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Retains the formulas and links to original data",
+                                                         "Removes formulas and pastes only the calculated results",
+                                                         "Changes the format of the cells",
+                                                         "Pastes the formulas as text"
+                                                     ],
+                                         "answer":  1
+                                     },
+                                     {
+                                         "id":  "XL-08-6",
+                                         "type":  "flashcard",
+                                         "front":  "What happens when you use Transpose in Paste Special?",
+                                         "back":  "Choose the correct classification.",
+                                         "choices":  [
+                                                         "Data is pasted in the same orientation",
+                                                         "Data is pasted in a different worksheet",
+                                                         "Rows become columns and columns become rows",
+                                                         "Only the first row is pasted"
+                                                     ],
+                                         "answer":  2
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-09",
+                       "name":  "Error checking and formula auditing (F2, Trace, F9)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-09-1",
+                                         "type":  "flashcard",
+                                         "front":  "F2",
+                                         "back":  "F2 is a keyboard shortcut in Excel that allows users to edit the contents of a cell directly. It is important for analysts to quickly modify formulas or data without having to navigate through the formula bar."
+                                     },
+                                     {
+                                         "id":  "XL-09-2",
+                                         "type":  "flashcard",
+                                         "front":  "Trace Precedents",
+                                         "back":  "Trace Precedents is a feature in Excel that shows arrows pointing to the cells that are referenced by the formula in the selected cell. This is crucial for analysts to understand how data flows through their models and to identify potential errors."
+                                     },
+                                     {
+                                         "id":  "XL-09-3",
+                                         "type":  "formula",
+                                         "front":  "F9",
+                                         "back":  "F9 is a function in Excel that calculates and returns the value of a formula or expression. It is often used to evaluate parts of a formula to check for errors or to see intermediate results."
+                                     }
+                                 ]
+                   },
+                   {
+                       "id":  "XL-10",
+                       "name":  "Speed and workflow habits (mouse-free, F5/Ctrl+G, Name Box)",
+                       "category":  "Excel",
+                       "cards":  [
+                                     {
+                                         "id":  "XL-10-1",
+                                         "type":  "flashcard",
+                                         "front":  "Mouse-free navigation",
+                                         "back":  "Mouse-free navigation refers to using keyboard shortcuts and commands to move around and manipulate data in Excel without relying on a mouse. This increases efficiency and speed, allowing analysts to work faster and reduce strain on their hands."
+                                     },
+                                     {
+                                         "id":  "XL-10-2",
+                                         "type":  "flashcard",
+                                         "front":  "F5/Ctrl+G",
+                                         "back":  "F5 or Ctrl+G opens the \u0027Go To\u0027 dialog box in Excel, allowing users to quickly navigate to a specific cell or range by entering its reference. This is useful for large spreadsheets where scrolling can be time-consuming."
+                                     },
+                                     {
+                                         "id":  "XL-10-3",
+                                         "type":  "definition",
+                                         "front":  "Name Box",
+                                         "back":  "The Name Box in Excel displays the reference of the currently selected cell or range and allows users to quickly navigate to named ranges. It enhances workflow by providing a quick way to access specific data points without scrolling."
+                                     }
+                                 ]
+                   }
+               ]
+}
