@@ -311,6 +311,9 @@
   #exProgress{ margin-left:auto; font-variant-numeric:tabular-nums; font-size:12px;
     color:rgba(255,255,255,0.45); flex:0 1 auto; min-width:0; overflow:hidden;
     text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+  #exScore{ font-variant-numeric:tabular-nums; font-size:12px;
+    color:rgba(255,255,255,0.45); flex:0 0 auto; white-space:nowrap; text-align:right; }
+  #exScore.hidden{ display:none; }
   #exEndBtn{
     flex:0 0 auto; padding:5px 12px; border-radius:9px;
     border:1px solid var(--hairline); background:var(--hover);
@@ -336,6 +339,10 @@
 
   #exPrompt{ font-size:19px; font-weight:600; line-height:1.45; color:#fff;
     margin-bottom:14px; user-select:text; cursor:default; flex:0 0 auto; }
+
+  /* interactive multiple-choice for pill questions - reuses .pchoice look */
+  #exChoices{ display:flex; flex-direction:column; gap:9px; margin:0 0 6px; flex:0 0 auto; }
+  #exChoices.hidden{ display:none; }
 
   #exAnswer{ font-size:15px; line-height:1.55; color:var(--text); user-select:text; cursor:default;
     border-top:1px solid var(--hairline); padding-top:13px; margin-bottom:6px; flex:0 0 auto; }
@@ -476,12 +483,14 @@
       <div id="exHdr">
         <span class="extitle" id="exTitle">Exercise</span>
         <span id="exProgress"></span>
+        <span id="exScore" class="hidden"></span>
         <button id="exEndBtn" title="End exercises and save progress">End</button>
       </div>
 
       <div id="exBody">
         <div id="exConcept" class="hidden"></div>
         <div id="exPrompt"></div>
+        <div id="exChoices" class="hidden"></div>
         <div id="exAnswer" class="hidden"></div>
         <div id="exResult" class="hidden"></div>
       </div>
@@ -612,6 +621,7 @@
   var pracCard = null;      // current card object
   var pracMode = 'review';  // 'review' | 'quiz'
   var pracAnswered = false; // quiz: has a choice been chosen yet
+  var exAnswered = false;   // exercise quiz: has a choice been chosen yet
   function showRow(id){
     ['pracShowRow','pracRateRow','pracNextRow','pracDoneRow'].forEach(function(r){
       $(r).classList.toggle('hidden', r !== id);
@@ -732,6 +742,15 @@
     post({type:'panel', k:'practice', action:'quizAnswer', cardId: pracCard.id, choice: choice});
     showRow('pracNextRow');
     $('pracBody').scrollTop = $('pracBody').scrollHeight;
+  }
+  /* exercise quiz: a choice click is the answer - post it and lock the choices */
+  function chooseExercise(choice){
+    if (exAnswered) return;
+    exAnswered = true;
+    [].forEach.call($('exChoices').children, function(b){
+      b.classList.add('locked');
+    });
+    post({type:'panel', k:'workoutanswer', choice: choice});
   }
   function rateCard(quality){
     if (!pracCard) return;
@@ -894,7 +913,8 @@
     setIdents(items){ renderId(items); },
     setIdentsLoading(){ $('idList').innerHTML = '<div class="fxhead">Categorizing what\'s on your sheet...</div>'; },
     /* dedicated exercise mode - watch.ps1 drives one exercise at a time:
-       payload = { mode:"excel"|"pill", title, topicName, progress, prompt, concept, answer } */
+       payload = { mode:"excel"|"pill", title, topicName, progress, scoreboard,
+                   prompt, concept, answer, choices } */
     openExercise(payloadJson){
       var p;
       try { p = (typeof payloadJson === 'string') ? JSON.parse(payloadJson) : payloadJson; }
@@ -906,6 +926,11 @@
       var mode = (p.mode === 'pill') ? 'pill' : 'excel';
       $('exTitle').textContent = p.title || 'Exercise';
       $('exProgress').textContent = (p.topicName || '') + (p.progress ? ' - ' + p.progress : '');
+      // scoreboard (right-aligned, muted) - hidden when empty
+      var sc = $('exScore');
+      var scoreText = String(p.scoreboard == null ? '' : p.scoreboard);
+      if (scoreText){ sc.textContent = scoreText; sc.classList.remove('hidden'); }
+      else { sc.textContent = ''; sc.classList.add('hidden'); }
       // prompt: bold + newlines preserved
       var prompt = String(p.prompt == null ? '' : p.prompt);
       $('exPrompt').innerHTML = bold(esc(prompt)).replace(/\n+/g, '<br>');
@@ -915,9 +940,31 @@
         con.innerHTML = '<b>What you are doing:</b> ' + esc(String(p.concept));
         con.classList.remove('hidden');
       } else { con.classList.add('hidden'); con.innerHTML = ''; }
-      // answer line (definition / pill exercises only) + check button
+      // always reset interactive choices + lock guard so a re-open starts fresh
+      var ch = $('exChoices');
+      ch.innerHTML = '';
+      ch.classList.add('hidden');
+      exAnswered = false;
+      var choices = (p.choices && p.choices.length) ? p.choices : null;
       var ans = $('exAnswer');
-      if (mode === 'pill'){
+      if (choices){
+        // interactive multiple-choice: the click IS the answer
+        choices.forEach(function(text, i){
+          var b = document.createElement('div');
+          b.className = 'pchoice';
+          b.dataset.i = i;
+          b.innerHTML = '<span class="pkey">' + String.fromCharCode(65 + i) +
+            '</span><span class="pval"></span>';
+          b.querySelector('.pval').textContent = String(text == null ? '' : text);
+          b.addEventListener('click', function(){ chooseExercise(i); });
+          ch.appendChild(b);
+        });
+        ch.classList.remove('hidden');
+        // hide the answer line + check button - the choice click answers
+        ans.classList.add('hidden'); ans.textContent = '';
+        $('exCheckBtn').classList.add('hidden');
+      } else if (mode === 'pill'){
+        // answer line (definition / pill exercises only), no check button
         ans.textContent = 'Answer: ' + String(p.answer == null ? '' : p.answer);
         ans.classList.remove('hidden');
         $('exCheckBtn').classList.add('hidden');
@@ -931,7 +978,9 @@
       $('exNextBtn').classList.remove('hidden');
       $('exBody').scrollTop = 0;
     },
-    /* grade the current exercise: payload = { correct:bool, md:string } */
+    /* grade the current exercise:
+       payload = { correct:bool, md:string, correctIndex?:int, chosenIndex?:int }
+       NOTE: this does NOT clear #exChoices - the locked choices stay visible. */
     showExerciseResult(payloadJson){
       var p;
       try { p = (typeof payloadJson === 'string') ? JSON.parse(payloadJson) : payloadJson; }
@@ -944,6 +993,16 @@
       var head = ok ? 'Correct' : 'Not quite';
       var body = bold(esc(String(p.md == null ? '' : p.md))).replace(/\n+/g, '<br>');
       res.innerHTML = '<div class="exResHead">' + head + '</div>' + body;
+      // optional: mark which choice was right / wrong if indices are provided
+      var ch = $('exChoices');
+      if (ch.children.length && typeof p.correctIndex === 'number'){
+        var ci = p.correctIndex, xi = p.chosenIndex;
+        [].forEach.call(ch.children, function(b){
+          var i = +b.dataset.i;
+          if (i === ci) b.classList.add('correct');
+          else if (typeof xi === 'number' && i === xi && xi !== ci) b.classList.add('wrong');
+        });
+      }
       $('exCheckBtn').classList.add('hidden');
       $('exNextBtn').classList.remove('hidden');
       $('exBody').scrollTop = $('exBody').scrollHeight;
