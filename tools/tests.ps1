@@ -15,7 +15,7 @@ function Section($t){ Write-Host ""; Write-Host ("== " + $t + " ==") -Foreground
 
 # ---------------------------------------------------------------------------
 Section "Parse + ASCII gate (every PowerShell file)"
-$ps1s = @('tools\watch.ps1','tools\curriculum.ps1','tools\deck.ps1','tools\practice.ps1','tools\updater.ps1','tools\setup.ps1','tools\build-deck.ps1')
+$ps1s = @('tools\watch.ps1','tools\curriculum.ps1','tools\deck.ps1','tools\practice.ps1','tools\updater.ps1','tools\setup.ps1','tools\build-deck.ps1','tools\runthrough.ps1')
 foreach($rel in $ps1s){
   $fp = Join-Path $root $rel
   if(-not (Test-Path $fp)){ Assert ("exists: " + $rel) $false; continue }
@@ -85,15 +85,36 @@ try {
   . (Join-Path $root 'tools\practice.ps1')
   . (Join-Path $root 'tools\updater.ps1')
   . (Join-Path $root 'tools\setup.ps1')
+  . (Join-Path $root 'tools\runthrough.ps1')
 } catch { $loadErr = $_.Exception.Message }
 Assert ("all library modules dot-source cleanly" + $(if($loadErr){ " (" + $loadErr + ")" }else{ "" })) ($loadErr -eq '')
 $need = @('Get-XlBook','Apply-XlOps','Read-ExcelLive','Get-Curriculum',
          'Build-Deck','Get-Deck','Get-TopicCards',
          'Get-DueCards','Rate-Card','New-Quiz','Get-PracticeStats',
-         'Check-Update','Apply-Update','Test-FirstRun','Invoke-Setup')
+         'Check-Update','Apply-Update','Test-FirstRun','Invoke-Setup',
+         'Get-RTState','Get-RTTopics','RT-LoadState','RT-SaveState')
 foreach($f in $need){ Assert ("function defined: " + $f) ([bool](Get-Command $f -ErrorAction SilentlyContinue)) }
 # Get-XlBook must be null-safe (the binding fix)
 if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ Assert "Get-XlBook(null) returns null" ((Get-XlBook $null) -eq $null) }
+
+# ---------------------------------------------------------------------------
+Section "Run-through (state model + coverage)"
+if(Get-Command Get-RTTopics -ErrorAction SilentlyContinue){
+  $rtT = @(Get-RTTopics); $cur = @(Get-Curriculum)
+  Assert ("covers every curriculum topic (" + $rtT.Count + " == " + $cur.Count + ")") (($rtT.Count -eq $cur.Count) -and ($cur.Count -gt 0))
+  Assert "fresh topic record: level 1, streak 0" (((RT-NewTopicRec).level -eq 1) -and ((RT-NewTopicRec).streak -eq 0))
+  $sp = RT-StatePath; $bak = $null
+  if(Test-Path $sp){ $bak = [IO.File]::ReadAllText($sp) }
+  try {
+    $st = RT-NewState; $st.topics['TEST-99'] = @{ level=3; streak=1; attempts=4; correct=3; mastered=@(1,2); lastSeen='x' }
+    RT-SaveState $st
+    $ld = RT-LoadState
+    Assert "state round-trips (saved topic returns)" ($ld.topics.ContainsKey('TEST-99'))
+    Assert "round-tripped record keeps level 3" ([int]((RT-TopicRec $ld 'TEST-99').level) -eq 3)
+  } finally {
+    if($null -ne $bak){ [IO.File]::WriteAllText($sp,$bak,(New-Object System.Text.UTF8Encoding($false))) } elseif(Test-Path $sp){ Remove-Item $sp -Force }
+  }
+} else { Assert "Get-RTTopics defined" $false }
 
 # ---------------------------------------------------------------------------
 Section "UI files (ASCII + present)"
