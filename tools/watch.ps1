@@ -1120,7 +1120,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1135,7 +1135,7 @@ function Place-PanelHome {
 }
 function Set-Msg($t){ if($script:statusText -ne $t){ $script:statusText=$t; JS $script:wvS ("XC.setStatus("+(ConvertTo-Json $t)+")") } }
 function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne $k){ $script:dotState=$k; JS $script:wvS ("XC.setDot('"+$hex+"',"+(BoolJs $pulse)+")") } }
-function Apply-Strip {
+function Apply-Strip([bool]$instant=$false) {
   if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
   if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 400 }else{ 0 }) }
@@ -1143,13 +1143,16 @@ function Apply-Strip {
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
   if($ow -eq $nw -and $oh -eq $nh -and $ox -eq $nl -and $oy -eq $nt){ return }
+  # Menu toggles snap instantly (the frequent path - the blocking glide was the lag);
+  # only collapse/expand keeps a short glide.
+  if($instant){ $strip.SetBounds($nl,$nt,$nw,$nh); return }
   $script:animating=$true
   try{
     for($i=1;$i -le 10;$i++){
       $p=$i/10.0; $e=1.0-[Math]::Pow(1.0-$p,3)
       $cw=[int]($ow+($nw-$ow)*$e); $ch=[int]($oh+($nh-$oh)*$e); $cx=[int]($ox+($nl-$ox)*$e); $cy=[int]($oy+($nt-$oy)*$e)
       $strip.SetBounds($cx,$cy,$cw,$ch)
-      [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 12
+      [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 5
     }
     $strip.SetBounds($nl,$nt,$nw,$nh)
   } finally { $script:animating=$false }
@@ -1302,13 +1305,15 @@ function Start-Workout {
   Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
   Set-Query "Excel exercise"; JS $script:wvP ("XC.setAnswerLoading()")
   [System.Windows.Forms.Application]::DoEvents()
+  # Rotate through the curriculum so each click is a NEW topic (the weak-topic pin
+  # used to serve the same problem forever); a per-click nonce varies the numbers too.
   $topicId=$null
-  if(Get-Command Get-WeakTopics -ErrorAction SilentlyContinue){ try{ $w=@(Get-WeakTopics 1); if($w.Count){ $topicId=[string]$w[0] } }catch{} }
-  if(-not $topicId -and (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
+  if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){
     try{ $cur=@(Get-Curriculum); if($cur.Count){ $topicId=[string]$cur[($script:woIdx % $cur.Count)].id; $script:woIdx=([int]$script:woIdx)+1 } }catch{}
   }
   if(-not $topicId){ $script:woBusy=$false; Show-Answer "I could not pick a topic to build from." 'note' 0; return }
-  $ex=$null; try{ $ex=Make-Exercise $topicId 2 }catch{}
+  $script:woSeq=([int]$script:woSeq)+1
+  $ex=$null; try{ $ex=Make-Exercise $topicId 2 ("v"+$script:woSeq) }catch{}
   if(-not $ex){ $script:woBusy=$false; Show-Answer "I could not build an Excel exercise right now (connection issue). Try again in a moment." 'note' 0; return }
   if([string]$ex.surface -eq 'excel'){
     $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
@@ -1497,7 +1502,7 @@ $wvS.add_WebMessageReceived({
     'ask'   { Handle-Ask ([string]$m.q) }
     'drag'  { $script:lastActive=(Get-Date); $script:strip.Left+=[int]([double]$m.dx*$script:S); $script:strip.Top+=[int]([double]$m.dy*$script:S) }
     'panel' { if(([string]$m.k) -eq 'close'){ try{ $script:panel.Hide() }catch{} } }
-    'menu'  { $script:menuOpen=[bool]$m.open; Apply-Strip }
+    'menu'  { $script:menuOpen=[bool]$m.open; Apply-Strip $true }
     'vol'   { try{ $sync.ttsVol=[math]::Max(0.0,[math]::Min(1.0,[double]$m.value/100.0)) }catch{} }
   }
 })
