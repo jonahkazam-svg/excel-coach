@@ -102,6 +102,7 @@ Output ONLY a JSON object (no prose, no markdown, no code fences) with these fie
   "answer"  - for a pill: the correct answer string (or the correct choice text). For an excel exercise this may be empty.
   "choices" - for a pill MULTIPLE-CHOICE: an array of 3-4 distinct plausible strings, one correct. For a typed pill or an excel exercise: an empty array [].
   "worked"  - a short plain-text worked solution / explanation a student can learn from.
+  "concept" - 1-2 plain-English sentences for a beginner explaining WHAT they are doing in this exercise and WHY (the method and the reasoning), e.g. "You subtract COGS and operating expenses from revenue to get operating income, because those are the costs of running the core business." Keep it simple. Do NOT reveal the specific numeric answer.
   "layout"  - REQUIRED when surface is "excel"; otherwise omit or null. An object:
         "title"       - a short sheet title string.
         "given"       - array of { "label": string, "value": number, "cell": "B2" } - the input figures, in real cells starting around B2, B3, ...
@@ -161,6 +162,7 @@ function RT-NormalizeExercise($obj,$topicId,$level){
   $prompt = [string](& $get $obj 'prompt')
   $answer = [string](& $get $obj 'answer')
   $worked = [string](& $get $obj 'worked')
+  $concept = [string](& $get $obj 'concept')
   $surface = [string](& $get $obj 'surface')
   if($surface -ne 'excel' -and $surface -ne 'pill'){ $surface = 'pill' }
   # choices -> array (possibly empty)
@@ -182,7 +184,7 @@ function RT-NormalizeExercise($obj,$topicId,$level){
     }
     $layout = @{ title = $title; given = $given; answerCells = $ans }
   }
-  return @{ id=$id; topicId=$topicId; level=$lvl; surface=$surface; prompt=$prompt; answer=$answer; choices=$choices; worked=$worked; layout=$layout }
+  return @{ id=$id; topicId=$topicId; level=$lvl; surface=$surface; prompt=$prompt; answer=$answer; choices=$choices; worked=$worked; concept=$concept; layout=$layout }
 }
 
 # Pure: tolerant numeric compare. True when both parse to double AND

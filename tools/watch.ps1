@@ -27,7 +27,7 @@ if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -
 $sync=[hashtable]::Synchronized(@{})
 $sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$true; $sync.demoActive=$false; $sync.cancelled=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.ttsVol=1.0; $sync.micMute=$false; $sync.wHB=(Get-Date)
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.ttsVol=1.0; $sync.micMute=$false; $sync.woActive=$false; $sync.wHB=(Get-Date)
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
 $sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"
@@ -745,7 +745,7 @@ while(-not $sync.stop){
   if($xl -and $xl.Length -lt 130){ $xl=$null }
   if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 3; continue }
   if($nullStreak){ $nullStreak=$false; XLog "Excel readable again" }
-  if($sync.demoActive){ Start-Sleep -Seconds 2; continue }
+  if($sync.demoActive -or $sync.woActive){ Start-Sleep -Seconds 2; continue }
   $sync.lastXl=$xl
   if(($xl -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
     $sync.lastWb=$Matches[1]
@@ -1329,14 +1329,14 @@ function Start-Workout {
     $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
     if(-not $xl){ $script:woBusy=$false; $script:woActive=$false; Show-Answer "Open Excel first, then click **Excel exercise** again so I can set up the Workout sheet." 'note' 0; return }
     try{ RT-RenderExcel $ex $xl | Out-Null }catch{}
-    $script:rtCur=$ex; $script:woActive=$true
+    $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true
     $title=[string]$ex.layout.title; if(-not $title){ $title="Excel exercise" }
-    $md="## "+$title+"`n`n"+[string]$ex.prompt+"`n`nI set up a **Workout** sheet in Excel with the given numbers. Fill in the highlighted yellow cells, then press **Done** below to check your answer."
+    $md="## "+$title+"`n`n"+[string]$ex.prompt+$(if($ex.concept){ "`n`n**What you're doing:** "+[string]$ex.concept }else{ "" })+"`n`nI set up a **Workout** sheet in Excel with the given numbers. Fill in the highlighted yellow cells, then press **Done** below to check your answer."
     Show-Answer $md 'answer' 0
     JS $script:wvP ("XC.setWorkoutBar(true)")
   } else {
     $script:woActive=$false; $script:rtCur=$null
-    $md=[string]$ex.prompt
+    $md=[string]$ex.prompt; if($ex.concept){ $md+="`n`n**What you're doing:** "+[string]$ex.concept }
     if($ex.choices -and (@($ex.choices).Count -ge 2)){ $i=0; $md+="`n"; foreach($c in @($ex.choices)){ $md+="`n- "+([char](65+$i))+". "+[string]$c; $i++ } }
     Show-Answer $md 'answer' 0
   }
@@ -1370,6 +1370,7 @@ function Check-Workout {
 }
 function Handle-Act($k){
   $script:lastActive=(Get-Date)
+  if($k -ne 'workout'){ $sync.woActive=$false }
   switch($k){
     'collapse' { $script:collapsed=$true; Apply-Strip }
     'expand'   { $script:collapsed=$false; Apply-Strip }
@@ -1461,7 +1462,7 @@ function Handle-Act($k){
 function Handle-Panel($k,$term){
   $script:lastActive=(Get-Date)
   switch($k){
-    'close'   { try{ $panel.Hide() }catch{} }
+    'close'   { $sync.woActive=$false; try{ $panel.Hide() }catch{} }
     'copy'    { try{ if($script:lastFull){ [System.Windows.Forms.Clipboard]::SetText($script:lastFull) } }catch{} }
     'copytext' { try{ if($term){ [System.Windows.Forms.Clipboard]::SetText([string]$term) } }catch{} }
     'workoutcheck' { if(Get-Command Check-Workout -ErrorAction SilentlyContinue){ Check-Workout } }

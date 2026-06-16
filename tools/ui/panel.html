@@ -767,6 +767,7 @@
        (kind 'answer', id 0). */
     setAnswer(md, meta){
       document.body.classList.remove('loading');
+      document.body.classList.remove('practice');
       $('workoutBar').classList.add('hidden');
       var atNewest = (cursor >= history.length - 1);   // following live?
       history.push({
