@@ -357,7 +357,7 @@ function Mark-ExcelMistakes($exercise, $xl, $perCell){
       if($rowN){
         $note = $noteCol + $rowN
         # always clear the note cell so a re-check after a fix updates cleanly
-        try{ $cc = $ws.Range($note); $cc.ClearContents(); try{ $cc.Font.Italic = $false }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
+        try{ $cc = $ws.Range($note); [void]$cc.ClearContents(); try{ $cc.Font.Italic = $false }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
         if(-not $ok){
           $wrong++
           $txt = 'should be ' + [string]$pc.expected
@@ -368,7 +368,7 @@ function Mark-ExcelMistakes($exercise, $xl, $perCell){
         }
       }
     }
-    try{ $ws.Columns.Item($noteCol).AutoFit() }catch{}
+    try{ [void]($ws.Columns.Item($noteCol).AutoFit()) }catch{}
   } catch {} finally {
     foreach($o in @($ws,$wb)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
   }
