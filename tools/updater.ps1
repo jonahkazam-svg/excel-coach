@@ -10,7 +10,7 @@
 # REPLACE-ME: Jonah sets this to the real GitHub Releases manifest URL, e.g.
 # https://github.com/<user>/excel-coach/releases/latest/download/latest.json
 # It MUST be https:// and is the ONLY host this updater will ever trust.
-$script:XCUpdateManifestUrl = 'https://REPLACE-ME.example.com/excel-coach/latest.json'
+$script:XCUpdateManifestUrl = 'https://github.com/jonahkazam-svg/excel-coach/releases/latest/download/latest.json'
 
 # Repo root = parent of tools/. VERSION (single semver line) lives there.
 $script:XCUpdateRoot    = Split-Path $PSScriptRoot -Parent

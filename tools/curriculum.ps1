@@ -4,7 +4,7 @@
 # Mastery.md is append-only (last-write-wins, governed by the Bump-Mastery rules).
 # No quiz/deck yet - that pillar is deferred.
 
-if($Coaching){ $script:XCCoaching = $Coaching } else { $script:XCCoaching = "C:\Users\jonah\Projects\excel-coach\Coaching" }
+if($Coaching){ $script:XCCoaching = $Coaching } else { $script:XCCoaching = (Join-Path (Split-Path $PSScriptRoot -Parent) "Coaching") }
 $script:XCEnv = Join-Path (Split-Path $script:XCCoaching -Parent) ".env"
 $script:XCRank = @{ unseen=0; exposed=1; shaky=2; solid=3 }
 

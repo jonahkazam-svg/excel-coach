@@ -1,9 +1,9 @@
 # --- Privacy: never commit study content, media, or secrets ---
 
-# Obsidian config — contains plugin settings INCLUDING your OpenAI API key
+# Obsidian config - contains plugin settings INCLUDING your OpenAI API key
 .obsidian/
 
-# Your captured study content — keep local only
+# Your captured study content - keep local only
 Sessions/
 Flashcards/
 Coaching/
@@ -28,6 +28,15 @@ Coaching/
 *.env
 *.key
 secrets*
+
+# Per-user runtime state (deck.json and scope.json ARE tracked as shipped defaults)
+data/perf.json
+data/review-state.json
+data/runthrough-state.json
+
+# Build output + downloaded prerequisites
+dist/
+bin/
 
 # OS cruft
 Thumbs.db

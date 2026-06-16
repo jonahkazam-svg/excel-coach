@@ -6,7 +6,7 @@
 # Usage: transcribe.ps1 [-Audio "C:\path\to\recording.webm"]   (omit -Audio to use the latest recording)
 param([string]$Audio)
 
-$Vault    = "C:\Users\jonah\Projects\excel-coach"
+$Vault    = Split-Path $PSScriptRoot -Parent
 $Sessions = Join-Path $Vault "Sessions"
 $EnvFile  = Join-Path $Vault ".env"
 $Endpoint = "https://api.openai.com/v1/audio/transcriptions"
