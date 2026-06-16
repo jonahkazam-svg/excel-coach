@@ -1139,7 +1139,7 @@ function Place-PanelHome {
 }
 function Set-Msg($t){ if($script:statusText -ne $t){ $script:statusText=$t; JS $script:wvS ("XC.setStatus("+(ConvertTo-Json $t)+")") } }
 function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne $k){ $script:dotState=$k; JS $script:wvS ("XC.setDot('"+$hex+"',"+(BoolJs $pulse)+")") } }
-function Apply-Strip([bool]$instant=$false) {
+function Apply-Strip {
   if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
   if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 400 }else{ 0 }) }
@@ -1147,16 +1147,13 @@ function Apply-Strip([bool]$instant=$false) {
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
   if($ow -eq $nw -and $oh -eq $nh -and $ox -eq $nl -and $oy -eq $nt){ return }
-  # Menu toggles snap instantly (the frequent path - the blocking glide was the lag);
-  # only collapse/expand keeps a short glide.
-  if($instant){ $strip.SetBounds($nl,$nt,$nw,$nh); return }
   $script:animating=$true
   try{
     for($i=1;$i -le 10;$i++){
       $p=$i/10.0; $e=1.0-[Math]::Pow(1.0-$p,3)
       $cw=[int]($ow+($nw-$ow)*$e); $ch=[int]($oh+($nh-$oh)*$e); $cx=[int]($ox+($nl-$ox)*$e); $cy=[int]($oy+($nt-$oy)*$e)
       $strip.SetBounds($cx,$cy,$cw,$ch)
-      [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 5
+      [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 12
     }
     $strip.SetBounds($nl,$nt,$nw,$nh)
   } finally { $script:animating=$false }
@@ -1546,7 +1543,7 @@ $wvS.add_WebMessageReceived({
     'ask'   { Handle-Ask ([string]$m.q) }
     'drag'  { $script:lastActive=(Get-Date); $script:strip.Left+=[int]([double]$m.dx*$script:S); $script:strip.Top+=[int]([double]$m.dy*$script:S) }
     'panel' { if(([string]$m.k) -eq 'close'){ try{ $script:panel.Hide() }catch{} } }
-    'menu'  { $script:menuOpen=[bool]$m.open; Apply-Strip $true }
+    'menu'  { $script:menuOpen=[bool]$m.open; Apply-Strip }
     'vol'   { try{ $sync.ttsVol=[math]::Max(0.0,[math]::Min(1.0,[double]$m.value/100.0)) }catch{} }
   }
 })

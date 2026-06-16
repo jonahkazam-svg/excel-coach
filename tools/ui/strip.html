@@ -116,11 +116,8 @@
   #menu{
     display:none; flex:1 1 auto; min-height:0; flex-direction:column; gap:2px;
     padding:8px 8px 4px 8px; overflow-y:auto;
-    opacity:0; transform:translateY(8px);
-    transition:opacity .15s ease, transform .19s cubic-bezier(.4,0,.2,1);
   }
   body.menu-open #menu{ display:flex; }
-  body.menu-open.menu-shown #menu{ opacity:1; transform:none; }
   .menu-row{
     display:flex; align-items:center; gap:10px; height:32px; flex:0 0 auto;
     padding:0 8px 0 10px; border-radius:9px; cursor:pointer;
@@ -373,28 +370,12 @@
   $('volRange').addEventListener('pointerdown', (e) => { e.stopPropagation(); });
 
   /* overflow menu open/close (grows the window upward via the 'menu' message) */
-  let menuTimer = null;
   function setMenu(open){
-    open = !!open;
-    const cur = document.body.classList.contains('menu-open');
-    if (menuTimer){ clearTimeout(menuTimer); menuTimer = null; }
-    $('chipMore').classList.toggle('alt', open);
-    if (open){
-      // grow the host window first, then fade/slide the menu in alongside it
-      if (!cur) post({type:'menu', open:true});
-      document.body.classList.add('menu-open');                 // render (still faded out)
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        document.body.classList.add('menu-shown');              // transition to visible
-      }));
-    } else {
-      if (!cur) return;                                         // already closed
-      document.body.classList.remove('menu-shown');            // fade/slide out first
-      menuTimer = setTimeout(() => {
-        document.body.classList.remove('menu-open');           // stop rendering
-        post({type:'menu', open:false});                        // shrink window after fade-out
-        menuTimer = null;
-      }, 165);
-    }
+    const was = document.body.classList.contains('menu-open');
+    if (was === !!open) return;
+    document.body.classList.toggle('menu-open', !!open);
+    $('chipMore').classList.toggle('alt', !!open);
+    post({type:'menu', open: !!open});
   }
   $('chipMore').addEventListener('click', (e) => {
     e.stopPropagation();
