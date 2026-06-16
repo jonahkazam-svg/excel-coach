@@ -1118,7 +1118,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1190,6 +1190,21 @@ function Simplify-Answer($text){
   if($j.choices){ $a=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $a=Clean-Answer $a }; return $a }
   return "Could not simplify right now (connection issue) - the original answer is unchanged."
 }
+# Plain-English re-explanation of a single flashcard for a confused beginner.
+# Used by the practice card's "Explain it simpler" button. Quick helper call
+# (gpt-4o-mini, same as Simplify-Answer/define) - the live coach is untouched.
+function Explain-Card($front,$back,$type){
+  if(-not $sync.key){ return "Set your API key to use Explain (no key found)." }
+  $front=[string]$front; $back=[string]$back; $type=[string]$type
+  $sysC="You are a patient finance tutor helping a beginner who is confused by an investment-banking flashcard. Re-explain it from scratch in the simplest plain English: say what it means in everyday terms, unpack any jargon, and give ONE tiny concrete example with small round numbers. Keep it to 2-4 short sentences. Be warm and clear, no preamble, no restating the question. You may use **bold** for a key term."
+  $usr="Flashcard ("+$type+")`nTerm / front: "+$front+"`nGiven answer / back: "+$back+"`n`nExplain this simply for someone who does not get it yet."
+  $payload=@{ model="gpt-4o-mini"; max_tokens=320; temperature=0.3; messages=@(@{role="system";content=$sysC},@{role="user";content=$usr}) } | ConvertTo-Json -Depth 8
+  $bf="$env:TEMP\xc_cardhelp.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
+  $r=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $j=$null; try{ $j=$r|ConvertFrom-Json }catch{}
+  if($j.choices){ $a=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $a=Clean-Answer $a }; return $a }
+  return "Could not load a simpler explanation right now (connection issue). Try again in a moment."
+}
 function Set-Query($q){ if($script:panelReady){ JS $script:wvP ("XC.setQuery("+(ConvertTo-Json ([string]$q))+")") } else { $script:pendingQ=[string]$q } }
 function Shutdown-Coach {
   $sync.stop=$true; try{ $ui.Stop() }catch{}; Start-Sleep -Milliseconds 300; Kill-FF
@@ -1241,6 +1256,17 @@ function Handle-Practice($action,$cardId,$quality,$choice){
     'rate' { if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$quality) }catch{} }; $script:pracIdx=([int]$script:pracIdx)+1; Show-PracticeCard }
     'quizAnswer' { $cc=$null; foreach($x in @($script:pracList)){ if([string]$x.id -eq [string]$cardId){ $cc=$x; break } }; $ok=($cc -and ([int]$choice -eq [int]$cc.answer)); if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$(if($ok){4}else{1})) }catch{} } }
     'practiceNext' { $script:pracIdx=([int]$script:pracIdx)+1; Show-PracticeCard }
+    'simplify' {
+      if($script:cardHelpBusy){ return }
+      $cc=$null; foreach($x in @($script:pracList)){ if([string]$x.id -eq [string]$cardId){ $cc=$x; break } }
+      if(-not $cc){ $cc=@($script:pracList)[$script:pracIdx] }
+      if(-not $cc){ return }
+      $script:cardHelpBusy=$true
+      JS $script:wvP ("XC.setCardHelpLoading()")
+      [System.Windows.Forms.Application]::DoEvents()
+      try{ $ex=Explain-Card $cc.front $cc.back $cc.type; JS $script:wvP ("XC.setCardHelp("+(ConvertTo-Json ([string]$ex))+")") }catch{}
+      $script:cardHelpBusy=$false
+    }
     'practiceClose' { try{ $panel.Hide() }catch{}; $script:idle=$true; Set-Dot '#22c55e' $true; $script:baseStatus="On track" }
   }
 }

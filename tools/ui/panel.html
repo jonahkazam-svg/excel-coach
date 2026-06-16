@@ -185,6 +185,27 @@
     border-top:1px solid var(--hairline); padding-top:13px; margin-bottom:6px; }
   .pcardBack.hidden{ display:none; }
 
+  /* "Explain it simpler" helper - shown on every card, opens a plain-English box */
+  #pracSimplify{
+    display:inline-flex; align-items:center; gap:6px; align-self:flex-start;
+    margin-top:2px; margin-bottom:4px; padding:6px 11px; border-radius:9px;
+    border:1px solid var(--hairline); background:var(--hover);
+    color:var(--text-2); font-size:12.5px; font-weight:600; font-family:inherit;
+    cursor:pointer; flex:0 0 auto; transition:background .16s ease, color .16s ease, border-color .16s ease;
+  }
+  #pracSimplify:hover{ background:rgba(255,255,255,0.13); color:#fff; border-color:rgba(255,255,255,0.22); }
+  #pracSimplify svg{ flex:0 0 auto; opacity:0.85; }
+  #pracSimplify.hidden{ display:none; }
+  #pracHelp{
+    margin-top:10px; padding:12px 13px; border-radius:11px;
+    border:1px solid var(--hairline); background:rgba(120,170,255,0.07);
+    font-size:14px; line-height:1.55; color:var(--text); user-select:text;
+  }
+  #pracHelp.hidden{ display:none; }
+  #pracHelp .phelpHead{ font-size:11px; font-weight:700; letter-spacing:0.4px;
+    text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
+  #pracHelp.loading{ color:var(--text-2); font-style:italic; }
+
   /* shared practice button rows */
   #pracActions{ flex:0 0 auto; margin-top:auto; padding-top:12px; }
   .pbtnRow{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -310,6 +331,11 @@
         <div class="pcardFront" id="pracFront"></div>
         <div class="pcardBack hidden" id="pracBack"></div>
         <div id="pracChoices" class="hidden"></div>
+        <button id="pracSimplify" class="hidden" title="Not sure what this means? Get a plain-English explanation.">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 17v.01M12 13.5c0-2 2.5-2.2 2.5-4.2A2.5 2.5 0 0 0 9.7 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/></svg>
+          <span>Explain it simpler</span>
+        </button>
+        <div id="pracHelp" class="hidden"></div>
         <div class="pempty hidden" id="pracEmpty">
           <span class="pemoji" id="pracEmptyEmoji"></span>
           <span class="pmsg" id="pracEmptyMsg"></span>
@@ -475,6 +501,8 @@
     $('pracFront').classList.add('hidden');
     $('pracBack').classList.add('hidden');
     $('pracChoices').classList.add('hidden');
+    $('pracSimplify').classList.add('hidden');
+    $('pracHelp').classList.add('hidden');
     var emp = $('pracEmpty'); emp.classList.remove('hidden');
     // mode 'nodeck' = no deck built yet; otherwise caught up
     if (mode === 'nodeck'){
@@ -520,6 +548,8 @@
       back.textContent = String(card.back == null ? '' : card.back);
       showRow('pracShowRow');
     }
+    $('pracSimplify').classList.remove('hidden');
+    var help = $('pracHelp'); help.classList.add('hidden'); help.classList.remove('loading'); help.innerHTML = '';
     $('pracBody').scrollTop = 0;
   }
   function chooseQuiz(choice){
@@ -637,6 +667,20 @@
       if (!p.card){ renderEmpty(p.empty === 'nodeck' ? 'nodeck' : 'caughtup', dc); }
       else { renderCard(mode, p.card); }
     },
+    /* "Explain it simpler" - plain-English re-explanation of the current card */
+    setCardHelpLoading(){
+      var h = $('pracHelp');
+      h.classList.remove('hidden'); h.classList.add('loading');
+      h.textContent = 'Thinking of a simpler way to explain this...';
+      $('pracBody').scrollTop = $('pracBody').scrollHeight;
+    },
+    setCardHelp(text){
+      var h = $('pracHelp');
+      h.classList.remove('hidden'); h.classList.remove('loading');
+      var safe = bold(esc(String(text == null ? '' : text))).replace(/\n+/g, '<br>');
+      h.innerHTML = '<div class="phelpHead">In plain English</div>' + safe;
+      $('pracBody').scrollTop = $('pracBody').scrollHeight;
+    },
     /* setAnswer(md) or setAnswer(md, { kind, id }) - pushes a history entry and
        renders it. meta is optional; with no meta it behaves like before
        (kind 'answer', id 0). */
@@ -715,6 +759,11 @@
     showRow('pracRateRow');
   });
   $('pracNextBtn').addEventListener('click', () => post({type:'panel', k:'practice', action:'practiceNext'}));
+  $('pracSimplify').addEventListener('click', () => {
+    if (!pracCard) return;
+    XC.setCardHelpLoading();
+    post({type:'panel', k:'practice', action:'simplify', cardId: pracCard.id});
+  });
   document.querySelectorAll('#pracRateRow .pbtn').forEach((b) => {
     b.addEventListener('click', () => rateCard(+b.dataset.q));
   });
