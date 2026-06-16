@@ -116,8 +116,11 @@
   #menu{
     display:none; flex:1 1 auto; min-height:0; flex-direction:column; gap:2px;
     padding:8px 8px 4px 8px; overflow-y:auto;
+    opacity:0; transform:translateY(8px);
+    transition:opacity .15s ease, transform .19s cubic-bezier(.4,0,.2,1);
   }
   body.menu-open #menu{ display:flex; }
+  body.menu-open.menu-shown #menu{ opacity:1; transform:none; }
   .menu-row{
     display:flex; align-items:center; gap:10px; height:32px; flex:0 0 auto;
     padding:0 8px 0 10px; border-radius:9px; cursor:pointer;
@@ -209,6 +212,11 @@
         <div class="menu-row" id="rowFlash" title="Flashcards - review your due flashcards and quiz yourself">
           <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="6.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.5h11a2 2 0 0 1 2 2v9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M6.5 10h7M6.5 13h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
           <span class="m-lbl">Flashcards</span>
+          <span class="m-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </div>
+        <div class="menu-row" id="rowExcel" title="Excel exercise - a hands-on calculation drill in a Workout sheet">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 9.5h17M3.5 14.5h17M9 4.5v15M15 4.5v15" stroke="currentColor" stroke-width="1.3"/></svg></span>
+          <span class="m-lbl">Excel exercise</span>
           <span class="m-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </div>
         <div class="menu-row slider" id="rowVol" title="Voice volume - how loud the coach speaks">
@@ -365,12 +373,28 @@
   $('volRange').addEventListener('pointerdown', (e) => { e.stopPropagation(); });
 
   /* overflow menu open/close (grows the window upward via the 'menu' message) */
+  let menuTimer = null;
   function setMenu(open){
-    const was = document.body.classList.contains('menu-open');
-    if (was === !!open) return;
-    document.body.classList.toggle('menu-open', !!open);
-    $('chipMore').classList.toggle('alt', !!open);
-    post({type:'menu', open: !!open});
+    open = !!open;
+    const cur = document.body.classList.contains('menu-open');
+    if (menuTimer){ clearTimeout(menuTimer); menuTimer = null; }
+    $('chipMore').classList.toggle('alt', open);
+    if (open){
+      // grow the host window first, then fade/slide the menu in alongside it
+      if (!cur) post({type:'menu', open:true});
+      document.body.classList.add('menu-open');                 // render (still faded out)
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.body.classList.add('menu-shown');              // transition to visible
+      }));
+    } else {
+      if (!cur) return;                                         // already closed
+      document.body.classList.remove('menu-shown');            // fade/slide out first
+      menuTimer = setTimeout(() => {
+        document.body.classList.remove('menu-open');           // stop rendering
+        post({type:'menu', open:false});                        // shrink window after fade-out
+        menuTimer = null;
+      }, 165);
+    }
   }
   $('chipMore').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -380,6 +404,12 @@
   $('rowFlash').addEventListener('click', (e) => {
     e.stopPropagation();
     post({type:'act', k:'practice'});
+    setMenu(false);
+  });
+  /* Excel exercise action row: start a hands-on Workout drill, then close menu */
+  $('rowExcel').addEventListener('click', (e) => {
+    e.stopPropagation();
+    post({type:'act', k:'workout'});
     setMenu(false);
   });
   // close when clicking anything that is not the menu or the more button

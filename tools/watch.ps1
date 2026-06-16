@@ -37,6 +37,8 @@ if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
 try{ . (Join-Path $PSScriptRoot "curriculum.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "deck.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "practice.ps1") }catch{}
+try{ . (Join-Path $PSScriptRoot "runthrough.ps1") }catch{}
+try{ . (Join-Path $PSScriptRoot "perf.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "updater.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "setup.ps1") }catch{}
 $wpf=Join-Path $Coaching "Weak Points.md"; $sync.brain=""
@@ -1118,7 +1120,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1136,7 +1138,7 @@ function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne 
 function Apply-Strip {
   if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 360 }else{ 0 }) }
+  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 400 }else{ 0 }) }
   $nl=$wa4.Left+[int](($wa4.Width-$nw)/2); $nt=$wa4.Bottom-$nh-(Px 14)
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
@@ -1224,6 +1226,16 @@ function Handle-Ask($q){
   $sync.askLabel=$(if($q){ $q }else{ "Help with my screen" })
   $sync.typedDetail=$det; $sync.typedAsk=$(if($q){ $q }else{ "__ASSIST__" })
 }
+# Compact performance snapshot for the practice end screen (top strengths/weak spots).
+function Perf-Payload {
+  if(-not (Get-Command Get-PerfSummary -ErrorAction SilentlyContinue)){ return $null }
+  try {
+    $s = Get-PerfSummary
+    $str=@(); foreach($x in @($s.strengths)){ $str += @{ name=[string]$x.name; pct=[int][math]::Round($x.acc*100) }; if($str.Count -ge 3){ break } }
+    $wk=@(); foreach($x in @($s.weaknesses)){ $wk += @{ name=[string]$x.name; pct=[int][math]::Round($x.acc*100) }; if($wk.Count -ge 3){ break } }
+    return @{ pct=[int]$s.pct; attempts=[int]$s.totalAttempts; strengths=$str; weaknesses=$wk }
+  } catch { return $null }
+}
 function Start-Practice {
   if(-not (Get-Command Get-DueCards -ErrorAction SilentlyContinue)){ Show-Answer "Practice deck is not built yet - run build-deck.ps1 once to generate your flashcards, then click Practice again." 'note' 0; Set-Query "Practice"; return }
   $deck=$null; if(Get-Command Get-Deck -ErrorAction SilentlyContinue){ try{ $deck=Get-Deck }catch{} }
@@ -1231,14 +1243,14 @@ function Start-Practice {
   Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
   if(@($due).Count -eq 0){
     $empty=$(if($deck){ 'caughtup' }else{ 'nodeck' })
-    JS $script:wvP ("XC.openPractice("+(ConvertTo-Json (@{mode='review';dueCount=0;empty=$empty}))+")")
+    JS $script:wvP ("XC.openPractice("+(ConvertTo-Json (@{mode='review';dueCount=0;empty=$empty;perf=(Perf-Payload)}) -Depth 6)+")")
     $script:idle=$true; Set-Dot '#22c55e' $true; $script:baseStatus=$(if($deck){ "All caught up - no cards due" }else{ "No deck yet - run build-deck" }); return
   }
   $script:pracList=@($due); $script:pracIdx=0; Show-PracticeCard
 }
 function Show-PracticeCard {
   if(($null -eq $script:pracList) -or ($script:pracIdx -ge @($script:pracList).Count)){
-    JS $script:wvP ("XC.openPractice("+(ConvertTo-Json (@{mode='review';dueCount=0;empty='caughtup'}))+")")
+    JS $script:wvP ("XC.openPractice("+(ConvertTo-Json (@{mode='review';dueCount=0;empty='caughtup';perf=(Perf-Payload)}) -Depth 6)+")")
     $script:idle=$true; Set-Dot '#22c55e' $true; $script:baseStatus="Practice complete - nice work"; return
   }
   $c=@($script:pracList)[$script:pracIdx]
@@ -1253,8 +1265,18 @@ function Show-PracticeCard {
 }
 function Handle-Practice($action,$cardId,$quality,$choice){
   switch([string]$action){
-    'rate' { if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$quality) }catch{} }; $script:pracIdx=([int]$script:pracIdx)+1; Show-PracticeCard }
-    'quizAnswer' { $cc=$null; foreach($x in @($script:pracList)){ if([string]$x.id -eq [string]$cardId){ $cc=$x; break } }; $ok=($cc -and ([int]$choice -eq [int]$cc.answer)); if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$(if($ok){4}else{1})) }catch{} } }
+    'rate' {
+      $cc=$null; foreach($x in @($script:pracList)){ if([string]$x.id -eq [string]$cardId){ $cc=$x; break } }
+      if($cc -and (Get-Command Record-Answer -ErrorAction SilentlyContinue)){ try{ Record-Answer $cc.topicId $null ([int]$quality -ge 3) | Out-Null }catch{} }
+      if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$quality) }catch{} }
+      $script:pracIdx=([int]$script:pracIdx)+1; Show-PracticeCard
+    }
+    'quizAnswer' {
+      $cc=$null; foreach($x in @($script:pracList)){ if([string]$x.id -eq [string]$cardId){ $cc=$x; break } }
+      $ok=($cc -and ([int]$choice -eq [int]$cc.answer))
+      if($cc -and (Get-Command Record-Answer -ErrorAction SilentlyContinue)){ try{ Record-Answer $cc.topicId $null $ok | Out-Null }catch{} }
+      if(Get-Command Rate-Card -ErrorAction SilentlyContinue){ try{ Rate-Card $cardId ([int]$(if($ok){4}else{1})) }catch{} }
+    }
     'practiceNext' { $script:pracIdx=([int]$script:pracIdx)+1; Show-PracticeCard }
     'simplify' {
       if($script:cardHelpBusy){ return }
@@ -1269,6 +1291,61 @@ function Handle-Practice($action,$cardId,$quality,$choice){
     }
     'practiceClose' { try{ $panel.Hide() }catch{}; $script:idle=$true; Set-Dot '#22c55e' $true; $script:baseStatus="On track" }
   }
+}
+# Excel exercise: generate an AI calc drill, render it into a "Workout" sheet, and
+# (on the next click) grade what the student typed. Toggles generate <-> check.
+function Start-Workout {
+  if($script:woBusy){ return }
+  if($script:woActive -and $script:rtCur){ Check-Workout; return }
+  if(-not (Get-Command Make-Exercise -ErrorAction SilentlyContinue)){ Show-Answer "Excel exercises are not available in this build yet." 'note' 0; return }
+  $script:woBusy=$true
+  Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
+  Set-Query "Excel exercise"; JS $script:wvP ("XC.setAnswerLoading()")
+  [System.Windows.Forms.Application]::DoEvents()
+  $topicId=$null
+  if(Get-Command Get-WeakTopics -ErrorAction SilentlyContinue){ try{ $w=@(Get-WeakTopics 1); if($w.Count){ $topicId=[string]$w[0] } }catch{} }
+  if(-not $topicId -and (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
+    try{ $cur=@(Get-Curriculum); if($cur.Count){ $topicId=[string]$cur[($script:woIdx % $cur.Count)].id; $script:woIdx=([int]$script:woIdx)+1 } }catch{}
+  }
+  if(-not $topicId){ $script:woBusy=$false; Show-Answer "I could not pick a topic to build from." 'note' 0; return }
+  $ex=$null; try{ $ex=Make-Exercise $topicId 2 }catch{}
+  if(-not $ex){ $script:woBusy=$false; Show-Answer "I could not build an Excel exercise right now (connection issue). Try again in a moment." 'note' 0; return }
+  if([string]$ex.surface -eq 'excel'){
+    $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
+    if(-not $xl){ $script:woBusy=$false; $script:woActive=$false; Show-Answer "Open Excel first, then click **Excel exercise** again so I can set up the Workout sheet." 'note' 0; return }
+    try{ RT-RenderExcel $ex $xl | Out-Null }catch{}
+    $script:rtCur=$ex; $script:woActive=$true
+    $title=[string]$ex.layout.title; if(-not $title){ $title="Excel exercise" }
+    $md="## "+$title+"`n`n"+[string]$ex.prompt+"`n`nI set up a **Workout** sheet in Excel with the given numbers. Fill in the highlighted yellow cells, then click **Excel exercise** again and I'll check your work."
+    Show-Answer $md 'answer' 0
+  } else {
+    $script:woActive=$false; $script:rtCur=$null
+    $md=[string]$ex.prompt
+    if($ex.choices -and (@($ex.choices).Count -ge 2)){ $i=0; $md+="`n"; foreach($c in @($ex.choices)){ $md+="`n- "+([char](65+$i))+". "+[string]$c; $i++ } }
+    Show-Answer $md 'answer' 0
+  }
+  $script:woBusy=$false
+}
+function Check-Workout {
+  if((-not $script:rtCur) -or $script:woBusy){ return }
+  $script:woBusy=$true
+  Set-Query "Check my work"; JS $script:wvP ("XC.setAnswerLoading()")
+  [System.Windows.Forms.Application]::DoEvents()
+  $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
+  if(-not $xl){ $script:woBusy=$false; Show-Answer "I couldn't reach Excel to check. Open the Workout sheet and click **Excel exercise** again." 'note' 0; return }
+  $res=$null; try{ $res=Grade-ExcelExercise $script:rtCur $xl }catch{}
+  if(-not $res){ $script:woBusy=$false; Show-Answer "I couldn't read your answers. Make sure the Workout sheet is open, then try again." 'note' 0; return }
+  if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null ([bool]$res.correct) | Out-Null }catch{} }
+  if($res.correct){ $md="## Correct`n`nNice work - every answer cell checks out." }
+  else {
+    $md="## Not quite`n`nHere is how your answer cells compare:`n"
+    foreach($pc in @($res.perCell)){ $mk=$(if($pc.ok){"[ok]"}else{"[x]"}); $md+="`n- "+$mk+" "+[string]$pc.cell+": you have "+[string]$pc.got+", expected "+[string]$pc.expected }
+  }
+  if($res.worked){ $md+="`n`n**How it's done:**`n"+[string]$res.worked }
+  $md+="`n`nClick **Excel exercise** for a new one."
+  Show-Answer $md 'answer' 0
+  $script:woActive=$false
+  $script:woBusy=$false
 }
 function Handle-Act($k){
   $script:lastActive=(Get-Date)
@@ -1337,6 +1414,7 @@ function Handle-Act($k){
       Show-PanelLoading
       $sync.askLabel="Kick-start"; $sync.typedDetail=$false; $sync.typedAsk="__KICK__"
     }
+    'workout' { Start-Workout }
     'practice' {
       if(Get-Command Start-Practice -ErrorAction SilentlyContinue){ Start-Practice } else { Handle-Ask "make me a practice exercise and walk me through it" }
     }

@@ -15,7 +15,7 @@ function Section($t){ Write-Host ""; Write-Host ("== " + $t + " ==") -Foreground
 
 # ---------------------------------------------------------------------------
 Section "Parse + ASCII gate (every PowerShell file)"
-$ps1s = @('tools\watch.ps1','tools\curriculum.ps1','tools\deck.ps1','tools\practice.ps1','tools\updater.ps1','tools\setup.ps1','tools\build-deck.ps1','tools\runthrough.ps1')
+$ps1s = @('tools\watch.ps1','tools\curriculum.ps1','tools\deck.ps1','tools\practice.ps1','tools\updater.ps1','tools\setup.ps1','tools\build-deck.ps1','tools\runthrough.ps1','tools\perf.ps1')
 foreach($rel in $ps1s){
   $fp = Join-Path $root $rel
   if(-not (Test-Path $fp)){ Assert ("exists: " + $rel) $false; continue }
@@ -86,13 +86,15 @@ try {
   . (Join-Path $root 'tools\updater.ps1')
   . (Join-Path $root 'tools\setup.ps1')
   . (Join-Path $root 'tools\runthrough.ps1')
+  . (Join-Path $root 'tools\perf.ps1')
 } catch { $loadErr = $_.Exception.Message }
 Assert ("all library modules dot-source cleanly" + $(if($loadErr){ " (" + $loadErr + ")" }else{ "" })) ($loadErr -eq '')
 $need = @('Get-XlBook','Apply-XlOps','Read-ExcelLive','Get-Curriculum',
          'Build-Deck','Get-Deck','Get-TopicCards',
          'Get-DueCards','Rate-Card','New-Quiz','Get-PracticeStats',
          'Check-Update','Apply-Update','Test-FirstRun','Invoke-Setup',
-         'Get-RTState','Get-RTTopics','RT-LoadState','RT-SaveState')
+         'Get-RTState','Get-RTTopics','RT-LoadState','RT-SaveState',
+         'Record-Answer','Get-PerfSummary','Get-WeakTopics','Perf-Load','Perf-Save')
 foreach($f in $need){ Assert ("function defined: " + $f) ([bool](Get-Command $f -ErrorAction SilentlyContinue)) }
 # Get-XlBook must be null-safe (the binding fix)
 if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ Assert "Get-XlBook(null) returns null" ((Get-XlBook $null) -eq $null) }
@@ -115,6 +117,68 @@ if(Get-Command Get-RTTopics -ErrorAction SilentlyContinue){
     if($null -ne $bak){ [IO.File]::WriteAllText($sp,$bak,(New-Object System.Text.UTF8Encoding($false))) } elseif(Test-Path $sp){ Remove-Item $sp -Force }
   }
 } else { Assert "Get-RTTopics defined" $false }
+
+# ---------------------------------------------------------------------------
+Section "Performance memory (record right/wrong per topic)"
+if(Get-Command Record-Answer -ErrorAction SilentlyContinue){
+  $pp = Perf-StatePath; $pbak = $null
+  if(Test-Path $pp){ $pbak = [IO.File]::ReadAllText($pp) }
+  try {
+    if(Test-Path $pp){ Remove-Item $pp -Force }
+    Record-Answer 'PERF-TEST' 'Perf Test Topic' $true  | Out-Null
+    Record-Answer 'PERF-TEST' 'Perf Test Topic' $true  | Out-Null
+    Record-Answer 'PERF-TEST' 'Perf Test Topic' $false | Out-Null
+    $ld = Perf-Load
+    Assert "perf attempts counted" ([int]$ld.topics['PERF-TEST'].attempts -eq 3)
+    Assert "perf correct counted"  ([int]$ld.topics['PERF-TEST'].correct -eq 2)
+    Assert "perf wrong counted"    ([int]$ld.topics['PERF-TEST'].wrong -eq 1)
+    $sm = Get-PerfSummary
+    Assert "perf summary totals"   ([int]$sm.totalAttempts -ge 3)
+    Assert "perf pct in 0..100"    ([int]$sm.pct -ge 0 -and [int]$sm.pct -le 100)
+    # a struggling topic (1/3) should be flagged as weak
+    Record-Answer 'PERF-WEAK' 'Weak Topic' $false | Out-Null
+    Record-Answer 'PERF-WEAK' 'Weak Topic' $false | Out-Null
+    Record-Answer 'PERF-WEAK' 'Weak Topic' $true  | Out-Null
+    Assert "weak topic surfaced" (@(Get-WeakTopics 5) -contains 'PERF-WEAK')
+  } finally {
+    if($null -ne $pbak){ [IO.File]::WriteAllText($pp,$pbak,(New-Object System.Text.UTF8Encoding($false))) } elseif(Test-Path $pp){ Remove-Item $pp -Force }
+  }
+} else { Assert "Record-Answer defined" $false }
+
+# ---------------------------------------------------------------------------
+Section "Run-through Excel"
+# Pure-logic checks of the exercise engine - NO API, NO Excel.
+if(Get-Command RT-NormalizeExercise -ErrorAction SilentlyContinue){
+  # excel exercise object (hand-built; no choices)
+  $xObj = @{
+    topicId='cf-1'; level=2; surface='excel'; prompt='Compute EBIT.'; answer=''; worked='EBIT = Rev - COGS - OpEx';
+    layout=@{ title='EBIT drill'; given=@(@{label='Revenue';value=1000;cell='B2'},@{label='COGS';value=400;cell='B3'},@{label='OpEx';value=200;cell='B4'}); answerCells=@(@{label='EBIT';cell='B6';expected=400}) }
+  }
+  $xn = RT-NormalizeExercise $xObj 'cf-1' 2
+  Assert "excel: surface in {pill,excel}" (($xn.surface -eq 'excel') -or ($xn.surface -eq 'pill'))
+  Assert "excel: surface is excel" ($xn.surface -eq 'excel')
+  Assert "excel: id non-empty" ([bool]([string]$xn.id))
+  Assert "excel: prompt present" ([bool]([string]$xn.prompt))
+  Assert "excel: choices is array" ($xn.choices -is [array])
+  Assert "excel: layout.given is array" ($xn.layout.given -is [array])
+  Assert "excel: layout.answerCells is array" ($xn.layout.answerCells -is [array])
+
+  # pill exercise object (hand-built; multiple choice)
+  $pObj = @{
+    topicId='def-1'; level=1; surface='pill'; prompt='Which is a current asset?'; answer='Accounts receivable';
+    choices=@('Accounts receivable','Goodwill','Long-term debt','Common stock'); worked='AR is collected within a year.'
+  }
+  $pn = RT-NormalizeExercise $pObj 'def-1' 1
+  Assert "pill: choices is array" ($pn.choices -is [array])
+  Assert "pill: choices non-empty" (@($pn.choices).Count -gt 0)
+  Assert "pill: id non-empty" ([bool]([string]$pn.id))
+
+  # RT-CellMatch tolerance
+  Assert "cellmatch: (20, 20.0) -> true"   (RT-CellMatch 20 20.0)
+  Assert "cellmatch: (20, 25) -> false"    (-not (RT-CellMatch 20 25))
+  Assert "cellmatch: (100, 100.4) -> true" (RT-CellMatch 100 100.4)
+  Assert "cellmatch: ('abc', 5) -> false"  (-not (RT-CellMatch 'abc' 5))
+} else { Assert "RT-NormalizeExercise defined" $false }
 
 # ---------------------------------------------------------------------------
 Section "UI files (ASCII + present)"

@@ -206,6 +206,28 @@
     text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
   #pracHelp.loading{ color:var(--text-2); font-style:italic; }
 
+  /* quiz answer verdict (Correct / Not quite) */
+  #pracVerdict{ margin-top:13px; padding:9px 12px; border-radius:10px;
+    font-size:14px; font-weight:700; letter-spacing:.2px; flex:0 0 auto; }
+  #pracVerdict.hidden{ display:none; }
+  #pracVerdict.ok{ background:rgba(34,197,94,0.14); color:#46d889; border:1px solid rgba(34,197,94,0.32); }
+  #pracVerdict.no{ background:rgba(248,113,113,0.13); color:#f9a8a8; border:1px solid rgba(248,113,113,0.32); }
+
+  /* end-of-session progress: what you're good at / need to work on */
+  #pracPerf{ margin-top:16px; border-top:1px solid var(--hairline); padding-top:14px; }
+  #pracPerf.hidden{ display:none; }
+  .perfHead{ font-size:11px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
+    color:var(--text-2); margin:0 0 7px; }
+  .perfScore{ font-size:15px; color:#fff; font-weight:600; margin-bottom:13px; }
+  .perfGroup{ margin-bottom:11px; }
+  .perfLabel{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; margin-bottom:5px; }
+  .perfLabel.good{ color:#46d889; }
+  .perfLabel.work{ color:#f9a8a8; }
+  .perfItem{ display:flex; justify-content:space-between; gap:10px; font-size:13px;
+    color:var(--text); padding:3px 0; }
+  .perfItem .pn{ flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .perfItem .pp{ flex:0 0 auto; color:var(--text-2); font-variant-numeric:tabular-nums; }
+
   /* shared practice button rows */
   #pracActions{ flex:0 0 auto; margin-top:auto; padding-top:12px; }
   .pbtnRow{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -331,6 +353,7 @@
         <div class="pcardFront" id="pracFront"></div>
         <div class="pcardBack hidden" id="pracBack"></div>
         <div id="pracChoices" class="hidden"></div>
+        <div id="pracVerdict" class="hidden"></div>
         <button id="pracSimplify" class="hidden" title="Not sure what this means? Get a plain-English explanation.">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 17v.01M12 13.5c0-2 2.5-2.2 2.5-4.2A2.5 2.5 0 0 0 9.7 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/></svg>
           <span>Explain it simpler</span>
@@ -341,6 +364,7 @@
           <span class="pmsg" id="pracEmptyMsg"></span>
           <span class="psub" id="pracEmptySub"></span>
         </div>
+        <div id="pracPerf" class="hidden"></div>
       </div>
 
       <div id="pracActions">
@@ -496,13 +520,14 @@
     if (t === 'formula') return 'Formula';
     return 'Flashcard';
   }
-  function renderEmpty(mode, dueCount){
+  function renderEmpty(mode, dueCount, perf){
     $('pracCardType').classList.add('hidden');
     $('pracFront').classList.add('hidden');
     $('pracBack').classList.add('hidden');
     $('pracChoices').classList.add('hidden');
     $('pracSimplify').classList.add('hidden');
     $('pracHelp').classList.add('hidden');
+    $('pracVerdict').classList.add('hidden');
     var emp = $('pracEmpty'); emp.classList.remove('hidden');
     // mode 'nodeck' = no deck built yet; otherwise caught up
     if (mode === 'nodeck'){
@@ -514,11 +539,34 @@
       $('pracEmptyMsg').textContent = 'No cards due - you are caught up.';
       $('pracEmptySub').textContent = 'Come back later or start a quiz.';
     }
+    renderPerf(perf);
     showRow('pracDoneRow');
+  }
+  /* end-of-session scoreboard: overall %, strengths, and what to work on */
+  function renderPerf(perf){
+    var el = $('pracPerf');
+    if (!perf || !perf.attempts){ el.classList.add('hidden'); el.innerHTML = ''; return; }
+    function grp(label, cls, arr){
+      if (!arr || !arr.length) return '';
+      var s = '<div class="perfGroup"><div class="perfLabel ' + cls + '">' + label + '</div>';
+      arr.forEach(function(t){
+        s += '<div class="perfItem"><span class="pn">' + esc(String(t.name)) +
+             '</span><span class="pp">' + t.pct + '%</span></div>';
+      });
+      return s + '</div>';
+    }
+    var h = '<div class="perfHead">Your progress</div>';
+    h += '<div class="perfScore">' + perf.pct + '% correct over ' + perf.attempts +
+         ' answer' + (perf.attempts === 1 ? '' : 's') + '</div>';
+    h += grp('Solid', 'good', perf.strengths);
+    h += grp('Work on these', 'work', perf.weaknesses);
+    el.innerHTML = h;
+    el.classList.remove('hidden');
   }
   function renderCard(mode, card){
     pracMode = mode; pracCard = card; pracAnswered = false;
     $('pracEmpty').classList.add('hidden');
+    $('pracPerf').classList.add('hidden');
     $('pracCardType').classList.remove('hidden');
     $('pracFront').classList.remove('hidden');
     $('pracCardType').textContent = typeLabel(card.type);
@@ -548,6 +596,7 @@
       back.textContent = String(card.back == null ? '' : card.back);
       showRow('pracShowRow');
     }
+    $('pracVerdict').classList.add('hidden');
     $('pracSimplify').classList.remove('hidden');
     var help = $('pracHelp'); help.classList.add('hidden'); help.classList.remove('loading'); help.innerHTML = '';
     $('pracBody').scrollTop = 0;
@@ -562,8 +611,25 @@
       if (i === answer) b.classList.add('correct');
       else if (i === choice) b.classList.add('wrong');
     });
+    // explicit verdict so it is obvious whether you got it right
+    var ok = (choice === answer);
+    var v = $('pracVerdict');
+    v.classList.remove('hidden', 'ok', 'no');
+    v.classList.add(ok ? 'ok' : 'no');
+    if (ok){ v.textContent = 'Correct'; }
+    else {
+      var letter = (answer >= 0) ? String.fromCharCode(65 + answer) : '';
+      v.textContent = letter ? ('Not quite - the answer is ' + letter) : 'Not quite';
+    }
+    // reveal the explanation (card back) so you learn the why, right or wrong
+    if (pracCard.back){
+      var bk = $('pracBack');
+      bk.textContent = String(pracCard.back);
+      bk.classList.remove('hidden');
+    }
     post({type:'panel', k:'practice', action:'quizAnswer', cardId: pracCard.id, choice: choice});
     showRow('pracNextRow');
+    $('pracBody').scrollTop = $('pracBody').scrollHeight;
   }
   function rateCard(quality){
     if (!pracCard) return;
@@ -664,7 +730,7 @@
       if (p.total == null || p.total <= 0 || p.index == null){ prog.textContent = ''; }
       else { prog.textContent = (Math.min(p.index + 1, p.total)) + '/' + p.total; }
       // body
-      if (!p.card){ renderEmpty(p.empty === 'nodeck' ? 'nodeck' : 'caughtup', dc); }
+      if (!p.card){ renderEmpty(p.empty === 'nodeck' ? 'nodeck' : 'caughtup', dc, p.perf); }
       else { renderCard(mode, p.card); }
     },
     /* "Explain it simpler" - plain-English re-explanation of the current card */
