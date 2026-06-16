@@ -68,9 +68,9 @@ Output ONLY a JSON array (no prose, no markdown, no code fences). Each element i
 
 Rules:
 - Produce 4 to 7 cards for the topic.
-- MOST cards must be term-to-definition: front = the term, back = its definition. NEVER phrase the front as a question ("What is...?", "What comes after...?") - just state the term and define it on the back. Add "formula" cards where the topic has key formulas, and a quiz card or two for classifications.
+- Cover FOUR things for the topic, mixed across the cards: (1) DEFINITIONS - front = the term itself, back = its plain-English meaning; (2) FORMULAS - the key calculations written as plain text; (3) CATEGORIES / CLASSIFICATIONS - what counts as what (e.g. operating vs investing vs financing, asset vs liability vs equity, increases vs decreases cash, current vs non-current); (4) CONTEXT - what a concept means or does in a specific situation (e.g. front "An increase in accounts receivable - effect on cash?", back "Decreases cash - you sold but have not collected"). NEVER phrase a definition's front as a "What is...?" question - just state the term.
 - Write all formulas as PLAIN TEXT (for example: EBIT = Revenue - COGS - Operating Expenses; or Enterprise Value = Equity Value + Total Debt - Cash). Never use special symbols.
-- Make at least one or two cards quiz-able: give them exactly 4 choices and the correct "answer" index. The wrong choices must be plausible (common confusions), not obviously silly.
+- Use quiz cards (exactly 4 "choices" + the correct "answer" index) for the CATEGORY/CLASSIFICATION and CONTEXT cards especially - test what classifies as what and how a concept behaves in a situation. Wrong choices must be plausible common confusions, never silly. Aim for at least 2-3 quiz cards per topic where the subject supports it.
 - Keep "front" and "back" tight: no filler, no preamble, accurate to standard IB/accounting convention.
 - Plain ASCII only. No characters outside basic ASCII. Use straight quotes, hyphens, and -> for arrows if needed.
 - Output the JSON array and nothing else.
