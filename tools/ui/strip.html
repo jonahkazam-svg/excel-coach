@@ -384,14 +384,14 @@
   /* Flashcards action row: start the flashcard session, then close the menu */
   $('rowFlash').addEventListener('click', (e) => {
     e.stopPropagation();
-    post({type:'act', k:'practice'});
     setMenu(false);
+    post({type:'act', k:'practice'});
   });
   /* Excel exercise action row: start a hands-on Workout drill, then close menu */
   $('rowExcel').addEventListener('click', (e) => {
     e.stopPropagation();
-    post({type:'act', k:'workout'});
     setMenu(false);
+    post({type:'act', k:'workout'});
   });
   // close when clicking anything that is not the menu or the more button
   document.addEventListener('pointerdown', (e) => {

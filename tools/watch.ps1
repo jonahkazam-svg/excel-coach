@@ -1123,7 +1123,7 @@ function Tune-WebView($wv){
   }catch{}
 }
 # ---- state ----
-$script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
+$script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false; $script:pendingExercise=$null
 $script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
@@ -1175,6 +1175,12 @@ function Show-Answer($md,$kind='answer',$id=0){
     JS $script:wvP ("XC.setTime('"+(Get-Date).ToString("HH:mm")+"')")
     JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $md)+","+(ConvertTo-Json (@{kind=$kind;id=$id}))+")")
   } else { $script:pendingAns=$md; $script:pendingLoad=$false }
+}
+# Open the dedicated exercise view, queuing if the panel's WebView2 is not ready yet
+# (the first panel use of a session) so the pill never pops up empty.
+function Open-Ex($plObj){
+  $j = (ConvertTo-Json $plObj -Depth 6)
+  if($script:panelReady){ JS $script:wvP ("XC.openExercise("+$j+")") } else { $script:pendingExercise=$j }
 }
 function Show-PanelLoading {
   Place-PanelHome
@@ -1345,14 +1351,14 @@ function Start-Workout {
     $ttl=[string]$ex.layout.title; if(-not $ttl){ $ttl="Excel exercise" }
     $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
     $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
-    JS $script:wvP ("XC.openExercise("+(ConvertTo-Json $pl -Depth 6)+")")
+    Open-Ex $pl
   } else {
     $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true
     $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
     $chs=@(); if($ex.choices){ $chs=@($ex.choices | ForEach-Object { [string]$_ }) }
     $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ "Concept" }); topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
     if($chs.Count -ge 2){ $pl['choices']=$chs } else { $pl['answer']=[string]$ex.answer }
-    JS $script:wvP ("XC.openExercise("+(ConvertTo-Json $pl -Depth 6)+")")
+    Open-Ex $pl
   }
   # Preload the NEXT exercise now (memory-driven), while the student works on this
   # one - so the Next button is instant. The latency is masked by their working time.
@@ -1582,6 +1588,7 @@ $wvP.add_WebMessageReceived({
       JS $script:wvP ("XC.setTime('"+(Get-Date).ToString("HH:mm")+"')")
       if($script:pendingLoad){ $script:pendingLoad=$false; JS $script:wvP ("XC.setAnswerLoading()") }
       if($script:pendingAns){ $a=$script:pendingAns; $script:pendingAns=$null; JS $script:wvP ("XC.setAnswer("+(ConvertTo-Json $a)+")") }
+      if($script:pendingExercise){ $px=$script:pendingExercise; $script:pendingExercise=$null; JS $script:wvP ("XC.openExercise("+$px+")") }
       if($null -ne $script:pendingQ){ JS $script:wvP ("XC.setQuery("+(ConvertTo-Json $script:pendingQ)+")"); $script:pendingQ=$null }
     }
     'panel' { $pk=[string]$m.k; if($pk -eq 'practice'){ Handle-Practice ([string]$m.action) ([string]$m.cardId) $m.quality $m.choice } elseif($pk -eq 'workoutanswer'){ Handle-WorkoutAnswer $m.choice } else { Handle-Panel $pk ([string]$m.term) } }
