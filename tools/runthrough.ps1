@@ -395,6 +395,7 @@ function Get-RTTopics {
   $state = RT-LoadState
   $out = New-Object System.Collections.ArrayList
   foreach($t in $topics){
+    if((Get-Command Test-DomainInScope -ErrorAction SilentlyContinue) -and -not (Test-DomainInScope $t.domain)){ continue }
     $rec = RT-TopicRec $state $t.id
     [void]$out.Add(@{ id = [string]$t.id; name = [string]$t.topic; category = [string]$t.domain; state = $rec })
   }
@@ -595,7 +596,7 @@ function Get-RTProgress {
   }
   $cur = @(); if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ $cur = @(Get-Curriculum) }catch{} }
   $state = RT-LoadState
-  $total = $cur.Count
+  $total = 0
   $solid = 0
   $areaOrder = New-Object System.Collections.ArrayList
   $areaTotal = @{}
@@ -603,6 +604,8 @@ function Get-RTProgress {
   foreach($t in $cur){
     $id = [string]$t.id
     $dom = [string]$t.domain; if(-not $dom){ $dom = '(other)' }
+    if((Get-Command Test-DomainInScope -ErrorAction SilentlyContinue) -and -not (Test-DomainInScope $t.domain)){ continue }
+    $total = $total + 1
     if(-not $areaTotal.ContainsKey($dom)){ [void]$areaOrder.Add($dom); $areaTotal[$dom] = 0; $areaSolid[$dom] = 0 }
     $areaTotal[$dom] = $areaTotal[$dom] + 1
     $rec = RT-TopicRec $state $id

@@ -103,7 +103,9 @@ if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ Assert "Get-XlBook(nul
 Section "Run-through (state model + coverage)"
 if(Get-Command Get-RTTopics -ErrorAction SilentlyContinue){
   $rtT = @(Get-RTTopics); $cur = @(Get-Curriculum)
-  Assert ("covers every curriculum topic (" + $rtT.Count + " == " + $cur.Count + ")") (($rtT.Count -eq $cur.Count) -and ($cur.Count -gt 0))
+  # In-scope count == full count when no scope.json is set; equals the scoped subset when one is.
+  $curInScope = @($cur | Where-Object { (-not (Get-Command Test-DomainInScope -ErrorAction SilentlyContinue)) -or (Test-DomainInScope $_.domain) })
+  Assert ("covers every in-scope topic (" + $rtT.Count + " == " + $curInScope.Count + ")") (($rtT.Count -eq $curInScope.Count) -and ($curInScope.Count -gt 0))
   Assert "fresh topic record: level 1, streak 0" (((RT-NewTopicRec).level -eq 1) -and ((RT-NewTopicRec).streak -eq 0))
   $sp = RT-StatePath; $bak = $null
   if(Test-Path $sp){ $bak = [IO.File]::ReadAllText($sp) }
@@ -234,7 +236,7 @@ if(Get-Command Grade-PillExercise -ErrorAction SilentlyContinue){
 
       # A4: Get-RTProgress.
       $prog = Get-RTProgress
-      Assert "progress: total == curriculum count" ([int]$prog.total -eq $cur.Count)
+      Assert "progress: total == in-scope curriculum count" ([int]$prog.total -eq $curInScope.Count)
       Assert "progress: solid in 0..total"         ([int]$prog.solid -ge 0 -and [int]$prog.solid -le [int]$prog.total)
       Assert "progress: areas array non-empty"     (@($prog.areas).Count -gt 0)
     } finally {
@@ -242,6 +244,38 @@ if(Get-Command Grade-PillExercise -ErrorAction SilentlyContinue){
     }
   } else { Assert "RT-RecordResult + Get-Curriculum defined" $false }
 } else { Assert "Grade-PillExercise defined" $false }
+
+# ---------------------------------------------------------------------------
+Section "Course scope"
+# Scope restricts the run-through/flashcards to the curriculum DOMAINS the student
+# has covered, read from data/scope.json. Back up the real file and restore it in a
+# finally (delete if it never existed) - mirrors the RT-state round-trip pattern.
+# Offline only: NO API, NO Excel.
+if((Get-Command Get-ScopeDomains -ErrorAction SilentlyContinue) -and (Get-Command Get-RTTopics -ErrorAction SilentlyContinue)){
+  $scp = Join-Path $root 'data\scope.json'
+  $sbak = $null; $sexisted = (Test-Path $scp)
+  if($sexisted){ $sbak = [IO.File]::ReadAllText($scp) }
+  try {
+    $curAll = @(Get-Curriculum)
+    $acctAll = @($curAll | Where-Object { [string]$_.domain -eq 'Accounting' })
+    # Scope to a single domain: only that domain's topics should be served.
+    [IO.File]::WriteAllText($scp, '{"domains":["Accounting"]}', (New-Object System.Text.UTF8Encoding($false)))
+    Assert "scope: Get-ScopeDomains reads the one domain" ((@(Get-ScopeDomains).Count -eq 1) -and (@(Get-ScopeDomains)[0] -eq 'Accounting'))
+    $scoped = @(Get-RTTopics)
+    $allAcct = $true; foreach($t in $scoped){ if([string]$t.category -ne 'Accounting'){ $allAcct = $false } }
+    Assert "scope: every RT topic is in-scope (Accounting)" ($allAcct -and ($scoped.Count -gt 0))
+    Assert "scope: Test-DomainInScope honors the set" ((Test-DomainInScope 'Accounting') -and (-not (Test-DomainInScope 'DCF')))
+    $prog = Get-RTProgress
+    Assert "scope: progress total == Accounting count (>0, <57)" (([int]$prog.total -eq $acctAll.Count) -and ($acctAll.Count -gt 0) -and ($acctAll.Count -lt 57))
+    # No scope file -> no restriction: RT topics == full curriculum.
+    Remove-Item $scp -Force
+    Assert "scope: absent file -> no domains" (@(Get-ScopeDomains).Count -eq 0)
+    $unscoped = @(Get-RTTopics)
+    Assert "scope: absent file -> covers full curriculum" ($unscoped.Count -eq $curAll.Count)
+  } finally {
+    if($sexisted){ [IO.File]::WriteAllText($scp, $sbak, (New-Object System.Text.UTF8Encoding($false))) } elseif(Test-Path $scp){ Remove-Item $scp -Force }
+  }
+} else { Assert "Get-ScopeDomains + Get-RTTopics defined" $false }
 
 # ---------------------------------------------------------------------------
 Section "UI files (ASCII + present)"

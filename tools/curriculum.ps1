@@ -340,6 +340,36 @@ function Get-Curriculum {
   return $out
 }
 
+# Course scope: restrict the run-through/flashcards to the curriculum DOMAINS the
+# student has actually covered, read from <repo>/data/scope.json
+# ({ "domains": [...] }). Missing/empty/unreadable/no-domains -> NO restriction
+# (everything in scope), so absent config preserves the current behavior.
+function Get-ScopeDomains {
+  try {
+    $f = Join-Path (Split-Path $PSScriptRoot -Parent) 'data\scope.json'
+    if(-not (Test-Path $f)){ return @() }
+    $raw = [IO.File]::ReadAllText($f)
+    if(-not $raw -or -not $raw.Trim()){ return @() }
+    $o = $raw | ConvertFrom-Json
+    if(-not $o -or -not $o.domains){ return @() }
+    $out = @($o.domains | ForEach-Object { [string]$_ } | Where-Object { $_ -ne '' })
+    return @($out)
+  } catch { return @() }
+}
+function Test-DomainInScope($domain){
+  $sc = @(Get-ScopeDomains)
+  if($sc.Count -eq 0){ return $true }
+  return ($sc -contains [string]$domain)
+}
+function Test-TopicInScope($topicId){
+  $sc = @(Get-ScopeDomains)
+  if($sc.Count -eq 0){ return $true }
+  $dom = $null
+  try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$topicId){ $dom = [string]$t.domain; break } } }catch{}
+  if($null -eq $dom){ return $true }
+  return ($sc -contains $dom)
+}
+
 function Get-Mastery {
   $f = Join-Path $script:XCCoaching "Mastery.md"
   $h = @{}

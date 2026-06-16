@@ -164,8 +164,16 @@ function Get-DueCards([int]$limit = 20){
   $now = Get-Date
   $nowIso = XP-NowIso $now
   $seeded = $false
+  # Course-scope filter: if a scope is set, build the in-scope topic-id set once and
+  # skip out-of-scope cards. No scope -> no filtering (current behavior preserved).
+  $scopeIds = $null
+  if((Get-Command Get-ScopeDomains -ErrorAction SilentlyContinue) -and (@(Get-ScopeDomains).Count -gt 0)){
+    $scopeIds = @{}
+    foreach($t in (Get-Curriculum)){ if(Test-DomainInScope $t.domain){ $scopeIds[[string]$t.id] = $true } }
+  }
   foreach($card in $cards){
     $cid = $card.id
+    if($scopeIds -and -not $scopeIds.ContainsKey([string]$card.topicId)){ continue }
     $rec = $state.cards[$cid]
     if(-not $rec){
       # unseen -> seed as due now

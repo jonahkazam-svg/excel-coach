@@ -1327,7 +1327,7 @@ function Gen-WorkoutEx {
     try{ $pick=RT-PickNext (RT-LoadState) ([int]$script:woIdx) ([string]$script:woLast); if($pick){ $topicId=[string]$pick.topicId } }catch{}
   }
   if(-not $topicId -and (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
-    try{ $cur=@(Get-Curriculum); if($cur.Count){ $topicId=[string]$cur[($script:woIdx % $cur.Count)].id } }catch{}
+    try{ $cur=@(Get-Curriculum | Where-Object { (-not (Get-Command Test-DomainInScope -ErrorAction SilentlyContinue)) -or (Test-DomainInScope $_.domain) }); if($cur.Count){ $topicId=[string]$cur[($script:woIdx % $cur.Count)].id } }catch{}
   }
   if(-not $topicId){ return $null }
   $script:woIdx=([int]$script:woIdx)+1; $script:woLast=$topicId
