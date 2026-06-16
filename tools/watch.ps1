@@ -1298,6 +1298,24 @@ function Handle-Practice($action,$cardId,$quality,$choice){
 }
 # Excel exercise: generate an AI calc drill, render it into a "Workout" sheet, and
 # (on the next click) grade what the student typed. Toggles generate <-> check.
+# When a Workout answer is wrong, generate a SHORT contextual explanation of WHY it
+# is wrong (the likely mistake + the correct reasoning in context), specific to the
+# student's numbers. gpt-4o-mini helper - the live coach model is untouched.
+function Explain-Mistake($exercise, $perCell){
+  if(-not $sync.key){ return "" }
+  $wrong=@(); foreach($pc in @($perCell)){ try{ if(-not $pc.ok){ $wrong+=$pc } }catch{} }
+  if($wrong.Count -lt 1){ return "" }
+  $given=""; try{ foreach($g in @($exercise.layout.given)){ $given += [string]$g.label+" = "+[string]$g.value+"; " } }catch{}
+  $miss=""; foreach($pc in $wrong){ $miss += "- "+[string]$pc.label+": they entered "+[string]$pc.got+", correct = "+[string]$pc.expected+" ("+[string]$pc.formula+")`n" }
+  $sysM="You are a patient finance/Excel tutor. The student just got a calculation WRONG. In 2-3 short sentences, explain WHY their specific answer is likely wrong (what they probably did or forgot) and the correct REASONING in context - WHY the right approach is right in this situation - not just restating the formula. Be specific to their numbers and encouraging. No preamble. Plain ASCII only."
+  $usr="Question: "+[string]$exercise.prompt+"`nGiven values: "+$given+"`nWhat they got wrong:`n"+$miss
+  $payload=@{ model="gpt-4o-mini"; max_tokens=220; temperature=0.3; messages=@(@{role="system";content=$sysM},@{role="user";content=$usr}) } | ConvertTo-Json -Depth 8
+  $bf="$env:TEMP\xc_whymistake.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
+  $r=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $j=$null; try{ $j=$r|ConvertFrom-Json }catch{}
+  if($j.choices){ $a=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $a=Clean-Answer $a }; return $a }
+  return ""
+}
 # Pick the next workout topic FROM MEMORY (unseen topics first, then weak ones, via
 # the run-through picker) and generate it with a fresh nonce so numbers always differ.
 function Gen-WorkoutEx {
@@ -1358,16 +1376,23 @@ function Check-Workout {
   if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null ([bool]$res.correct) | Out-Null }catch{} }
   if(Get-Command RT-RecordResult -ErrorAction SilentlyContinue){ try{ RT-RecordResult ([string]$script:rtCur.topicId) ([int]$script:rtCur.level) ([bool]$res.correct) $false | Out-Null }catch{} }
   try{ if(Get-Command Mark-ExcelMistakes -ErrorAction SilentlyContinue){ Mark-ExcelMistakes $script:rtCur $xl $res.perCell | Out-Null } }catch{}
-  $body=""
-  if($res.correct){ $body="Every answer cell checks out - nice work. (Marked green on the sheet.)" }
-  else {
+  $tail="`n`nPress **Next exercise** to continue, or **End** to save and exit."
+  if($res.correct){
+    $body="Every answer cell checks out - nice work. (Marked green on the sheet.)"
+    if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
+    JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$true; md=($body+$tail)}) -Depth 6)+")")
+  } else {
     $body="Here is how your answer cells compare:`n"
     foreach($pc in @($res.perCell)){ $mk=$(if($pc.ok){"[ok]"}else{"[x]"}); $body+="`n- "+$mk+" "+[string]$pc.cell+": you have "+[string]$pc.got+", expected "+[string]$pc.expected }
     $body+="`n`nI marked the wrong cells **red on the sheet** with what each should be."
+    if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
+    # show the comparison immediately, then add the contextual WHY (an AI call)
+    JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md=($body+"`n`n_Working out why..._")}) -Depth 6)+")")
+    [System.Windows.Forms.Application]::DoEvents()
+    $why=""; try{ $why=Explain-Mistake $script:rtCur $res.perCell }catch{}
+    if($why){ $body+="`n`n**Why:** "+$why }
+    JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md=($body+$tail)}) -Depth 6)+")")
   }
-  if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
-  $body+="`n`nPress **Next exercise** to continue, or **End** to save and exit."
-  JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=[bool]$res.correct; md=$body}) -Depth 6)+")")
   $script:woBusy=$false
 }
 # Compact "X of N solid" scoreboard for the exercise header.
