@@ -1321,8 +1321,9 @@ function Start-Workout {
     try{ RT-RenderExcel $ex $xl | Out-Null }catch{}
     $script:rtCur=$ex; $script:woActive=$true
     $title=[string]$ex.layout.title; if(-not $title){ $title="Excel exercise" }
-    $md="## "+$title+"`n`n"+[string]$ex.prompt+"`n`nI set up a **Workout** sheet in Excel with the given numbers. Fill in the highlighted yellow cells, then click **Excel exercise** again and I'll check your work."
+    $md="## "+$title+"`n`n"+[string]$ex.prompt+"`n`nI set up a **Workout** sheet in Excel with the given numbers. Fill in the highlighted yellow cells, then press **Done** below to check your answer."
     Show-Answer $md 'answer' 0
+    JS $script:wvP ("XC.setWorkoutBar(true)")
   } else {
     $script:woActive=$false; $script:rtCur=$null
     $md=[string]$ex.prompt
@@ -1347,8 +1348,9 @@ function Check-Workout {
     foreach($pc in @($res.perCell)){ $mk=$(if($pc.ok){"[ok]"}else{"[x]"}); $md+="`n- "+$mk+" "+[string]$pc.cell+": you have "+[string]$pc.got+", expected "+[string]$pc.expected }
   }
   if($res.worked){ $md+="`n`n**How it's done:**`n"+[string]$res.worked }
-  $md+="`n`nClick **Excel exercise** for a new one."
+  $md+="`n`nPress **Next exercise** for a fresh one."
   Show-Answer $md 'answer' 0
+  JS $script:wvP ("XC.setWorkoutBar(true)")
   $script:woActive=$false
   $script:woBusy=$false
 }
@@ -1448,6 +1450,8 @@ function Handle-Panel($k,$term){
     'close'   { try{ $panel.Hide() }catch{} }
     'copy'    { try{ if($script:lastFull){ [System.Windows.Forms.Clipboard]::SetText($script:lastFull) } }catch{} }
     'copytext' { try{ if($term){ [System.Windows.Forms.Clipboard]::SetText([string]$term) } }catch{} }
+    'workoutcheck' { if(Get-Command Check-Workout -ErrorAction SilentlyContinue){ Check-Workout } }
+    'workoutnext'  { $script:woActive=$false; if(Get-Command Start-Workout -ErrorAction SilentlyContinue){ Start-Workout } }
     'formulas' {
       $fxKey=[string]$sync.sheetPurpose
       if($fxKey -and $script:fxCache.ContainsKey($fxKey)){ JS $script:wvP ("XC.setFormulas("+$script:fxCache[$fxKey]+")") }
@@ -1661,7 +1665,7 @@ $ui.Add_Tick({
     }
   }
 })
-$sync.mute=$false
+$sync.mute=$true
 $script:statusText="Listening to the lesson"
 $strip.Add_Shown({
   $ui.Start()

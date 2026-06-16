@@ -228,6 +228,17 @@
   .perfItem .pn{ flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .perfItem .pp{ flex:0 0 auto; color:var(--text-2); font-variant-numeric:tabular-nums; }
 
+  /* Done / Next action bar for the Excel exercise (sits below the answer) */
+  #workoutBar{ display:flex; gap:8px; flex:0 0 auto; padding:10px 0 2px; }
+  #workoutBar.hidden{ display:none; }
+  body.practice #workoutBar, body.loading #workoutBar{ display:none; }
+  .wobtn{ flex:1 1 auto; padding:10px 12px; border-radius:10px; border:1px solid var(--hairline);
+    background:var(--hover); color:#fff; font-size:13.5px; font-weight:600; font-family:inherit; cursor:pointer;
+    transition:background .16s ease, border-color .16s ease; }
+  .wobtn:hover{ background:rgba(255,255,255,0.13); }
+  .wobtn.primary{ background:var(--accent); border-color:transparent; color:#0b0b0c; }
+  .wobtn.primary:hover{ filter:brightness(1.08); }
+
   /* shared practice button rows */
   #pracActions{ flex:0 0 auto; margin-top:auto; padding-top:12px; }
   .pbtnRow{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -318,6 +329,10 @@
     </div>
     <div id="badge" class="hidden"></div>
     <div id="body"></div>
+    <div id="workoutBar" class="hidden">
+      <button id="woDoneBtn" class="wobtn primary">Done</button>
+      <button id="woNextBtn" class="wobtn">Next exercise</button>
+    </div>
     <div id="fxDrop" class="hidden"><div id="fxList"></div></div>
     <div id="idDrop" class="hidden"><div id="idList"></div></div>
     <div id="spinWrap"><div class="ring"></div></div>
@@ -752,6 +767,7 @@
        (kind 'answer', id 0). */
     setAnswer(md, meta){
       document.body.classList.remove('loading');
+      $('workoutBar').classList.add('hidden');
       var atNewest = (cursor >= history.length - 1);   // following live?
       history.push({
         md: md,
@@ -779,6 +795,7 @@
       }
     },
     setAnswerLoading(){ document.body.classList.add('loading'); },
+    setWorkoutBar(show){ $('workoutBar').classList.toggle('hidden', !show); },
     setTime(t){ $('clock').textContent = t; },
     setQuery(q){
       const has = q && q.length;
@@ -812,6 +829,8 @@
   $('navBack').addEventListener('click', () => navTo(cursor - 1));
   $('navFwd').addEventListener('click', () => navTo(cursor + 1));
   $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));
+  $('woDoneBtn').addEventListener('click', () => post({type:'panel', k:'workoutcheck'}));
+  $('woNextBtn').addEventListener('click', () => post({type:'panel', k:'workoutnext'}));
   $('closeBtn').addEventListener('click', () => post({type:'panel', k:'close'}));
   $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
   $('defineBtn').addEventListener('click', () => { if (defineTerm) post({type:'panel', k:'define', term: defineTerm}); });
