@@ -197,6 +197,21 @@ function RT-CellMatch($got,$expected){
   return $false
 }
 
+# Type-stable cell write. PowerShell caches a COM member's parameter type from its
+# first use, so writing a string to Range.Value2 then a number throws "cast Int32 to
+# String" (and the number is lost). InvokeMember binds the type explicitly each call,
+# so labels stay text and numeric values become real numbers in any order.
+function RT-SetCell($ws,$addr,$value){
+  if(-not $ws -or -not $addr){ return }
+  $r = $null
+  try {
+    $r = $ws.Range($addr)
+    $num = 0.0
+    if([double]::TryParse(([string]$value),[ref]$num)){ $obj = [double]$num } else { $obj = [string]$value }
+    [void]$r.GetType().InvokeMember('Value2',[System.Reflection.BindingFlags]::SetProperty,$null,$r,@($obj))
+  } catch {} finally { if($r){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($r) }catch{} } }
+}
+
 # Render an excel exercise into a dedicated reused worksheet named "Workout" in the
 # workbook from Get-XlBook($xl). Creates the sheet if missing; clears ONLY that sheet.
 # Writes title, given label+value pairs, and blank highlighted (light yellow) answer
@@ -218,7 +233,7 @@ function RT-RenderExcel($exercise,$xl){
     try{ $ws.Cells.Clear() }catch{}
     # Title.
     $title = ''; try{ $title = [string]$layout.title }catch{}
-    if($title){ try{ $tc = $ws.Range('A1'); $tc.Value2 = $title; try{ $tc.Font.Bold = $true; $tc.Font.Size = 13 }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tc) }catch{} }
+    if($title){ RT-SetCell $ws 'A1' $title; try{ $tc = $ws.Range('A1'); $tc.Font.Bold = $true; $tc.Font.Size = 13; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tc) }catch{} }
     # Given inputs: label in col A, value in the stated cell (default col B).
     $given = @(); try{ $given = @($layout.given) }catch{}
     foreach($g in $given){
@@ -227,8 +242,9 @@ function RT-RenderExcel($exercise,$xl){
       try{ $cell = [string]$g.cell }catch{}; try{ $label = [string]$g.label }catch{}; try{ $val = $g.value }catch{}
       if(-not $cell){ continue }
       $rowNum = ($cell -replace '^[A-Za-z]+',''); $lblAddr = $(if($rowNum){ 'A'+$rowNum }else{ '' })
-      if($lblAddr -and $label){ try{ $lc = $ws.Range($lblAddr); $lc.Value2 = $label; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($lc) }catch{} }
-      try{ $vc = $ws.Range($cell); $vc.Value2 = $val; try{ $vc.NumberFormat='#,##0.00;(#,##0.00)' }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($vc) }catch{}
+      if($lblAddr -and $label){ RT-SetCell $ws $lblAddr $label }
+      RT-SetCell $ws $cell $val
+      try{ $vc = $ws.Range($cell); $vc.NumberFormat='#,##0.00;(#,##0.00)'; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($vc) }catch{}
     }
     # Answer cells: label in col A, the answer cell left BLANK + highlighted yellow.
     $ans = @(); try{ $ans = @($layout.answerCells) }catch{}
@@ -238,7 +254,7 @@ function RT-RenderExcel($exercise,$xl){
       try{ $cell = [string]$a.cell }catch{}; try{ $label = [string]$a.label }catch{}; try{ $expected = $a.expected }catch{}
       if(-not $cell){ continue }
       $rowNum = ($cell -replace '^[A-Za-z]+',''); $lblAddr = $(if($rowNum){ 'A'+$rowNum }else{ '' })
-      if($lblAddr -and $label){ try{ $lc = $ws.Range($lblAddr); $lc.Value2 = $label; try{ $lc.Font.Bold = $true }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($lc) }catch{} }
+      if($lblAddr -and $label){ RT-SetCell $ws $lblAddr $label; try{ $lc = $ws.Range($lblAddr); $lc.Font.Bold = $true; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($lc) }catch{} }
       try{ $ac = $ws.Range($cell); try{ $ac.ClearContents() }catch{}; try{ $ac.Interior.Color = 65535 }catch{}; try{ $b = $ac.Borders; $b.LineStyle = 1; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($b) }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ac) }catch{}
       [void]$out.Add(@{ cell = $cell; expected = $expected; label = $label })
     }
