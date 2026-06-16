@@ -111,13 +111,22 @@ Output ONLY a JSON object (no prose, no markdown, no code fences) with these fie
 Rules:
 - For an "excel" exercise the given values are concrete numbers and every expected answer is exactly derivable from them (e.g. EBIT = Revenue - COGS - OpEx). Never ask for a number that is not computable from the given inputs.
 - SELF-CONTAINED + COURSE-LEVEL: the exercise must use ONLY the basic, explicitly-stated method for this topic. The "expected" value MUST follow ONLY from the given values and the stated "formula", with NO hidden conventions or extra assumptions - NO mid-year convention, stub periods, day-count, inflation, terminal-value, tax adjustments, or rounding rules - unless the question text itself states them AND the topic is specifically about them. A student who applies the stated formula to the given numbers must get EXACTLY "expected". Keep numbers clean and the method singular; this is a foundational course, not an advanced modeling test.
+- GROUND STRICTLY in the course content provided for this topic (the study cards in the user message, when present). Use ONLY the definitions, formulas, and methods shown there. If a concept, formula, convention, or method is NOT in that course content, treat it as OUT OF SCOPE and do not use it.
 - Put given inputs and answer cells in DISTINCT cells (do not reuse a cell). Use column B for values.
 - For a "pill" classification, prefer 4 plausible choices with exactly one correct; wrong choices are realistic confusions.
 - Plain ASCII only: straight quotes, hyphens, -> for arrows. No characters outside basic ASCII.
 - Output the JSON object and nothing else.
 '@
   $lvlMeaning = switch($lvl){ 1 {'atom: a single definition, classification, or one-number calculation'} 2 {'step: a short two or three line calculation'} 3 {'section: a small block of a statement'} 4 {'whole: a fuller worked statement'} default {'atom'} }
-  $user = "Curriculum topic:`n  id: "+$topicId+"`n  category: "+$tCat+"`n  topic: "+$tName+"`n  tier: "+$tTier+"`n`nDifficulty level: "+$lvl+" ("+$lvlMeaning+").`nGenerate ONE exercise for this topic at this level as a single JSON object per the rules."
+  # Ground STRICTLY in the course's OWN content for this topic (its study cards), so the
+  # exercise can never introduce anything outside what the student is actually learning.
+  $courseContent = ""
+  if(Get-Command Get-TopicCards -ErrorAction SilentlyContinue){
+    try { $cards = @(Get-TopicCards $topicId); $lines = @(); $cn = 0; foreach($c in $cards){ if($cn -ge 16){ break }; $f = [string]$c.front; $b = [string]$c.back; if($f){ $lines += ('- ' + $f + ': ' + $b); $cn++ } }; if($lines.Count){ $courseContent = ($lines -join "`n") } } catch {}
+  }
+  $user = "Curriculum topic:`n  id: "+$topicId+"`n  category: "+$tCat+"`n  topic: "+$tName+"`n  tier: "+$tTier+"`n"
+  if($courseContent){ $user += "`nEXACTLY what the course covers for this topic (its study cards). Build the exercise using ONLY these definitions, formulas, and concepts - do NOT introduce anything that is not represented below:`n"+$courseContent+"`n" }
+  $user += "`nDifficulty level: "+$lvl+" ("+$lvlMeaning+").`nGenerate ONE exercise for this topic at this level as a single JSON object per the rules."
   if($nonce){ $user = $user+"`nVariation token "+$nonce+": use DIFFERENT specific numbers than any previous version of this exercise." }
   $payload = $null
   if($model -match '^gpt-5'){
