@@ -110,6 +110,7 @@ Output ONLY a JSON object (no prose, no markdown, no code fences) with these fie
 
 Rules:
 - For an "excel" exercise the given values are concrete numbers and every expected answer is exactly derivable from them (e.g. EBIT = Revenue - COGS - OpEx). Never ask for a number that is not computable from the given inputs.
+- SELF-CONTAINED + COURSE-LEVEL: the exercise must use ONLY the basic, explicitly-stated method for this topic. The "expected" value MUST follow ONLY from the given values and the stated "formula", with NO hidden conventions or extra assumptions - NO mid-year convention, stub periods, day-count, inflation, terminal-value, tax adjustments, or rounding rules - unless the question text itself states them AND the topic is specifically about them. A student who applies the stated formula to the given numbers must get EXACTLY "expected". Keep numbers clean and the method singular; this is a foundational course, not an advanced modeling test.
 - Put given inputs and answer cells in DISTINCT cells (do not reuse a cell). Use column B for values.
 - For a "pill" classification, prefer 4 plausible choices with exactly one correct; wrong choices are realistic confusions.
 - Plain ASCII only: straight quotes, hyphens, -> for arrows. No characters outside basic ASCII.
@@ -316,6 +317,12 @@ function Shift-Col($col, $n){
   $s = ''; while($num -gt 0){ $r = ($num - 1) % 26; $s = ([char](65 + $r)) + $s; $num = [int][math]::Floor(($num - 1) / 26) }
   return $s
 }
+# Column letter -> 1-based number ('A'->1, 'B'->2, 'AA'->27).
+function Col-Num($col){
+  $col = ([string]$col).ToUpper(); $num = 0
+  foreach($ch in $col.ToCharArray()){ if($ch -ge 'A' -and $ch -le 'Z'){ $num = $num * 26 + ([int][char]$ch - 64) } }
+  return $num
+}
 
 # After grading, mark the "Workout" sheet so mistakes are visible IN EXCEL: wrong
 # answer cells turn light red, correct ones light green, and 2 columns to the right
@@ -334,27 +341,34 @@ function Mark-ExcelMistakes($exercise, $xl, $perCell){
     foreach($w in $wb.Worksheets){ try{ if($w.Name -eq 'Workout'){ $ws = $w; break } }catch{} }
     if(-not $ws){ return 0 }
     $RED = 13552127; $GREEN = 13562310
+    # All notes go in ONE column, 2 to the right of the rightmost used cell, so a note
+    # never overwrites a given or answer cell regardless of the AI's layout.
+    $maxN = 2
+    try{ foreach($g in @($exercise.layout.given)){ $n = Col-Num ([string]$g.cell -replace '[0-9]+',''); if($n -gt $maxN){ $maxN = $n } } }catch{}
+    try{ foreach($a in @($exercise.layout.answerCells)){ $n = Col-Num ([string]$a.cell -replace '[0-9]+',''); if($n -gt $maxN){ $maxN = $n } } }catch{}
+    $noteCol = Shift-Col 'A' ($maxN + 1)
     foreach($pc in $cells){
       if(-not $pc){ continue }
-      $cell = ''; try{ $cell = [string]$pc.cell }catch{}
+      $cell = ''; try{ $cell = ([string]$pc.cell).ToUpper() }catch{}
       if(-not $cell){ continue }
       $ok = $false; try{ $ok = [bool]$pc.ok }catch{}
       try{ $ac = $ws.Range($cell); $ac.Interior.Color = $(if($ok){ $GREEN }else{ $RED }); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ac) }catch{}
-      $colL = ($cell -replace '[0-9]+',''); $rowN = ($cell -replace '^[A-Za-z]+','')
-      $corr = ''; if($colL -and $rowN){ $corr = (Shift-Col $colL 2) + $rowN }
-      if($corr){
-        # always clear any prior note so a re-check after a fix updates cleanly
-        try{ $cc = $ws.Range($corr); $cc.ClearContents(); try{ $cc.Font.Italic = $false }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
+      $rowN = ($cell -replace '^[A-Za-z]+','')
+      if($rowN){
+        $note = $noteCol + $rowN
+        # always clear the note cell so a re-check after a fix updates cleanly
+        try{ $cc = $ws.Range($note); $cc.ClearContents(); try{ $cc.Font.Italic = $false }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
         if(-not $ok){
           $wrong++
           $txt = 'should be ' + [string]$pc.expected
           $fm = ''; try{ $fm = [string]$pc.formula }catch{}
           if($fm){ $txt = $txt + '  (' + $fm + ')' }
-          RT-SetCell $ws $corr $txt
-          try{ $cc = $ws.Range($corr); try{ $cc.Font.Color = 192 }catch{}; try{ $cc.Font.Italic = $true }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
+          RT-SetCell $ws $note $txt
+          try{ $cc = $ws.Range($note); try{ $cc.Font.Color = 192 }catch{}; try{ $cc.Font.Italic = $true }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
         }
       }
     }
+    try{ $ws.Columns.Item($noteCol).AutoFit() }catch{}
   } catch {} finally {
     foreach($o in @($ws,$wb)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
   }

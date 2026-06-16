@@ -1147,16 +1147,10 @@ function Apply-Strip {
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
   if($ow -eq $nw -and $oh -eq $nh -and $ox -eq $nl -and $oy -eq $nt){ return }
-  $script:animating=$true
-  try{
-    for($i=1;$i -le 10;$i++){
-      $p=$i/10.0; $e=1.0-[Math]::Pow(1.0-$p,3)
-      $cw=[int]($ow+($nw-$ow)*$e); $ch=[int]($oh+($nh-$oh)*$e); $cx=[int]($ox+($nl-$ox)*$e); $cy=[int]($oy+($nt-$oy)*$e)
-      $strip.SetBounds($cx,$cy,$cw,$ch)
-      [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 12
-    }
-    $strip.SetBounds($nl,$nt,$nw,$nh)
-  } finally { $script:animating=$false }
+  # Instant resize. The old eased loop used a blocking Start-Sleep on the UI thread,
+  # which stutters when the thread is busy AND made the panel open at a mid-animation
+  # position (the double-press-to-open bug). A clean snap is smoother than a janky glide.
+  $strip.SetBounds($nl,$nt,$nw,$nh)
 }
 function Push-StripState {
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
@@ -1307,7 +1301,7 @@ function Explain-Mistake($exercise, $perCell){
   if($wrong.Count -lt 1){ return "" }
   $given=""; try{ foreach($g in @($exercise.layout.given)){ $given += [string]$g.label+" = "+[string]$g.value+"; " } }catch{}
   $miss=""; foreach($pc in $wrong){ $miss += "- "+[string]$pc.label+": they entered "+[string]$pc.got+", correct = "+[string]$pc.expected+" ("+[string]$pc.formula+")`n" }
-  $sysM="You are a patient finance/Excel tutor. The student just got a calculation WRONG. In 2-3 short sentences, explain WHY their specific answer is likely wrong (what they probably did or forgot) and the correct REASONING in context - WHY the right approach is right in this situation - not just restating the formula. Be specific to their numbers and encouraging. No preamble. Plain ASCII only."
+  $sysM="You are a patient finance/Excel tutor. The student just got a calculation WRONG. In 2-3 short sentences, explain WHY their specific answer is likely wrong (what they probably did or forgot) and the correct REASONING in context - WHY the right approach is right here. CRITICAL: explain the mistake ONLY in terms of the GIVEN formula and values. Do NOT invent or introduce any method, convention, or concept that is not in the given formula (e.g. do NOT mention mid-year convention, extra steps, or anything the question did not ask for). Identify which part of the stated calculation they likely got wrong. Be specific to their numbers and encouraging. No preamble. Plain ASCII only."
   $usr="Question: "+[string]$exercise.prompt+"`nGiven values: "+$given+"`nWhat they got wrong:`n"+$miss
   $payload=@{ model="gpt-4o-mini"; max_tokens=220; temperature=0.3; messages=@(@{role="system";content=$sysM},@{role="user";content=$usr}) } | ConvertTo-Json -Depth 8
   $bf="$env:TEMP\xc_whymistake.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
@@ -1375,16 +1369,16 @@ function Check-Workout {
   if(-not $res){ $script:woBusy=$false; JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md="I could not read your answers. Make sure the Workout sheet is open, then press Check answer again."}) -Depth 4)+")"); return }
   if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null ([bool]$res.correct) | Out-Null }catch{} }
   if(Get-Command RT-RecordResult -ErrorAction SilentlyContinue){ try{ RT-RecordResult ([string]$script:rtCur.topicId) ([int]$script:rtCur.level) ([bool]$res.correct) $false | Out-Null }catch{} }
-  try{ if(Get-Command Mark-ExcelMistakes -ErrorAction SilentlyContinue){ Mark-ExcelMistakes $script:rtCur $xl $res.perCell | Out-Null } }catch{}
+  $nw=0; try{ if(Get-Command Mark-ExcelMistakes -ErrorAction SilentlyContinue){ $nw=Mark-ExcelMistakes $script:rtCur $xl $res.perCell } }catch{}
   $tail="`n`nPress **Next exercise** to continue, or **End** to save and exit."
   if($res.correct){
     $body="Every answer cell checks out - nice work. (Marked green on the sheet.)"
     if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
     JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$true; md=($body+$tail)}) -Depth 6)+")")
   } else {
-    $body="Here is how your answer cells compare:`n"
-    foreach($pc in @($res.perCell)){ $mk=$(if($pc.ok){"[ok]"}else{"[x]"}); $body+="`n- "+$mk+" "+[string]$pc.cell+": you have "+[string]$pc.got+", expected "+[string]$pc.expected }
-    $body+="`n`nI marked the wrong cells **red on the sheet** with what each should be."
+    $body="Here is what is off:`n"
+    foreach($pc in @($res.perCell)){ if(-not $pc.ok){ $lbl=[string]$pc.label; $body+="`n- "+[string]$pc.cell+$(if($lbl){ " ("+$lbl+")" }else{ "" })+": you have "+[string]$pc.got+", it should be "+[string]$pc.expected } }
+    if([int]$nw -gt 0){ $body+="`n`nI marked the wrong cell(s) **red on the sheet**, with what each should be next to them." }
     if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
     # show the comparison immediately, then add the contextual WHY (an AI call)
     JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md=($body+"`n`n_Working out why..._")}) -Depth 6)+")")
