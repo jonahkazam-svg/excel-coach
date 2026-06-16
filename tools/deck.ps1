@@ -61,14 +61,14 @@ You generate study flashcards for a finance student prepping for an investment-b
 
 Output ONLY a JSON array (no prose, no markdown, no code fences). Each element is an object with these fields:
   "type"    - one of: "flashcard", "definition", "formula"
-  "front"   - the question, term, or formula prompt (concise)
-  "back"    - the answer or explanation (concise, IB-accurate)
+  "front"   - for a definition/flashcard card, JUST THE TERM ITSELF (e.g. "Revenue", "Working capital", "Accounts receivable", "WACC", "Free cash flow") - NOT a "what is..." question. For a formula card, the concept name. For a quiz card, the classification prompt.
+  "back"    - a clear, plain-English DEFINITION of that term, plus a short note on why it matters or how an analyst uses it. Complete enough to actually learn from - a full sentence or two, never a single word.
   "choices" - OPTIONAL. Include ONLY when the card works as a multiple-choice question. When present it MUST be an array of exactly 4 plausible, distinct answer strings, exactly one of which is correct.
   "answer"  - OPTIONAL. Include ONLY when "choices" is present. An integer 0..3 that is the index of the correct choice in "choices".
 
 Rules:
 - Produce 4 to 7 cards for the topic.
-- Include a mix: at least one "definition" (key term -> meaning) and, where the topic has them, at least one "formula" card.
+- MOST cards must be term-to-definition: front = the term, back = its definition. NEVER phrase the front as a question ("What is...?", "What comes after...?") - just state the term and define it on the back. Add "formula" cards where the topic has key formulas, and a quiz card or two for classifications.
 - Write all formulas as PLAIN TEXT (for example: EBIT = Revenue - COGS - Operating Expenses; or Enterprise Value = Equity Value + Total Debt - Cash). Never use special symbols.
 - Make at least one or two cards quiz-able: give them exactly 4 choices and the correct "answer" index. The wrong choices must be plausible (common confusions), not obviously silly.
 - Keep "front" and "back" tight: no filler, no preamble, accurate to standard IB/accounting convention.
