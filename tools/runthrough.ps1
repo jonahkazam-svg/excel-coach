@@ -74,9 +74,10 @@ function RT-ReadEnv($name,$default){
 # them); for a definition/classification topic ask for surface='pill' with choices.
 # Matches deck.ps1's curl/Bearer/temp-file pattern + gpt-4o-mini. Returns the
 # normalized hashtable or $null on any failure. NOT exercised by tests (network).
-function Make-Exercise($topicId,$level){
+function Make-Exercise($topicId,$level,$nonce=''){
   $topicId = [string]$topicId
   $lvl = 1; try{ $lvl = [int]$level }catch{ $lvl = 1 }
+  $nonce = [string]$nonce
   $key = RT-ReadEnv 'OPENAI_API_KEY' ''
   if(-not $key -or $key -like '*REPLACE_ME*'){ return $null }
   $model = RT-ReadEnv 'DECK_MODEL' 'gpt-4o-mini'
@@ -115,6 +116,7 @@ Rules:
 '@
   $lvlMeaning = switch($lvl){ 1 {'atom: a single definition, classification, or one-number calculation'} 2 {'step: a short two or three line calculation'} 3 {'section: a small block of a statement'} 4 {'whole: a fuller worked statement'} default {'atom'} }
   $user = "Curriculum topic:`n  id: "+$topicId+"`n  category: "+$tCat+"`n  topic: "+$tName+"`n  tier: "+$tTier+"`n`nDifficulty level: "+$lvl+" ("+$lvlMeaning+").`nGenerate ONE exercise for this topic at this level as a single JSON object per the rules."
+  if($nonce){ $user = $user+"`nVariation token "+$nonce+": use DIFFERENT specific numbers than any previous version of this exercise." }
   $payload = $null
   if($model -match '^gpt-5'){
     $payload = (@{ model=$model; max_completion_tokens=1400; reasoning_effort='medium'; messages=@(@{role='system';content=$sys},@{role='user';content=$user}) } | ConvertTo-Json -Depth 10)
@@ -315,4 +317,223 @@ function Get-RTTopics {
     [void]$out.Add(@{ id = [string]$t.id; name = [string]$t.topic; category = [string]$t.domain; state = $rec })
   }
   return $out
+}
+
+# --- Controller library (Phase A): grader, mastery transitions, picker, scoreboard. ---
+
+# A1: Grade one PILL exercise (MC or numeric one-off). Returns
+#   @{ correct=[bool]; expected; worked }.
+# MC: $exercise.choices non-empty. $answer may be an int index OR the chosen choice
+# text; $exercise.answer may be an int index OR the correct text. Resolve both sides
+# to the chosen string and compare (and also accept index==index).
+# Else if $exercise.answer parses numeric: RT-CellMatch. Else (free text): $false
+# (typed free-text grading is deferred to a later AI judge; v1 pill items are MC).
+function Grade-PillExercise($exercise,$answer){
+  $worked = ''; try{ $worked = [string]$exercise.worked }catch{}
+  $choices = @(); try{ if($null -ne $exercise.choices){ $choices = @($exercise.choices) } }catch{}
+  $rawAns = $null; try{ $rawAns = $exercise.answer }catch{}
+  # Resolve a value that is an int index OR a choice string to the chosen choice text.
+  $resolve = {
+    param($v,$ch)
+    if($null -eq $v){ return $null }
+    $vs = ([string]$v).Trim()
+    $idx = 0
+    if([int]::TryParse($vs,[ref]$idx)){
+      if($ch.Count -gt 0 -and $idx -ge 0 -and $idx -lt $ch.Count){ return ([string]$ch[$idx]).Trim() }
+    }
+    return $vs
+  }
+  if($choices.Count -gt 0){
+    # MC. Try index==index first (both numeric).
+    $expected = ''
+    $ai = 0; $hasAi = [int]::TryParse(([string]$rawAns).Trim(),[ref]$ai)
+    if($hasAi -and $ai -ge 0 -and $ai -lt $choices.Count){ $expected = ([string]$choices[$ai]).Trim() } else { $expected = ([string]$rawAns).Trim() }
+    $gi = 0; $hasGi = [int]::TryParse(([string]$answer).Trim(),[ref]$gi)
+    $correct = $false
+    if($hasAi -and $hasGi){ if($ai -eq $gi){ $correct = $true } }
+    if(-not $correct){
+      $chosenStr = (& $resolve $answer $choices)
+      $expectStr = (& $resolve $rawAns $choices)
+      if($null -ne $chosenStr -and $null -ne $expectStr -and $chosenStr -eq $expectStr){ $correct = $true }
+    }
+    return @{ correct=[bool]$correct; expected=$expected; worked=$worked }
+  }
+  # Numeric one-off.
+  $xs = ([string]$rawAns).Trim() -replace '[\$,%]','' -replace '[\(]','-' -replace '[\)]',''
+  $xn = 0.0
+  if($xs -and [double]::TryParse($xs,[ref]$xn)){
+    return @{ correct=[bool](RT-CellMatch $answer $rawAns); expected=([string]$rawAns); worked=$worked }
+  }
+  # Free text: deferred.
+  return @{ correct=$false; expected=([string]$rawAns); worked=$worked }
+}
+
+# A2: Record one result into durable RT state and return the mastery transition.
+# Returns @{ rec; becameSolid=[bool]; bumpedLevel=[bool] }.
+# correct & not retry -> streak++; streak>=2 -> add level to mastered (dedupe),
+#   becameSolid, reset streak, bump level capped at 2 (bumpedLevel if it changed).
+# correct & retry -> consolidation only (streak stays 0, no promotion).
+# wrong -> streak=0. Always attempts++ / correct++ as appropriate; set lastSeen; save.
+function RT-RecordResult($topicId,$level,$correct,$isRetry){
+  $topicId = [string]$topicId
+  $lvl = 1; try{ $lvl = [int]$level }catch{ $lvl = 1 }
+  $ok = [bool]$correct
+  $retry = [bool]$isRetry
+  $state = RT-LoadState
+  $rec = RT-TopicRec $state $topicId
+  $rec.level = [int]$rec.level
+  $rec.streak = [int]$rec.streak
+  $rec.attempts = [int]$rec.attempts + 1
+  if($ok){ $rec.correct = [int]$rec.correct + 1 }
+  $mastered = @(); if($rec.mastered){ $mastered = @($rec.mastered | ForEach-Object { [int]$_ }) }
+  $becameSolid = $false
+  $bumpedLevel = $false
+  if($ok -and -not $retry){
+    $rec.streak = $rec.streak + 1
+    if($rec.streak -ge 2){
+      if($mastered -notcontains $lvl){ $mastered = @($mastered + $lvl) }
+      $becameSolid = $true
+      $rec.streak = 0
+      $newLevel = [math]::Min(2, $rec.level + 1)
+      if($newLevel -ne $rec.level){ $rec.level = $newLevel; $bumpedLevel = $true }
+    }
+  } elseif($ok -and $retry){
+    # consolidation only - no promotion progress.
+  } else {
+    $rec.streak = 0
+  }
+  $rec.mastered = @($mastered)
+  $rec.lastSeen = (Get-Date).ToString('o')
+  $state.topics[$topicId] = $rec
+  RT-SaveState $state
+  return @{ rec=$rec; becameSolid=[bool]$becameSolid; bumpedLevel=[bool]$bumpedLevel }
+}
+
+# Tier rank: lower = more foundational / higher priority. Strings (must/should/nice)
+# map to 0/1/2; a numeric tier passes through (lower=more foundational); unknown -> 1.
+function RT-TierRank($tier){
+  $t = ([string]$tier).Trim().ToLower()
+  switch($t){
+    'must'   { return 0 }
+    'should' { return 1 }
+    'nice'   { return 2 }
+    default  {
+      $n = 0
+      if([double]::TryParse($t,[ref]$n)){ return [int]$n }
+      return 1
+    }
+  }
+}
+
+# Map a topic id -> its curriculum tier (string) so the picker can tier-order.
+function RT-TierMap {
+  if(-not (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
+    $cp = Join-Path $PSScriptRoot 'curriculum.ps1'
+    if(Test-Path $cp){ try{ . $cp }catch{} }
+  }
+  $h = @{}
+  if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){
+    try{ foreach($t in (Get-Curriculum)){ $h[[string]$t.id] = [string]$t.tier } }catch{}
+  }
+  return $h
+}
+
+# A3: Pick the next topic + level. Returns @{ topicId; level }.
+# Order (first match wins); never returns $lastTopicId unless it is the only candidate:
+#  1. itemsThisSitting < 3 -> easiest UNSEEN must-tier topic at level 1.
+#  2. Any UNSEEN topic (attempts==0), must-tier first then should then nice, at level 1.
+#  3. A Get-WeakTopics topic, served at max(1, current level - 1).
+#  4. Else the lowest-streak / least-recently-seen topic, at its current level.
+function RT-PickNext($state,$itemsThisSitting,$lastTopicId){
+  $items = 0; try{ $items = [int]$itemsThisSitting }catch{ $items = 0 }
+  $lastId = [string]$lastTopicId
+  $topics = @(); try{ $topics = @(Get-RTTopics) }catch{}
+  if($topics.Count -eq 0){ return @{ topicId=''; level=1 } }
+  $tierMap = RT-TierMap
+  # Annotate each topic with rank/level/streak/attempts/lastSeen.
+  $rows = New-Object System.Collections.ArrayList
+  foreach($t in $topics){
+    $id = [string]$t.id
+    $rec = $t.state
+    $lvl = 1; try{ $lvl = [int]$rec.level }catch{ $lvl = 1 }
+    $streak = 0; try{ $streak = [int]$rec.streak }catch{ $streak = 0 }
+    $att = 0; try{ $att = [int]$rec.attempts }catch{ $att = 0 }
+    $seen = ''; try{ $seen = [string]$rec.lastSeen }catch{ $seen = '' }
+    $tier = ''; if($tierMap.ContainsKey($id)){ $tier = $tierMap[$id] }
+    [void]$rows.Add(@{ id=$id; level=$lvl; streak=$streak; attempts=$att; lastSeen=$seen; tierRank=(RT-TierRank $tier) })
+  }
+  $rows = @($rows.ToArray())
+  # Helper: pick from a candidate list honouring the never-repeat-last rule.
+  $choose = {
+    param($cands,$lvlOf)
+    $cands = @($cands)
+    if($cands.Count -eq 0){ return $null }
+    $nonLast = @($cands | Where-Object { $_.id -ne $lastId })
+    $use = $(if($nonLast.Count -gt 0){ $nonLast } else { $cands })
+    $pick = $use[0]
+    $lvl = 1; if($lvlOf){ $lvl = (& $lvlOf $pick) }
+    return @{ topicId=$pick.id; level=$lvl }
+  }
+  # 1 + 2: unseen topics, tier-ordered (must first), then by id for stability.
+  $unseen = @($rows | Where-Object { $_.attempts -le 0 } | Sort-Object @{Expression={$_.tierRank}}, @{Expression={$_.id}})
+  if($items -lt 3){
+    $unseenMust = @($unseen | Where-Object { $_.tierRank -le 0 })
+    $r = (& $choose $unseenMust { param($p) 1 })
+    if($r){ return $r }
+  }
+  $r = (& $choose $unseen { param($p) 1 })
+  if($r){ return $r }
+  # 3: a weak topic flagged by perf, served one level below current (min 1).
+  $weakIds = @()
+  if(Get-Command Get-WeakTopics -ErrorAction SilentlyContinue){ try{ $weakIds = @(Get-WeakTopics 5) }catch{} }
+  if($weakIds.Count -gt 0){
+    $weakRows = @($rows | Where-Object { $weakIds -contains $_.id })
+    $r = (& $choose $weakRows { param($p) [math]::Max(1, [int]$p.level - 1) })
+    if($r){ return $r }
+  }
+  # 4: lowest streak, then least-recently-seen (empty lastSeen sorts first), then id.
+  $rest = @($rows | Sort-Object @{Expression={$_.streak}}, @{Expression={$_.lastSeen}}, @{Expression={$_.id}})
+  $r = (& $choose $rest { param($p) [math]::Max(1, [int]$p.level) })
+  if($r){ return $r }
+  # Fallback: the only/first candidate (e.g. when lastTopicId is the sole topic).
+  $only = $rows[0]
+  return @{ topicId=$only.id; level=[math]::Max(1,[int]$only.level) }
+}
+
+# A4: Progress scoreboard. Returns
+#   @{ solid; total; areas=@(@{ name; solid; total; status }) }.
+# total = curriculum topic count. ceiling=2 for all topics in v1; a topic is SOLID
+# when its mastered list contains the ceiling (2). areas = distinct domain values;
+# status: green=all solid, yellow=some, grey=none.
+function Get-RTProgress {
+  $ceiling = 2
+  if(-not (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
+    $cp = Join-Path $PSScriptRoot 'curriculum.ps1'
+    if(Test-Path $cp){ try{ . $cp }catch{} }
+  }
+  $cur = @(); if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ $cur = @(Get-Curriculum) }catch{} }
+  $state = RT-LoadState
+  $total = $cur.Count
+  $solid = 0
+  $areaOrder = New-Object System.Collections.ArrayList
+  $areaTotal = @{}
+  $areaSolid = @{}
+  foreach($t in $cur){
+    $id = [string]$t.id
+    $dom = [string]$t.domain; if(-not $dom){ $dom = '(other)' }
+    if(-not $areaTotal.ContainsKey($dom)){ [void]$areaOrder.Add($dom); $areaTotal[$dom] = 0; $areaSolid[$dom] = 0 }
+    $areaTotal[$dom] = $areaTotal[$dom] + 1
+    $rec = RT-TopicRec $state $id
+    $mastered = @(); if($rec.mastered){ $mastered = @($rec.mastered | ForEach-Object { [int]$_ }) }
+    $isSolid = ($mastered -contains $ceiling)
+    if($isSolid){ $solid = $solid + 1; $areaSolid[$dom] = $areaSolid[$dom] + 1 }
+  }
+  $areas = New-Object System.Collections.ArrayList
+  foreach($dom in $areaOrder){
+    $at = [int]$areaTotal[$dom]; $as = [int]$areaSolid[$dom]
+    $status = 'grey'
+    if($at -gt 0 -and $as -ge $at){ $status = 'green' } elseif($as -gt 0){ $status = 'yellow' }
+    [void]$areas.Add(@{ name=$dom; solid=$as; total=$at; status=$status })
+  }
+  return @{ solid=$solid; total=$total; areas=@($areas.ToArray()) }
 }

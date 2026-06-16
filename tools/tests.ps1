@@ -181,6 +181,64 @@ if(Get-Command RT-NormalizeExercise -ErrorAction SilentlyContinue){
 } else { Assert "RT-NormalizeExercise defined" $false }
 
 # ---------------------------------------------------------------------------
+Section "Run-through controller"
+# Pure-logic checks of the Phase A controller library - NO API, NO Excel.
+# Any test that writes data/runthrough-state.json backs it up first and restores
+# it in a finally block (mirrors the Run-through state-model section above).
+if(Get-Command Grade-PillExercise -ErrorAction SilentlyContinue){
+  # A1: Grade-PillExercise
+  $mcEx = @{ choices=@('Accounts receivable','Goodwill','Long-term debt','Common stock'); answer=0; worked='AR is collected within a year.' }
+  Assert "grade: MC correct index -> correct"   ((Grade-PillExercise $mcEx 0).correct)
+  Assert "grade: MC wrong index -> not correct" (-not (Grade-PillExercise $mcEx 2).correct)
+  $numEx = @{ choices=@(); answer='20'; worked='20.0' }
+  Assert "grade: numeric 20 vs 20.0 -> correct" ((Grade-PillExercise $numEx 20.0).correct)
+  $ftEx = @{ choices=@(); answer='it is an operating cash flow'; worked='free text' }
+  Assert "grade: free text -> not correct (deferred)" (-not (Grade-PillExercise $ftEx 'it is an operating cash flow').correct)
+
+  # A2 + A3 + A4 need a curriculum; guard on it and back up the RT state file.
+  if((Get-Command RT-RecordResult -ErrorAction SilentlyContinue) -and (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
+    $cur = @(Get-Curriculum)
+    $sp = RT-StatePath; $bak = $null
+    if(Test-Path $sp){ $bak = [IO.File]::ReadAllText($sp) }
+    try {
+      $tid = 'RT-CTRL-TEST'
+      # Start from a clean record for the test topic.
+      $st = RT-LoadState; if($st.topics.ContainsKey($tid)){ $st.topics.Remove($tid) }; RT-SaveState $st
+      $r1 = RT-RecordResult $tid 1 $true $false
+      $r2 = RT-RecordResult $tid 1 $true $false
+      Assert "record: two correct -> becameSolid"  ([bool]$r2.becameSolid)
+      Assert "record: two correct -> level 2"       ([int]$r2.rec.level -eq 2)
+      Assert "record: solid resets streak to 0"     ([int]$r2.rec.streak -eq 0)
+      $lvlBefore = [int]$r2.rec.level
+      $r3 = RT-RecordResult $tid 2 $true $true
+      Assert "record: retry-correct -> not becameSolid" (-not $r3.becameSolid)
+      Assert "record: retry-correct -> level unchanged" ([int]$r3.rec.level -eq $lvlBefore)
+      $attBefore = [int]$r3.rec.attempts
+      $r4 = RT-RecordResult $tid 1 $false $false
+      Assert "record: wrong -> streak 0"            ([int]$r4.rec.streak -eq 0)
+      Assert "record: wrong -> attempts incremented" ([int]$r4.rec.attempts -eq ($attBefore + 1))
+
+      # A3: RT-PickNext on a fresh seeded state.
+      $fresh = RT-NewState
+      $pk = RT-PickNext $fresh 0 ''
+      $curIds = @($cur | ForEach-Object { [string]$_.id })
+      Assert "pick: topicId exists in curriculum" ($curIds -contains $pk.topicId)
+      Assert "pick: level is 1 for first item"    ([int]$pk.level -eq 1)
+      $pk2 = RT-PickNext $fresh 0 $pk.topicId
+      Assert "pick: does not repeat lastTopicId"  ($pk2.topicId -ne $pk.topicId)
+
+      # A4: Get-RTProgress.
+      $prog = Get-RTProgress
+      Assert "progress: total == curriculum count" ([int]$prog.total -eq $cur.Count)
+      Assert "progress: solid in 0..total"         ([int]$prog.solid -ge 0 -and [int]$prog.solid -le [int]$prog.total)
+      Assert "progress: areas array non-empty"     (@($prog.areas).Count -gt 0)
+    } finally {
+      if($null -ne $bak){ [IO.File]::WriteAllText($sp,$bak,(New-Object System.Text.UTF8Encoding($false))) } elseif(Test-Path $sp){ Remove-Item $sp -Force }
+    }
+  } else { Assert "RT-RecordResult + Get-Curriculum defined" $false }
+} else { Assert "Grade-PillExercise defined" $false }
+
+# ---------------------------------------------------------------------------
 Section "UI files (ASCII + present)"
 foreach($rel in @('tools\ui\strip.html','tools\ui\panel.html')){
   $fp = Join-Path $root $rel
