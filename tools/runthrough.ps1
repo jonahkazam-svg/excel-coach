@@ -233,9 +233,10 @@ function RT-RenderExcel($exercise,$xl){
     try{ $ws.Activate() }catch{}
     # Clear ONLY this sheet (never any other sheet, never the student's cells).
     try{ $ws.Cells.Clear() }catch{}
-    # Title.
-    $title = ''; try{ $title = [string]$layout.title }catch{}
-    if($title){ RT-SetCell $ws 'A1' $title; try{ $tc = $ws.Range('A1'); $tc.Font.Bold = $true; $tc.Font.Size = 13; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tc) }catch{} }
+    # Goal sentence: the question/prompt written on the sheet so it states what to do.
+    $goal = ''; try{ $goal = [string]$exercise.prompt }catch{}
+    if(-not $goal){ try{ $goal = [string]$layout.title }catch{} }
+    if($goal){ RT-SetCell $ws 'A1' $goal; try{ $tc = $ws.Range('A1'); $tc.Font.Bold = $true; $tc.Font.Size = 12; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($tc) }catch{} }
     # Given inputs: label in col A, value in the stated cell (default col B).
     $given = @(); try{ $given = @($layout.given) }catch{}
     foreach($g in $given){

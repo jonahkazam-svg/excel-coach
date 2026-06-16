@@ -1120,7 +1120,7 @@ function Tune-WebView($wv){
 }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''
 $script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -1297,23 +1297,33 @@ function Handle-Practice($action,$cardId,$quality,$choice){
 }
 # Excel exercise: generate an AI calc drill, render it into a "Workout" sheet, and
 # (on the next click) grade what the student typed. Toggles generate <-> check.
+# Pick the next workout topic FROM MEMORY (unseen topics first, then weak ones, via
+# the run-through picker) and generate it with a fresh nonce so numbers always differ.
+function Gen-WorkoutEx {
+  $topicId=$null
+  if(Get-Command RT-PickNext -ErrorAction SilentlyContinue){
+    try{ $pick=RT-PickNext (RT-LoadState) ([int]$script:woIdx) ([string]$script:woLast); if($pick){ $topicId=[string]$pick.topicId } }catch{}
+  }
+  if(-not $topicId -and (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
+    try{ $cur=@(Get-Curriculum); if($cur.Count){ $topicId=[string]$cur[($script:woIdx % $cur.Count)].id } }catch{}
+  }
+  if(-not $topicId){ return $null }
+  $script:woIdx=([int]$script:woIdx)+1; $script:woLast=$topicId
+  $script:woSeq=([int]$script:woSeq)+1
+  $ex=$null; try{ $ex=Make-Exercise $topicId 2 ("v"+$script:woSeq) }catch{}
+  return $ex
+}
 function Start-Workout {
   if($script:woBusy){ return }
   if($script:woActive -and $script:rtCur){ Check-Workout; return }
   if(-not (Get-Command Make-Exercise -ErrorAction SilentlyContinue)){ Show-Answer "Excel exercises are not available in this build yet." 'note' 0; return }
   $script:woBusy=$true
   Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
-  Set-Query "Excel exercise"; JS $script:wvP ("XC.setAnswerLoading()")
-  [System.Windows.Forms.Application]::DoEvents()
-  # Rotate through the curriculum so each click is a NEW topic (the weak-topic pin
-  # used to serve the same problem forever); a per-click nonce varies the numbers too.
-  $topicId=$null
-  if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){
-    try{ $cur=@(Get-Curriculum); if($cur.Count){ $topicId=[string]$cur[($script:woIdx % $cur.Count)].id; $script:woIdx=([int]$script:woIdx)+1 } }catch{}
-  }
-  if(-not $topicId){ $script:woBusy=$false; Show-Answer "I could not pick a topic to build from." 'note' 0; return }
-  $script:woSeq=([int]$script:woSeq)+1
-  $ex=$null; try{ $ex=Make-Exercise $topicId 2 ("v"+$script:woSeq) }catch{}
+  Set-Query "Excel exercise"
+  # Use the preloaded next exercise for an instant jump; otherwise generate now.
+  $ex=$null
+  if($script:woNext){ $ex=$script:woNext; $script:woNext=$null }
+  else { JS $script:wvP ("XC.setAnswerLoading()"); [System.Windows.Forms.Application]::DoEvents(); $ex=Gen-WorkoutEx }
   if(-not $ex){ $script:woBusy=$false; Show-Answer "I could not build an Excel exercise right now (connection issue). Try again in a moment." 'note' 0; return }
   if([string]$ex.surface -eq 'excel'){
     $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
@@ -1330,6 +1340,9 @@ function Start-Workout {
     if($ex.choices -and (@($ex.choices).Count -ge 2)){ $i=0; $md+="`n"; foreach($c in @($ex.choices)){ $md+="`n- "+([char](65+$i))+". "+[string]$c; $i++ } }
     Show-Answer $md 'answer' 0
   }
+  # Preload the NEXT exercise now (memory-driven), while the student works on this
+  # one - so the Next button is instant. The latency is masked by their working time.
+  [System.Windows.Forms.Application]::DoEvents(); try{ if(-not $script:woNext){ $script:woNext=Gen-WorkoutEx } }catch{}
   $script:woBusy=$false
 }
 function Check-Workout {
@@ -1342,6 +1355,7 @@ function Check-Workout {
   $res=$null; try{ $res=Grade-ExcelExercise $script:rtCur $xl }catch{}
   if(-not $res){ $script:woBusy=$false; Show-Answer "I couldn't read your answers. Make sure the Workout sheet is open, then try again." 'note' 0; return }
   if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null ([bool]$res.correct) | Out-Null }catch{} }
+  if(Get-Command RT-RecordResult -ErrorAction SilentlyContinue){ try{ RT-RecordResult ([string]$script:rtCur.topicId) ([int]$script:rtCur.level) ([bool]$res.correct) $false | Out-Null }catch{} }
   if($res.correct){ $md="## Correct`n`nNice work - every answer cell checks out." }
   else {
     $md="## Not quite`n`nHere is how your answer cells compare:`n"
