@@ -1319,7 +1319,6 @@ function Gen-WorkoutEx {
 }
 function Start-Workout {
   if($script:woBusy){ return }
-  if($script:woActive -and $script:rtCur){ Check-Workout; return }
   if(-not (Get-Command Make-Exercise -ErrorAction SilentlyContinue)){ Show-Answer "Excel exercises are not available in this build yet." 'note' 0; return }
   $script:woBusy=$true
   Place-PanelHome; if(-not $panel.Visible){ $panel.Show() }
@@ -1334,15 +1333,17 @@ function Start-Workout {
     if(-not $xl){ $script:woBusy=$false; $script:woActive=$false; Show-Answer "Open Excel first, then click **Excel exercise** again so I can set up the Workout sheet." 'note' 0; return }
     try{ RT-RenderExcel $ex $xl | Out-Null }catch{}
     $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true
-    $title=[string]$ex.layout.title; if(-not $title){ $title="Excel exercise" }
-    $md="## "+$title+"`n`n"+[string]$ex.prompt+$(if($ex.concept){ "`n`n**What you're doing:** "+[string]$ex.concept }else{ "" })+"`n`nI set up a **Workout** sheet in Excel with the given numbers. Fill in the highlighted yellow cells, then press **Done** below to check your answer."
-    Show-Answer $md 'answer' 0
-    JS $script:wvP ("XC.setWorkoutBar(true)")
+    $ttl=[string]$ex.layout.title; if(-not $ttl){ $ttl="Excel exercise" }
+    $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
+    $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept }
+    JS $script:wvP ("XC.openExercise("+(ConvertTo-Json $pl -Depth 6)+")")
   } else {
-    $script:woActive=$false; $script:rtCur=$null
-    $md=[string]$ex.prompt; if($ex.concept){ $md+="`n`n**What you're doing:** "+[string]$ex.concept }
-    if($ex.choices -and (@($ex.choices).Count -ge 2)){ $i=0; $md+="`n"; foreach($c in @($ex.choices)){ $md+="`n- "+([char](65+$i))+". "+[string]$c; $i++ } }
-    Show-Answer $md 'answer' 0
+    $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true
+    $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
+    $ans=[string]$ex.answer
+    if($ex.choices -and (@($ex.choices).Count -ge 2)){ $i=0; $ans=""; foreach($c in @($ex.choices)){ $ans+=$(if($i){ "    " }else{ "" })+([char](65+$i))+". "+[string]$c; $i++ }; if($ex.answer){ $ans+="     (correct: "+[string]$ex.answer+")" } }
+    $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ "Concept" }); topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; answer=$ans }
+    JS $script:wvP ("XC.openExercise("+(ConvertTo-Json $pl -Depth 6)+")")
   }
   # Preload the NEXT exercise now (memory-driven), while the student works on this
   # one - so the Next button is instant. The latency is masked by their working time.
@@ -1352,29 +1353,27 @@ function Start-Workout {
 function Check-Workout {
   if((-not $script:rtCur) -or $script:woBusy){ return }
   $script:woBusy=$true
-  Set-Query "Check my work"; JS $script:wvP ("XC.setAnswerLoading()")
   [System.Windows.Forms.Application]::DoEvents()
   $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
-  if(-not $xl){ $script:woBusy=$false; Show-Answer "I couldn't reach Excel to check. Open the Workout sheet and click **Excel exercise** again." 'note' 0; return }
+  if(-not $xl){ $script:woBusy=$false; JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md="I could not reach Excel to check. Make sure the Workout sheet is open, then press Check answer again."}) -Depth 4)+")"); return }
   $res=$null; try{ $res=Grade-ExcelExercise $script:rtCur $xl }catch{}
-  if(-not $res){ $script:woBusy=$false; Show-Answer "I couldn't read your answers. Make sure the Workout sheet is open, then try again." 'note' 0; return }
+  if(-not $res){ $script:woBusy=$false; JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md="I could not read your answers. Make sure the Workout sheet is open, then press Check answer again."}) -Depth 4)+")"); return }
   if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null ([bool]$res.correct) | Out-Null }catch{} }
   if(Get-Command RT-RecordResult -ErrorAction SilentlyContinue){ try{ RT-RecordResult ([string]$script:rtCur.topicId) ([int]$script:rtCur.level) ([bool]$res.correct) $false | Out-Null }catch{} }
-  if($res.correct){ $md="## Correct`n`nNice work - every answer cell checks out." }
+  $body=""
+  if($res.correct){ $body="Every answer cell checks out - nice work." }
   else {
-    $md="## Not quite`n`nHere is how your answer cells compare:`n"
-    foreach($pc in @($res.perCell)){ $mk=$(if($pc.ok){"[ok]"}else{"[x]"}); $md+="`n- "+$mk+" "+[string]$pc.cell+": you have "+[string]$pc.got+", expected "+[string]$pc.expected }
+    $body="Here is how your answer cells compare:`n"
+    foreach($pc in @($res.perCell)){ $mk=$(if($pc.ok){"[ok]"}else{"[x]"}); $body+="`n- "+$mk+" "+[string]$pc.cell+": you have "+[string]$pc.got+", expected "+[string]$pc.expected }
   }
-  if($res.worked){ $md+="`n`n**How it's done:**`n"+[string]$res.worked }
-  $md+="`n`nPress **Next exercise** for a fresh one."
-  Show-Answer $md 'answer' 0
-  JS $script:wvP ("XC.setWorkoutBar(true)")
-  $script:woActive=$false
+  if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
+  $body+="`n`nPress **Next exercise** to continue, or **End** to save and exit."
+  JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=[bool]$res.correct; md=$body}) -Depth 6)+")")
   $script:woBusy=$false
 }
 function Handle-Act($k){
   $script:lastActive=(Get-Date)
-  if($k -ne 'workout'){ $sync.woActive=$false; if($script:panelReady){ try{ JS $script:wvP ("XC.setWorkoutBar(false)") }catch{} } }
+  if($k -ne 'workout'){ $script:woActive=$false; $sync.woActive=$false; if($script:panelReady){ try{ JS $script:wvP ("XC.closeExercise()") }catch{} } }
   switch($k){
     'collapse' { $script:collapsed=$true; Apply-Strip }
     'expand'   { $script:collapsed=$false; Apply-Strip }
@@ -1470,7 +1469,8 @@ function Handle-Panel($k,$term){
     'copy'    { try{ if($script:lastFull){ [System.Windows.Forms.Clipboard]::SetText($script:lastFull) } }catch{} }
     'copytext' { try{ if($term){ [System.Windows.Forms.Clipboard]::SetText([string]$term) } }catch{} }
     'workoutcheck' { if(Get-Command Check-Workout -ErrorAction SilentlyContinue){ Check-Workout } }
-    'workoutnext'  { $script:woActive=$false; if(Get-Command Start-Workout -ErrorAction SilentlyContinue){ Start-Workout } }
+    'workoutnext'  { if(Get-Command Start-Workout -ErrorAction SilentlyContinue){ Start-Workout } }
+    'workoutend'   { $script:woActive=$false; $sync.woActive=$false; $script:rtCur=$null; $script:woNext=$null; JS $script:wvP ("XC.closeExercise()"); Show-Answer "Exercise session ended - your progress is saved. Open the ... menu and pick Excel exercise to keep going." 'note' 0 }
     'formulas' {
       $fxKey=[string]$sync.sheetPurpose
       if($fxKey -and $script:fxCache.ContainsKey($fxKey)){ JS $script:wvP ("XC.setFormulas("+$script:fxCache[$fxKey]+")") }

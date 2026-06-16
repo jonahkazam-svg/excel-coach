@@ -290,6 +290,72 @@
   .pempty .pemoji{ font-size:30px; opacity:0.7; }
   .pempty .pmsg{ font-size:15px; color:rgba(255,255,255,0.78); }
   .pempty .psub{ font-size:12.5px; color:var(--text-2); }
+
+  /* ---------- exercise view (dedicated workout mode) ---------- */
+  #exercise{ position:absolute; inset:0; z-index:7; border-radius:20px;
+    background:var(--fill); padding:20px 24px 16px;
+    display:none; flex-direction:column; }
+  body.exercise #exercise{ display:flex; }
+  body.exercise .card > #hdr,
+  body.exercise .card > #badge,
+  body.exercise .card > #body,
+  body.exercise .card > #fxDrop,
+  body.exercise .card > #idDrop,
+  body.exercise .card > #workoutBar,
+  body.exercise .card > #ftr,
+  body.exercise .card > #spinWrap,
+  body.exercise .card > #practice{ display:none !important; }
+
+  #exHdr{ flex:0 0 auto; display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  #exHdr .extitle{ font-size:15.5px; font-weight:600; color:#fff; flex:0 0 auto; }
+  #exProgress{ margin-left:auto; font-variant-numeric:tabular-nums; font-size:12px;
+    color:rgba(255,255,255,0.45); flex:0 1 auto; min-width:0; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+  #exEndBtn{
+    flex:0 0 auto; padding:5px 12px; border-radius:9px;
+    border:1px solid var(--hairline); background:var(--hover);
+    color:rgba(255,255,255,0.85); font-size:12.5px; font-weight:600; font-family:inherit;
+    cursor:pointer; transition:background .16s ease, color .16s ease, border-color .16s ease;
+  }
+  #exEndBtn:hover{ background:rgba(255,255,255,0.13); color:#fff; border-color:rgba(255,255,255,0.22); }
+
+  #exBody{ flex:1 1 auto; overflow-y:auto; min-height:0; padding-right:6px;
+    display:flex; flex-direction:column; }
+  #exBody::-webkit-scrollbar{ width:7px; }
+  #exBody::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); border-radius:4px; }
+  #exBody::-webkit-scrollbar-track{ background:transparent; }
+
+  /* concept callout - same soft look as #pracHelp */
+  #exConcept{
+    margin:0 0 14px; padding:12px 13px; border-radius:11px; flex:0 0 auto;
+    border:1px solid var(--hairline); background:rgba(120,170,255,0.07);
+    font-size:14px; line-height:1.55; color:var(--text); user-select:text;
+  }
+  #exConcept.hidden{ display:none; }
+  #exConcept b{ color:#fff; font-weight:650; }
+
+  #exPrompt{ font-size:19px; font-weight:600; line-height:1.45; color:#fff;
+    margin-bottom:14px; user-select:text; cursor:default; flex:0 0 auto; }
+
+  #exAnswer{ font-size:15px; line-height:1.55; color:var(--text); user-select:text; cursor:default;
+    border-top:1px solid var(--hairline); padding-top:13px; margin-bottom:6px; flex:0 0 auto; }
+  #exAnswer.hidden{ display:none; }
+
+  /* result area - reuses the green/red verdict colors */
+  #exResult{ margin-top:14px; padding:12px 14px; border-radius:11px; flex:0 0 auto;
+    font-size:14px; line-height:1.55; color:var(--text); user-select:text;
+    border:1px solid var(--hairline); background:rgba(255,255,255,0.05); }
+  #exResult.hidden{ display:none; }
+  #exResult .exResHead{ font-size:14px; font-weight:700; letter-spacing:.2px; margin-bottom:8px; }
+  #exResult.ok{ background:rgba(34,197,94,0.10); border-color:rgba(34,197,94,0.32); }
+  #exResult.ok .exResHead{ color:#46d889; }
+  #exResult.no{ background:rgba(248,113,113,0.09); border-color:rgba(248,113,113,0.32); }
+  #exResult.no .exResHead{ color:#f9a8a8; }
+  #exResult b{ color:#fff; font-weight:650; }
+
+  /* action bar - same look as #workoutBar / .wobtn rows */
+  #exActions{ display:flex; gap:8px; flex:0 0 auto; margin-top:auto; padding-top:12px; }
+  #exActions .wobtn.hidden{ display:none; }
 </style>
 </head>
 <body>
@@ -402,6 +468,27 @@
         <div class="pbtnRow hidden" id="pracDoneRow">
           <button class="pbtn primary" id="pracDoneBtn">Close</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ============ EXERCISE (dedicated workout mode) ============ -->
+    <div id="exercise">
+      <div id="exHdr">
+        <span class="extitle" id="exTitle">Exercise</span>
+        <span id="exProgress"></span>
+        <button id="exEndBtn" title="End exercises and save progress">End</button>
+      </div>
+
+      <div id="exBody">
+        <div id="exConcept" class="hidden"></div>
+        <div id="exPrompt"></div>
+        <div id="exAnswer" class="hidden"></div>
+        <div id="exResult" class="hidden"></div>
+      </div>
+
+      <div id="exActions">
+        <button id="exCheckBtn" class="wobtn primary">Check answer</button>
+        <button id="exNextBtn" class="wobtn">Next exercise</button>
       </div>
     </div>
   </div>
@@ -805,7 +892,66 @@
     setFormulas(items){ renderFx(items); },
     setFormulasLoading(){ $('fxList').innerHTML = '<div class="fxhead">Looking at what you\'re working on...</div>'; },
     setIdents(items){ renderId(items); },
-    setIdentsLoading(){ $('idList').innerHTML = '<div class="fxhead">Categorizing what\'s on your sheet...</div>'; }
+    setIdentsLoading(){ $('idList').innerHTML = '<div class="fxhead">Categorizing what\'s on your sheet...</div>'; },
+    /* dedicated exercise mode - watch.ps1 drives one exercise at a time:
+       payload = { mode:"excel"|"pill", title, topicName, progress, prompt, concept, answer } */
+    openExercise(payloadJson){
+      var p;
+      try { p = (typeof payloadJson === 'string') ? JSON.parse(payloadJson) : payloadJson; }
+      catch(e){ p = {}; }
+      p = p || {};
+      document.body.classList.remove('loading');
+      document.body.classList.remove('practice');
+      document.body.classList.add('exercise');
+      var mode = (p.mode === 'pill') ? 'pill' : 'excel';
+      $('exTitle').textContent = p.title || 'Exercise';
+      $('exProgress').textContent = (p.topicName || '') + (p.progress ? ' - ' + p.progress : '');
+      // prompt: bold + newlines preserved
+      var prompt = String(p.prompt == null ? '' : p.prompt);
+      $('exPrompt').innerHTML = bold(esc(prompt)).replace(/\n+/g, '<br>');
+      // concept callout
+      var con = $('exConcept');
+      if (p.concept){
+        con.innerHTML = '<b>What you are doing:</b> ' + esc(String(p.concept));
+        con.classList.remove('hidden');
+      } else { con.classList.add('hidden'); con.innerHTML = ''; }
+      // answer line (definition / pill exercises only) + check button
+      var ans = $('exAnswer');
+      if (mode === 'pill'){
+        ans.textContent = 'Answer: ' + String(p.answer == null ? '' : p.answer);
+        ans.classList.remove('hidden');
+        $('exCheckBtn').classList.add('hidden');
+      } else {
+        ans.classList.add('hidden'); ans.textContent = '';
+        $('exCheckBtn').classList.remove('hidden');
+      }
+      // always reset result + show Next
+      var res = $('exResult');
+      res.classList.add('hidden'); res.classList.remove('ok', 'no'); res.innerHTML = '';
+      $('exNextBtn').classList.remove('hidden');
+      $('exBody').scrollTop = 0;
+    },
+    /* grade the current exercise: payload = { correct:bool, md:string } */
+    showExerciseResult(payloadJson){
+      var p;
+      try { p = (typeof payloadJson === 'string') ? JSON.parse(payloadJson) : payloadJson; }
+      catch(e){ p = {}; }
+      p = p || {};
+      var res = $('exResult');
+      var ok = !!p.correct;
+      res.classList.remove('hidden', 'ok', 'no');
+      res.classList.add(ok ? 'ok' : 'no');
+      var head = ok ? 'Correct' : 'Not quite';
+      var body = bold(esc(String(p.md == null ? '' : p.md))).replace(/\n+/g, '<br>');
+      res.innerHTML = '<div class="exResHead">' + head + '</div>' + body;
+      $('exCheckBtn').classList.add('hidden');
+      $('exNextBtn').classList.remove('hidden');
+      $('exBody').scrollTop = $('exBody').scrollHeight;
+    },
+    /* close exercise mode - return to the normal answer pill */
+    closeExercise(){
+      document.body.classList.remove('exercise');
+    }
   };
 
   $('fxBtn').addEventListener('click', () => {
@@ -853,14 +999,20 @@
     b.addEventListener('click', () => rateCard(+b.dataset.q));
   });
 
+  /* exercise wiring */
+  $('exCheckBtn').addEventListener('click', () => post({type:'panel', k:'workoutcheck'}));
+  $('exNextBtn').addEventListener('click', () => post({type:'panel', k:'workoutnext'}));
+  $('exEndBtn').addEventListener('click', () => post({type:'panel', k:'workoutend'}));
+
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (document.body.classList.contains('exercise')){ post({type:'panel', k:'workoutend'}); return; }
     if (document.body.classList.contains('practice')){ closePractice(); }
     else { post({type:'panel', k:'close'}); }
   });
 
   let dragOn = false, lx = 0, ly = 0;
-  const interactive = (t) => t.closest('.ghost, .fbtn, #body, .chip, #practice');
+  const interactive = (t) => t.closest('.ghost, .fbtn, #body, .chip, #practice, #exercise');
   document.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || interactive(e.target)) return;
     dragOn = true; lx = e.screenX; ly = e.screenY;
