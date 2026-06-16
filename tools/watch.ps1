@@ -1136,7 +1136,7 @@ function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne 
 function Apply-Strip {
   if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 300 }else{ 0 }) }
+  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 360 }else{ 0 }) }
   $nl=$wa4.Left+[int](($wa4.Width-$nw)/2); $nt=$wa4.Bottom-$nh-(Px 14)
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height

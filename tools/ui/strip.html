@@ -129,6 +129,9 @@
   .menu-row .m-ico{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:18px; height:18px; }
   .menu-row .m-ico svg{ display:block; }
   .menu-row .m-lbl{ flex:1 1 auto; font-size:13px; font-weight:600; letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* action row chevron (signals "opens something"; no on/off switch) */
+  .menu-row .m-chev{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:18px; height:18px; color:rgba(255,255,255,0.42); transition:color .16s ease, transform .16s ease; }
+  .menu-row:hover .m-chev{ color:rgba(255,255,255,0.7); transform:translateX(2px); }
   .sw{
     flex:0 0 auto; width:34px; height:18px; border-radius:999px;
     background:rgba(255,255,255,0.16); position:relative;
@@ -203,6 +206,11 @@
     <div id="barUI">
       <!-- overflow menu: toggles live here, opens upward above the bar -->
       <div id="menu">
+        <div class="menu-row" id="rowFlash" title="Flashcards - review your due flashcards and quiz yourself">
+          <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="6.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.5h11a2 2 0 0 1 2 2v9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M6.5 10h7M6.5 13h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+          <span class="m-lbl">Flashcards</span>
+          <span class="m-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </div>
         <div class="menu-row slider" id="rowVol" title="Voice volume - how loud the coach speaks">
           <span class="m-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9c1 .8 1.6 1.8 1.6 3s-.6 2.2-1.6 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
           <span class="m-lbl">Voice volume</span>
@@ -367,6 +375,12 @@
   $('chipMore').addEventListener('click', (e) => {
     e.stopPropagation();
     setMenu(!document.body.classList.contains('menu-open'));
+  });
+  /* Flashcards action row: start the flashcard session, then close the menu */
+  $('rowFlash').addEventListener('click', (e) => {
+    e.stopPropagation();
+    post({type:'act', k:'practice'});
+    setMenu(false);
   });
   // close when clicking anything that is not the menu or the more button
   document.addEventListener('pointerdown', (e) => {
