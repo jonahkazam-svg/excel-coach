@@ -1357,11 +1357,13 @@ function Check-Workout {
   if(-not $res){ $script:woBusy=$false; JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md="I could not read your answers. Make sure the Workout sheet is open, then press Check answer again."}) -Depth 4)+")"); return }
   if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null ([bool]$res.correct) | Out-Null }catch{} }
   if(Get-Command RT-RecordResult -ErrorAction SilentlyContinue){ try{ RT-RecordResult ([string]$script:rtCur.topicId) ([int]$script:rtCur.level) ([bool]$res.correct) $false | Out-Null }catch{} }
+  try{ if(Get-Command Mark-ExcelMistakes -ErrorAction SilentlyContinue){ Mark-ExcelMistakes $script:rtCur $xl $res.perCell | Out-Null } }catch{}
   $body=""
-  if($res.correct){ $body="Every answer cell checks out - nice work." }
+  if($res.correct){ $body="Every answer cell checks out - nice work. (Marked green on the sheet.)" }
   else {
     $body="Here is how your answer cells compare:`n"
     foreach($pc in @($res.perCell)){ $mk=$(if($pc.ok){"[ok]"}else{"[x]"}); $body+="`n- "+$mk+" "+[string]$pc.cell+": you have "+[string]$pc.got+", expected "+[string]$pc.expected }
+    $body+="`n`nI marked the wrong cells **red on the sheet** with what each should be."
   }
   if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
   $body+="`n`nPress **Next exercise** to continue, or **End** to save and exit."

@@ -106,7 +106,7 @@ Output ONLY a JSON object (no prose, no markdown, no code fences) with these fie
   "layout"  - REQUIRED when surface is "excel"; otherwise omit or null. An object:
         "title"       - a short sheet title string.
         "given"       - array of { "label": string, "value": number, "cell": "B2" } - the input figures, in real cells starting around B2, B3, ...
-        "answerCells" - array of { "label": string, "cell": "B6", "expected": number } - each blank cell the student must fill. Each "expected" MUST be deterministically computable from the "given" values (do the arithmetic yourself and put the exact number).
+        "answerCells" - array of { "label": string, "cell": "B6", "expected": number, "formula": string } - each blank cell the student must fill. Each "expected" MUST be deterministically computable from the "given" values (do the arithmetic yourself and put the exact number). "formula" is a SHORT plain-language calculation for THAT cell using the given labels (NOT the raw numbers), e.g. "Revenue - COGS - Operating Expenses".
 
 Rules:
 - For an "excel" exercise the given values are concrete numbers and every expected answer is exactly derivable from them (e.g. EBIT = Revenue - COGS - OpEx). Never ask for a number that is not computable from the given inputs.
@@ -291,13 +291,13 @@ function Grade-ExcelExercise($exercise,$xl){
     }
     foreach($a in $ans){
       if(-not $a){ continue }
-      $cell = ''; $expected = $null
-      try{ $cell = [string]$a.cell }catch{}; try{ $expected = $a.expected }catch{}
+      $cell = ''; $expected = $null; $label = ''; $formula = ''
+      try{ $cell = [string]$a.cell }catch{}; try{ $expected = $a.expected }catch{}; try{ $label = [string]$a.label }catch{}; try{ $formula = [string]$a.formula }catch{}
       if(-not $cell){ continue }
       $got = $null
       if($ws){ try{ $rc = $ws.Range($cell); $got = $rc.Value2; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($rc) }catch{} }
       $ok = RT-CellMatch $got $expected
-      [void]$perCell.Add(@{ cell=$cell; got=$got; expected=$expected; ok=$ok })
+      [void]$perCell.Add(@{ cell=$cell; got=$got; expected=$expected; ok=$ok; label=$label; formula=$formula })
     }
   } catch {} finally {
     foreach($o in @($ws,$wb)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
@@ -306,6 +306,59 @@ function Grade-ExcelExercise($exercise,$xl){
   $correct = ($cells.Count -gt 0)
   foreach($c in $cells){ if(-not $c.ok){ $correct = $false } }
   return @{ correct=$correct; perCell=$cells; worked=$worked }
+}
+
+# Shift a column letter by n (e.g. ('B',2) -> 'D'). Handles multi-letter columns.
+function Shift-Col($col, $n){
+  $col = ([string]$col).ToUpper(); if(-not $col){ return 'A' }
+  $num = 0; foreach($ch in $col.ToCharArray()){ $num = $num * 26 + ([int][char]$ch - 64) }
+  $num += [int]$n; if($num -lt 1){ $num = 1 }
+  $s = ''; while($num -gt 0){ $r = ($num - 1) % 26; $s = ([char](65 + $r)) + $s; $num = [int][math]::Floor(($num - 1) / 26) }
+  return $s
+}
+
+# After grading, mark the "Workout" sheet so mistakes are visible IN EXCEL: wrong
+# answer cells turn light red, correct ones light green, and 2 columns to the right
+# of each WRONG cell write "should be <expected> (<formula>)" in red. Re-running on a
+# re-check updates cleanly (clears the prior note; a now-correct cell goes green with
+# no note). ONLY the "Workout" sheet is touched. Returns the count of wrong cells.
+function Mark-ExcelMistakes($exercise, $xl, $perCell){
+  $wrong = 0
+  if(-not $exercise -or -not $xl){ return 0 }
+  $cells = @(); try{ $cells = @($perCell) }catch{}
+  if($cells.Count -lt 1){ return 0 }
+  $wb = $null; $ws = $null
+  try {
+    if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb = Get-XlBook $xl } else { try{ $wb = $xl.ActiveWorkbook }catch{} }
+    if(-not $wb){ return 0 }
+    foreach($w in $wb.Worksheets){ try{ if($w.Name -eq 'Workout'){ $ws = $w; break } }catch{} }
+    if(-not $ws){ return 0 }
+    $RED = 13552127; $GREEN = 13562310
+    foreach($pc in $cells){
+      if(-not $pc){ continue }
+      $cell = ''; try{ $cell = [string]$pc.cell }catch{}
+      if(-not $cell){ continue }
+      $ok = $false; try{ $ok = [bool]$pc.ok }catch{}
+      try{ $ac = $ws.Range($cell); $ac.Interior.Color = $(if($ok){ $GREEN }else{ $RED }); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ac) }catch{}
+      $colL = ($cell -replace '[0-9]+',''); $rowN = ($cell -replace '^[A-Za-z]+','')
+      $corr = ''; if($colL -and $rowN){ $corr = (Shift-Col $colL 2) + $rowN }
+      if($corr){
+        # always clear any prior note so a re-check after a fix updates cleanly
+        try{ $cc = $ws.Range($corr); $cc.ClearContents(); try{ $cc.Font.Italic = $false }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
+        if(-not $ok){
+          $wrong++
+          $txt = 'should be ' + [string]$pc.expected
+          $fm = ''; try{ $fm = [string]$pc.formula }catch{}
+          if($fm){ $txt = $txt + '  (' + $fm + ')' }
+          RT-SetCell $ws $corr $txt
+          try{ $cc = $ws.Range($corr); try{ $cc.Font.Color = 192 }catch{}; try{ $cc.Font.Italic = $true }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
+        }
+      }
+    }
+  } catch {} finally {
+    foreach($o in @($ws,$wb)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
+  }
+  return $wrong
 }
 
 # The 57 curriculum topics merged with their mastery state.

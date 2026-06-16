@@ -178,6 +178,11 @@ if(Get-Command RT-NormalizeExercise -ErrorAction SilentlyContinue){
   Assert "cellmatch: (20, 25) -> false"    (-not (RT-CellMatch 20 25))
   Assert "cellmatch: (100, 100.4) -> true" (RT-CellMatch 100 100.4)
   Assert "cellmatch: ('abc', 5) -> false"  (-not (RT-CellMatch 'abc' 5))
+  if(Get-Command Shift-Col -ErrorAction SilentlyContinue){
+    Assert "shiftcol: B+2 -> D"  ((Shift-Col 'B' 2) -eq 'D')
+    Assert "shiftcol: A+0 -> A"  ((Shift-Col 'A' 0) -eq 'A')
+    Assert "shiftcol: Z+1 -> AA" ((Shift-Col 'Z' 1) -eq 'AA')
+  } else { Assert "Shift-Col defined" $false }
 } else { Assert "RT-NormalizeExercise defined" $false }
 
 # ---------------------------------------------------------------------------
