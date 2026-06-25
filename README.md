@@ -1,86 +1,77 @@
 # Excel Coach
 
-An ambient, on-screen study coach for Windows. It listens to your lesson, watches
-your screen, and helps you drill the material with flashcards, multiple-choice
-quizzes, and live fill-in-the-blank Excel exercises - all in a small floating
-strip that stays out of your way.
+An ambient AI study coach for Excel and finance. It quietly watches your screen and listens to your lesson, then helps you **learn by doing** — it answers questions about whatever's on your screen, catches mistakes in your spreadsheet as you make them, runs adaptive practice drills, and builds worked examples + cheat sheets right inside Excel.
 
-Excel Coach uses **your own** OpenAI API key. The key is stored only on your PC
-(in a local `.env` file) and is never sent anywhere except OpenAI.
+Built for self-studying finance (Breaking Into Wall Street / IB-style 3-statement modeling), but the practice engine works for any subject it watches you study.
+
+> Bring your own OpenAI API key. Everything runs locally on your PC; your key stays in a local `.env` file and is never sent anywhere except OpenAI.
 
 ---
 
-## Install (one line)
+## Quick start (Windows 10/11)
 
-Open **Windows PowerShell** and paste:
+1. **Download** this repo — click **Code → Download ZIP**, then unzip it (or `git clone`).
+2. **Double-click `Start Coach.bat`.**
+   - On the first run it asks for your **OpenAI API key** — paste it and press Enter. (Get one at <https://platform.openai.com/api-keys>.)
+   - It then launches the coach: a small floating bar appears at the bottom of your screen.
+3. Open Excel and start working. Click the bar's buttons or just ask out loud / type.
 
-```powershell
-irm https://raw.githubusercontent.com/jonahkazam-svg/excel-coach/main/install.ps1 | iex
-```
-
-That single command will:
-
-1. Download the latest release and verify it.
-2. Install the WebView2 runtime and ffmpeg if they are missing.
-3. Ask for your OpenAI API key and your microphone (first run only).
-4. Add an **Excel Coach** shortcut to your Start menu and launch it.
-
-You will need an OpenAI API key - get one at
-<https://platform.openai.com/api-keys>.
+That's it. To stop it, click the **✕** on the bar.
 
 ---
 
-## Using it
+## What it does
 
-- Launch from the **Excel Coach** Start-menu shortcut any time.
-- A thin strip appears at the top of your screen. Open the menu for:
-  - **Flashcards** - review cards, with an expand/simplify button when stuck.
-  - **Run-through** - an adaptive drill that quizzes you bit by bit and retries
-    what you miss until it is solid.
-  - **Excel** - generates a fill-in exercise on a fresh worksheet, then checks
-    your answers and marks the wrong cells with the correct calculation.
-- It only coaches the material in **your course scope** (see below).
+A floating bar gives you, one click each:
 
-## Course scope
+- **Assist** — answers your question, or reads your screen + Excel if the box is empty. Streams the answer as it types.
+- **Kick-start** — a nudge to get moving on the current sheet (the next concrete step, not the answer).
+- **Why this cell** — explains the reasoning + the reusable rule behind the cell your cursor is on.
+- **Check my sheet** — a deep audit of every formula against the goal, with exact fixes.
+- **Cheat sheet** — drops a compact step-by-step reference card to the right of your work.
+- **Demo + practice** — builds a new tab with a fully worked example on the left and a blank, highlighted practice version on the right, then checks your answers.
+- **Run-through** — an adaptive drill that gets harder as you get things right and gives fresh variations when you slip.
+- **Flashcards / Practice** — spaced-repetition review.
 
-`data\scope.json` controls which topics the coach will teach and quiz you on:
-
-```json
-{ "domains": ["Accounting", "3-Stmt Modeling", "Excel"] }
-```
-
-Only topics in those domains are used - so it never drifts into material you have
-not covered. Edit this file to widen or narrow what it drills. An empty list
-(`{ "domains": [] }`) means no restriction.
-
-## Updates
-
-Excel Coach checks GitHub Releases on launch and updates itself automatically.
-Your API key, course scope, and progress are always preserved across updates.
+It also watches in the background and flags spreadsheet mistakes as you make them.
 
 ---
 
 ## Requirements
 
-- Windows 10/11, Windows PowerShell 5.1 (built in).
-- Microsoft Excel (for the Excel exercises).
-- An OpenAI API key.
+- **Windows 10 or 11.**
+- An **OpenAI API key** (pay-as-you-go; the default "fast" model is `gpt-5-mini`, which keeps everyday use cheap).
+- **Microsoft Excel** (for the Excel-specific features). The coach also helps with quizzes/exercises in a browser or other windows.
 
-## Privacy
+The WebView2 runtime needed for the UI ships with the app (in `tools/webview2`).
 
-- Your API key lives only in `<install>\.env` on your machine.
-- Your captured notes, recordings, and study progress stay local and are never
-  uploaded anywhere.
+---
 
-## For maintainers
+## Optional: full-fidelity screen capture
 
-To cut a new release (requires the GitHub CLI `gh`, authenticated):
+The coach reads your screen so it can help with image-based content (e.g. a screenshot of a financial statement pasted into Excel). Windows Defender sometimes blocks screen-capture code by default. If you want the sharpest capture and the most reliable background watcher, run **`ENABLE COACH (run once before demo).bat`** once **as Administrator** — it adds this folder to Defender's exclusions. This is optional; the coach works without it.
 
-```powershell
-# from the repo root
-. .\tools\release.ps1
-Publish-Release -Version 2.1.0 -Notes "What changed"
-```
+---
 
-This builds `dist\excel-coach-<version>.zip` + `dist\latest.json`, then creates
-the GitHub release. The next time any user launches, they update automatically.
+## Changing settings
+
+Run **`tools\Set OpenAI key.bat`** any time to update your key. For model/voice/mic overrides, copy **`.env.example`** to **`.env`** and edit it (see the comments in that file).
+
+---
+
+## Privacy & cost
+
+- **Local-first.** The app runs on your machine. Your study content, progress, and `.env` (with your key) stay local and are git-ignored — they are never committed or uploaded.
+- **Your key, your bill.** API calls go directly from your PC to OpenAI using your key. Costs scale with use; the fast tier is inexpensive, and "Check my sheet" / "Explain in detail" use a stronger (pricier) model only when you ask for them.
+
+---
+
+## Troubleshooting
+
+- **Nothing happens / no bar:** double-click `Start Coach.bat` again (it clears any stuck instance and restarts cleanly).
+- **"No key" / it exits:** run `tools\Set OpenAI key.bat` and paste a valid key (starts with `sk-`).
+- **Answers seem to ignore your sheet while you're typing in a cell:** press Enter/Esc to leave edit mode first (Excel blocks reads mid-edit).
+
+---
+
+*Not affiliated with OpenAI or Microsoft. Provided as-is.*

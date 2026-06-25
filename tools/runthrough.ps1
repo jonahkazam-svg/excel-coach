@@ -9,8 +9,14 @@ function RT-StatePath {
   if(-not (Test-Path $dir)){ try{ New-Item -ItemType Directory -Force -Path $dir | Out-Null }catch{} }
   return (Join-Path $dir 'runthrough-state.json')
 }
-function RT-NewState { return @{ topics = @{}; updatedAt = '' } }
-function RT-NewTopicRec { return @{ level = 1; streak = 0; attempts = 0; correct = 0; mastered = @(); lastSeen = '' } }
+function RT-NewState { return @{ topics = @{}; updatedAt = ''; clock = 0 } }
+# Per-topic record. Original fields (level/streak/attempts/correct/mastered/lastSeen)
+# are unchanged so old readers keep working. Scheduling fields added for the spaced
+# -repetition scheduler; old JSON entries that lack them are tolerated by RT-TopicRec
+# (they default in). reps = consecutive-correct count toward an interval; ease = SM-2
+# -lite spacing multiplier; interval = picks to wait before due again; due = the global
+# pick-clock value at/after which the topic is due; lapses = lifetime miss count.
+function RT-NewTopicRec { return @{ level = 1; streak = 0; attempts = 0; correct = 0; mastered = @(); lastSeen = ''; reps = 0; ease = 2.3; interval = 0; due = 0; lapses = 0 } }
 
 function RT-LoadState {
   $p = RT-StatePath
@@ -22,6 +28,8 @@ function RT-LoadState {
     $st = RT-NewState
     if($o.topics){ foreach($prop in $o.topics.PSObject.Properties){ $st.topics[$prop.Name] = $prop.Value } }
     if($o.updatedAt){ $st.updatedAt = [string]$o.updatedAt }
+    $cl = $null; try{ $cl = $o.clock }catch{}
+    if($null -ne $cl){ try{ $st.clock = [int]$cl }catch{ $st.clock = 0 } }
     return $st
   } catch { return (RT-NewState) }
 }
@@ -43,7 +51,9 @@ function RT-TopicRec($state,$topicId){
   $rec = RT-NewTopicRec
   if($state -and $state.topics -and $state.topics.ContainsKey($topicId)){
     $r = $state.topics[$topicId]
-    foreach($k in @('level','streak','attempts','correct','mastered','lastSeen')){
+    # Old entries predate reps/ease/interval/due/lapses; only copy a field when the
+    # stored record actually has it, so missing scheduling fields keep their defaults.
+    foreach($k in @('level','streak','attempts','correct','mastered','lastSeen','reps','ease','interval','due','lapses')){
       $v = $null; try{ $v = $r.$k }catch{}
       if($null -ne $v){ $rec[$k] = $v }
     }
@@ -74,7 +84,79 @@ function RT-ReadEnv($name,$default){
 # them); for a definition/classification topic ask for surface='pill' with choices.
 # Matches deck.ps1's curl/Bearer/temp-file pattern + gpt-4o-mini. Returns the
 # normalized hashtable or $null on any failure. NOT exercised by tests (network).
-function Make-Exercise($topicId,$level,$nonce=''){
+# Pure: true if every cell token (e.g. B2, AA10) mentioned in an excel exercise's prompt
+# actually appears in its layout (given or answerCells). Guards against the model writing
+# a question about cells the sheet never populates. Period tokens (Q1, H2, FY24) are not
+# treated as cell refs. Non-excel exercises are always "consistent". No network.
+function RT-ExcelConsistent($ex){
+  try{
+    if($null -eq $ex -or $ex.surface -ne 'excel'){ return $true }
+    $cells=@{}
+    foreach($g in @($ex.layout.given)){ $c=([string]$g.cell).ToUpper(); if($c){ $cells[$c]=$true } }
+    foreach($a in @($ex.layout.answerCells)){ $c=([string]$a.cell).ToUpper(); if($c){ $cells[$c]=$true } }
+    if($cells.Count -lt 1){ return $false }
+    $refs = [regex]::Matches(([string]$ex.prompt).ToUpper(), '\b[A-Z]{1,3}[0-9]{1,4}\b')
+    foreach($m in $refs){
+      $v=$m.Value
+      if($v -match '^(Q[1-4]|H[12]|FY[0-9]{1,4})$'){ continue }   # period tokens, not cell refs
+      if(-not $cells.ContainsKey($v)){ return $false }
+    }
+    return $true
+  }catch{ return $true }
+}
+# Deterministically recompute each excel answer cell's "expected" from the given inputs
+# and that cell's plain-language "formula", then OVERRIDE the stored number with the
+# computed value. This kills the class of bug where the model's self-reported answer
+# disagrees with its own formula (e.g. EBITDA showing "should be 120000" under a formula
+# that actually yields 200000) - after this, the graded answer ALWAYS matches the formula
+# the student is shown. Substitutes labels->values (longest label first, word-bounded;
+# also exposes earlier answer cells as labels for multi-step formulas), then evaluates the
+# pure-arithmetic expression with DataTable.Compute (no code execution). Returns
+# @{ ok=<every cell cleanly computed>; changed=<any expected overridden> } and mutates
+# $ex.layout.answerCells[].expected. A formula with an unmatched label or a non-arithmetic
+# leftover is left as-is and makes ok=$false so the caller can retry/flag. Pure (no network).
+function RT-RecomputeExpected($ex){
+  try{
+    if($null -eq $ex -or $ex.surface -ne 'excel'){ return @{ ok=$true; changed=$false } }
+    $vals = @{}
+    $labels = New-Object System.Collections.ArrayList
+    foreach($g in @($ex.layout.given)){
+      $lab = ''; try{ $lab = ([string]$g.label).Trim() }catch{}
+      if(-not $lab){ continue }
+      $num = $null; try{ $num = [double](([string]$g.value) -replace '[\$,%\s]','') }catch{}
+      if($null -ne $num){ $vals[$lab.ToLower()] = $num; [void]$labels.Add($lab) }
+    }
+    $allOk = $true; $changed = $false
+    foreach($a in @($ex.layout.answerCells)){
+      $formula = ''; try{ $formula = ([string]$a.formula).Trim() }catch{}
+      if(-not $formula){ $allOk = $false; continue }
+      $expr = $formula
+      foreach($lab in ($labels | Sort-Object { $_.Length } -Descending)){
+        $pat = '(?<![A-Za-z0-9])'+[regex]::Escape($lab)+'(?![A-Za-z0-9])'
+        $expr = [regex]::Replace($expr, $pat, ([string]$vals[$lab.ToLower()]), 'IgnoreCase')
+      }
+      if($expr -match '[A-Za-z]'){ $allOk = $false; continue }   # an unmatched label remains -> cannot verify
+      $clean = ($expr -replace '[^0-9\.\+\-\*\/\(\)\s]','').Trim()
+      if(-not $clean){ $allOk = $false; continue }
+      $val = $null
+      try{ $val = (New-Object System.Data.DataTable).Compute($clean,'') }catch{ $val = $null }
+      if($null -eq $val -or $val -is [System.DBNull]){ $allOk = $false; continue }
+      $computed = 0.0; if(-not [double]::TryParse(([string]$val),[ref]$computed)){ $allOk = $false; continue }
+      $ls = ''; try{ $ls = ([string]$a.expected) -replace '[\$,%\s]','' }catch{}
+      $lp = 0.0; $haveLlm = [double]::TryParse($ls,[ref]$lp)
+      $tol = [math]::Max(0.01, 0.005*[math]::Abs($computed))
+      if((-not $haveLlm) -or ([math]::Abs($computed - $lp) -gt $tol)){
+        if($a -is [hashtable]){ $a['expected'] = $computed }
+        else { try{ $a.expected = $computed }catch{ try{ $a | Add-Member -NotePropertyName expected -NotePropertyValue $computed -Force }catch{ $allOk = $false } } }
+        $changed = $true
+      }
+      $alab = ''; try{ $alab = ([string]$a.label).Trim() }catch{}
+      if($alab){ $vals[$alab.ToLower()] = $computed; [void]$labels.Add($alab) }
+    }
+    return @{ ok=$allOk; changed=$changed }
+  }catch{ return @{ ok=$false; changed=$false } }
+}
+function Make-Exercise($topicId,$level,$nonce='',$prior=$null,$mode='expand'){
   $topicId = [string]$topicId
   $lvl = 1; try{ $lvl = [int]$level }catch{ $lvl = 1 }
   $nonce = [string]$nonce
@@ -90,6 +172,13 @@ function Make-Exercise($topicId,$level,$nonce=''){
   if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){
     try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq $topicId){ $tName=[string]$t.topic; $tCat=[string]$t.domain; $tTier=[string]$t.tier; break } } }catch{}
   }
+  # OBSERVED CURRICULUM (v3): an id like 'obs-...' is a concept the coach watched + distilled.
+  # Ground the exercise in EXACTLY what the source taught (its definition/method/example),
+  # not the fixed finance deck - this is what lets the run-through drill any watched subject.
+  $obsGround = ''
+  if($topicId -like 'obs-*' -and (Get-Command Obs-Load -ErrorAction SilentlyContinue)){
+    try{ foreach($o in @(Obs-Load)){ if([string]$o.id -eq $topicId){ $tName=[string]$o.title; if($o.domain){ $tCat=[string]$o.domain }; $tTier='observed'; $g=[string]$o.taught; if([string]$o.example){ $g=$g+"  Example as shown: "+[string]$o.example }; $obsGround=$g; break } } }catch{}
+  }
   $sys = @'
 You generate ONE exercise for a finance student prepping for an investment-banking fellowship. You are given a curriculum topic (id, category, name) and a difficulty level (1=atom, 2=step, 3=section, 4=whole). Decide whether the topic is best drilled as a CALCULATION (the student computes numbers in Excel) or as a DEFINITION/CLASSIFICATION (the student picks or types an answer).
 
@@ -98,7 +187,7 @@ Output ONLY a JSON object (no prose, no markdown, no code fences) with these fie
   "topicId" - echo the given topic id.
   "level"   - echo the given level (integer).
   "surface" - "excel" for a calculation, "pill" for a definition/classification.
-  "prompt"  - the question text shown to the student. Plain ASCII, tight, no preamble.
+  "prompt"  - the question text shown to the student. Plain ASCII, tight, no preamble. For an "excel" exercise the prompt MUST describe the SAME scenario as "layout": refer to the given figures by their real labels and/or their cells, and ask the student to fill ONLY the highlighted answer cell(s). NEVER mention a cell that is not listed in "given" or "answerCells", and never reference values or formulas that are not in the layout. The student reads this prompt while looking at exactly the cells in "layout" - they must line up.
   "answer"  - for a pill: the correct answer string (or the correct choice text). For an excel exercise this may be empty.
   "choices" - for a pill MULTIPLE-CHOICE: an array of 3-4 distinct plausible strings, one correct. For a typed pill or an excel exercise: an empty array [].
   "worked"  - a short plain-text worked solution / explanation a student can learn from.
@@ -109,14 +198,20 @@ Output ONLY a JSON object (no prose, no markdown, no code fences) with these fie
         "answerCells" - array of { "label": string, "cell": "B6", "expected": number, "formula": string } - each blank cell the student must fill. Each "expected" MUST be deterministically computable from the "given" values (do the arithmetic yourself and put the exact number). "formula" is a SHORT plain-language calculation for THAT cell using the given labels (NOT the raw numbers), e.g. "Revenue - COGS - Operating Expenses".
 
 Rules:
-- For an "excel" exercise the given values are concrete numbers and every expected answer is exactly derivable from them (e.g. EBIT = Revenue - COGS - OpEx). Never ask for a number that is not computable from the given inputs.
+- For an "excel" exercise the given values are concrete numbers and every expected answer is exactly derivable from them (e.g. Gross Profit = Revenue - COGS). Never ask for a number that is not computable from the given inputs.
+- NO DOUBLE-COUNTING (critical for EBIT / EBITDA / operating income): use each given line item AT MOST ONCE. If Depreciation and/or Amortization are GIVEN as their own separate line items, they have ALREADY been subtracted in reaching operating profit - so EBITDA = Revenue - COGS - Operating Expenses (the D&A net out) and EBIT = Revenue - COGS - Operating Expenses - Depreciation - Amortization. Do NOT compute "Revenue - COGS - OpEx + Depreciation + Amortization" - that adds D&A back onto a base that never subtracted them (a double-count). Only "add back D&A" when D&A are embedded inside COGS/OpEx and are NOT listed as separate given inputs. When in doubt, do not list D&A as separate inputs for an EBITDA question.
 - SELF-CONTAINED + COURSE-LEVEL: the exercise must use ONLY the basic, explicitly-stated method for this topic. The "expected" value MUST follow ONLY from the given values and the stated "formula", with NO hidden conventions or extra assumptions - NO mid-year convention, stub periods, day-count, inflation, terminal-value, tax adjustments, or rounding rules - unless the question text itself states them AND the topic is specifically about them. A student who applies the stated formula to the given numbers must get EXACTLY "expected". Keep numbers clean and the method singular; this is a foundational course, not an advanced modeling test.
 - GROUND STRICTLY in the course content provided for this topic (the study cards in the user message, when present). Use ONLY the definitions, formulas, and methods shown there. If a concept, formula, convention, or method is NOT in that course content, treat it as OUT OF SCOPE and do not use it.
 - Put given inputs and answer cells in DISTINCT cells (do not reuse a cell). Use column B for values.
+- CONSISTENCY (excel): the sheet the student sees is built ENTIRELY from "layout". The "prompt", the "title", and every "label" must describe the SAME scenario and the SAME cells as "given"/"answerCells". A reader must be able to answer using ONLY the labelled given values and the highlighted answer cell(s) - the prompt must not reference any cell, value, or formula that is not in the layout. (Bad: prompt says "enter =A1*B1 and copy to C2" while the layout never defines A1 or B1. Good: prompt says "Using Revenue in B2 and COGS in B3, compute Gross Profit in the highlighted cell B4.")
+- LABELS name WHAT the number is (e.g. "Revenue", "Units sold", "Tax rate"), NEVER the cell address. Never write a label like "Value in B1" or "Formula in C2".
 - For a "pill" classification, prefer 4 plausible choices with exactly one correct; wrong choices are realistic confusions.
 - Plain ASCII only: straight quotes, hyphens, -> for arrows. No characters outside basic ASCII.
 - Output the JSON object and nothing else.
 '@
+  # For an OBSERVED concept the subject can be anything (Biology, History, Excel...), so drop
+  # the finance/IB framing and tell the model to stay strictly inside what the source taught.
+  if($topicId -like 'obs-*'){ $sys = $sys -replace 'You generate ONE exercise for a finance student prepping for an investment-banking fellowship\.', ('You generate ONE exercise for a student drilling a topic from their OWN study material (subject: '+$tCat+'). Work strictly within what the source taught (provided below) - do NOT assume finance or any domain the material does not indicate.') }
   $lvlMeaning = switch($lvl){ 1 {'atom: a single definition, classification, or one-number calculation'} 2 {'step: a short two or three line calculation'} 3 {'section: a small block of a statement'} 4 {'whole: a fuller worked statement'} default {'atom'} }
   # Ground STRICTLY in the course's OWN content for this topic (its study cards), so the
   # exercise can never introduce anything outside what the student is actually learning.
@@ -124,34 +219,76 @@ Rules:
   if(Get-Command Get-TopicCards -ErrorAction SilentlyContinue){
     try { $cards = @(Get-TopicCards $topicId); $lines = @(); $cn = 0; foreach($c in $cards){ if($cn -ge 16){ break }; $f = [string]$c.front; $b = [string]$c.back; if($f){ $lines += ('- ' + $f + ': ' + $b); $cn++ } }; if($lines.Count){ $courseContent = ($lines -join "`n") } } catch {}
   }
-  $user = "Curriculum topic:`n  id: "+$topicId+"`n  category: "+$tCat+"`n  topic: "+$tName+"`n  tier: "+$tTier+"`n"
-  if($courseContent){ $user += "`nEXACTLY what the course covers for this topic (its study cards). Build the exercise using ONLY these definitions, formulas, and concepts - do NOT introduce anything that is not represented below:`n"+$courseContent+"`n" }
+  if($obsGround){ $courseContent = $obsGround }   # observed concept -> ground in EXACTLY what the source taught, not the fixed deck
+  $user = "Topic to drill:`n  id: "+$topicId+"`n  subject: "+$tCat+"`n  topic: "+$tName+"`n  tier: "+$tTier+"`n"
+  if($courseContent){ $user += "`nEXACTLY what was taught for this topic. Build the exercise using ONLY these definitions, formulas, and concepts - do NOT introduce anything not represented below:`n"+$courseContent+"`n" }
   $user += "`nDifficulty level: "+$lvl+" ("+$lvlMeaning+").`nGenerate ONE exercise for this topic at this level as a single JSON object per the rules."
   if($nonce){ $user = $user+"`nVariation token "+$nonce+": use DIFFERENT specific numbers than any previous version of this exercise." }
-  $payload = $null
-  if($model -match '^gpt-5'){
-    $payload = (@{ model=$model; max_completion_tokens=1400; reasoning_effort='medium'; messages=@(@{role='system';content=$sys},@{role='user';content=$user}) } | ConvertTo-Json -Depth 10)
-  } else {
-    $payload = (@{ model=$model; max_tokens=1100; temperature=0; messages=@(@{role='system';content=$sys},@{role='user';content=$user}) } | ConvertTo-Json -Depth 10)
+  # EXPANSION (adaptive ladder): when extending a just-passed exercise, keep the SAME
+  # scenario, fold every prior value (inputs AND the answers the student computed) into the
+  # 'given', and add exactly ONE new dependent step - one notch harder. This is what makes a
+  # correct answer "grow" the exercise instead of jumping to an unrelated one.
+  if($prior -and $prior.layout){
+    $givenLines=""; $allLabels=@()
+    try{ foreach($g in @($prior.layout.given)){ $givenLines += "  - "+[string]$g.label+" = "+[string]$g.value+"`n"; $allLabels += [string]$g.label } }catch{}
+    $ansLines=""
+    try{ foreach($a in @($prior.layout.answerCells)){ $ansLines += "  - "+[string]$a.label+" = "+[string]$a.expected+"`n"; $allLabels += [string]$a.label } }catch{}
+    if($mode -eq 'vary'){
+      # FAIL path: re-test the SAME thing with DIFFERENT numbers (the model can't see prior
+      # calls, so we must show it exactly which numbers to avoid - otherwise it repeats them).
+      if($givenLines){ $user += "`nThis is a RE-ATTEMPT: the student just missed a similar exercise, so build a FRESH VARIATION of the SAME concept at the SAME difficulty - same structure and the same thing to compute, but you MUST choose DIFFERENT specific input numbers. Do NOT reuse any of these values:`n"+$givenLines+"Pick new, clean numbers and keep the scenario equivalent.`n" }
+    } else {
+      # PASS path: grow the SAME scenario by exactly one new step.
+      if($givenLines -or $ansLines){
+        $lab = ($allLabels | Where-Object { $_ } | Select-Object -Unique) -join ', '
+        $user += "`nEXPAND THIS EXERCISE - do NOT start a new unrelated one and do NOT just rephrase it. The student just correctly finished a step. Build an 'excel' exercise that:`n  1) lists EVERY one of these as a 'given' (copy them verbatim into 'given' with these exact values):`n"+$givenLines+$ansLines+"  2) adds EXACTLY ONE NEW answer cell whose label is NOT one of these ("+$lab+") - it must be the NEXT step up, one notch more complex (the next line of the calculation, a ratio/margin, or a small twist that USES the values above).`nKeep the SAME scenario and numbers; only add the one new step. If there is no meaningful next step for this concept, move to the closest follow-on calculation that builds on these values.`n"
+      }
+    }
   }
-  $bf = Join-Path $env:TEMP ("xc_rt_"+($topicId -replace '[^A-Za-z0-9]','')+"_"+$lvl+".json")
-  try { [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false))) } catch { return $null }
-  $rr = $null
-  try { $rr = & curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$key) -H "Content-Type: application/json" -d ("@"+$bf) } catch {}
-  try { Remove-Item $bf -ErrorAction SilentlyContinue } catch {}
-  $jj = $null; try{ $jj = $rr | ConvertFrom-Json }catch{}
-  if(-not $jj -or -not $jj.choices){ return $null }
-  $content = [string]$jj.choices[0].message.content
-  if(-not $content){ return $null }
-  # Strip any accidental code fences and isolate the JSON object.
-  $content = ($content -replace '(?s)^.*?```(?:json)?',''); $content = ($content -replace '(?s)```.*$','')
-  $content = $content.Trim()
-  $s = $content.IndexOf('{'); $e = $content.LastIndexOf('}')
-  if($s -lt 0 -or $e -le $s){ return $null }
-  $content = $content.Substring($s,$e-$s+1)
-  $obj = $null; try{ $obj = $content | ConvertFrom-Json }catch{}
-  if($null -eq $obj){ return $null }
-  $norm = $null; try{ $norm = RT-NormalizeExercise $obj $topicId $lvl }catch{ return $null }
+  # Generate, then for an excel exercise verify the prompt is consistent with the layout
+  # (references only cells the sheet actually defines). Retry once if not - this is the
+  # guard against "the question makes no sense vs the sheet" exercises. Never hard-fail on
+  # inconsistency alone: keep the last candidate as a fallback so the drill still runs.
+  $norm = $null
+  for($attempt=0; $attempt -lt 2; $attempt++){
+    $uMsg = $user
+    if($attempt -gt 0){ $uMsg = $user + "`n`nIMPORTANT: the previous attempt was rejected as inconsistent. Either the prompt referenced cells/values not in the layout, OR an answerCell.formula used a name that is not one of the given labels so its answer could not be verified. Regenerate so that: (1) the prompt, title and labels reference ONLY cells listed in given/answerCells; (2) each answerCell.formula uses ONLY the exact given labels joined by + - * / and parentheses (no other words); and (3) each expected EQUALS that formula applied to the given numbers - do the arithmetic carefully and double-check it." }
+    if($model -match '^gpt-5'){
+      $payload = (@{ model=$model; max_completion_tokens=1400; reasoning_effort='medium'; messages=@(@{role='system';content=$sys},@{role='user';content=$uMsg}) } | ConvertTo-Json -Depth 10)
+    } else {
+      $payload = (@{ model=$model; max_tokens=1100; temperature=0; messages=@(@{role='system';content=$sys},@{role='user';content=$uMsg}) } | ConvertTo-Json -Depth 10)
+    }
+    $bf = Join-Path $env:TEMP ("xc_rt_"+($topicId -replace '[^A-Za-z0-9]','')+"_"+$lvl+".json")
+    try { [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false))) } catch { return $null }
+    $rr = $null
+    try { $rr = & curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$key) -H "Content-Type: application/json" -d ("@"+$bf) } catch {}
+    try { Remove-Item $bf -ErrorAction SilentlyContinue } catch {}
+    $jj = $null; try{ $jj = $rr | ConvertFrom-Json }catch{}
+    if(-not $jj -or -not $jj.choices){ continue }
+    $content = [string]$jj.choices[0].message.content
+    if(-not $content){ continue }
+    # Strip any accidental code fences and isolate the JSON object.
+    $content = ($content -replace '(?s)^.*?```(?:json)?',''); $content = ($content -replace '(?s)```.*$','')
+    $content = $content.Trim()
+    $s = $content.IndexOf('{'); $e = $content.LastIndexOf('}')
+    if($s -lt 0 -or $e -le $s){ continue }
+    $content = $content.Substring($s,$e-$s+1)
+    $obj = $null; try{ $obj = $content | ConvertFrom-Json }catch{}
+    if($null -eq $obj){ continue }
+    $cand = $null; try{ $cand = RT-NormalizeExercise $obj $topicId $lvl }catch{ $cand = $null }
+    if($null -eq $cand){ continue }
+    $norm = $cand                                   # remember best-effort fallback
+    if($cand.surface -ne 'excel'){ break }          # pills have no layout to contradict
+    # Numeric self-consistency: recompute each ARITHMETIC answer cell's expected from its
+    # formula + the given inputs and OVERRIDE the stored number, so the graded answer can
+    # never disagree with the formula shown (this is what fixes the EBITDA-class bug). Non-
+    # arithmetic formulas (IF/logical/text) can't be evaluated and are left as-is - we do
+    # NOT force a retry on them, or every logical exercise would regenerate ~2x for nothing.
+    # Structural consistency (prompt references only real layout cells) still gates.
+    [void](RT-RecomputeExpected $cand)
+    if(RT-ExcelConsistent $cand){ break }
+    # otherwise loop once more to try for a structurally consistent one
+  }
   return $norm
 }
 
@@ -393,11 +530,28 @@ function Get-RTTopics {
   $topics = @()
   if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ $topics = @(Get-Curriculum) }catch{} }
   $state = RT-LoadState
+  # GROUND IN WHAT THE STUDENT HAS ACTUALLY LEARNED. Only drill topics the watcher has
+  # logged as covered in lessons - Mastery status exposed/shaky/solid. Topics never seen
+  # in a lesson (unseen, or absent from Mastery) are excluded, so the run-through never
+  # quizzes unlearned material. Cold-start safety: if nothing is covered yet, fall back to
+  # the full in-scope set so the drill is never empty.
+  $covered = @{}
+  try{ if(Get-Command Get-Mastery -ErrorAction SilentlyContinue){ $mm = Get-Mastery; foreach($k in $mm.Keys){ $st=[string]$mm[$k].status; if($st -eq 'exposed' -or $st -eq 'shaky' -or $st -eq 'solid'){ $covered[[string]$k]=$true } } } }catch{}
+  $gateToLearned = ($covered.Count -gt 0)
   $out = New-Object System.Collections.ArrayList
   foreach($t in $topics){
     if((Get-Command Test-DomainInScope -ErrorAction SilentlyContinue) -and -not (Test-DomainInScope $t.domain)){ continue }
+    if($gateToLearned -and -not $covered.ContainsKey([string]$t.id)){ continue }   # not learned with me yet -> do not drill it
     $rec = RT-TopicRec $state $t.id
     [void]$out.Add(@{ id = [string]$t.id; name = [string]$t.topic; category = [string]$t.domain; state = $rec })
+  }
+  # v3 OBSERVED CURRICULUM: also drill what the coach actually watched + distilled. These
+  # concepts ARE "what you learned with me," so they always belong in the pool (no gate),
+  # alongside the covered curriculum. For a non-finance session the curriculum above is all
+  # out-of-scope, so this becomes the entire pool - which is the whole point of v3. New ones
+  # have no RT-state yet, so the picker treats them as unseen and drills them first.
+  if(Get-Command Get-ObservedTopics -ErrorAction SilentlyContinue){
+    try{ foreach($ot in @(Get-ObservedTopics)){ $oid=[string]$ot.id; if($oid){ [void]$out.Add(@{ id = $oid; name = [string]$ot.name; category = [string]$ot.category; state = $ot.state }) } } }catch{}
   }
   return $out
 }
@@ -451,12 +605,27 @@ function Grade-PillExercise($exercise,$answer){
   return @{ correct=$false; expected=([string]$rawAns); worked=$worked }
 }
 
+# Spaced-repetition tuning (SM-2-lite). Kept small and explicit.
+$script:RTEaseStart = 2.3     # starting spacing multiplier for a fresh topic
+$script:RTEaseMin   = 1.3     # floor so a lapsing topic never spaces out
+$script:RTEaseDrop  = 0.2     # ease lost per miss
+$script:RTEaseGain  = 0.1     # ease gained per spaced success (rep>=3)
+$script:RTSolidReps = 2       # consecutive correct answers that make a level "solid"
+$script:RTMissDue   = 1       # picks to wait before a missed topic is due again (re-drill soon)
+
 # A2: Record one result into durable RT state and return the mastery transition.
 # Returns @{ rec; becameSolid=[bool]; bumpedLevel=[bool] }.
-# correct & not retry -> streak++; streak>=2 -> add level to mastered (dedupe),
-#   becameSolid, reset streak, bump level capped at 2 (bumpedLevel if it changed).
-# correct & retry -> consolidation only (streak stays 0, no promotion).
-# wrong -> streak=0. Always attempts++ / correct++ as appropriate; set lastSeen; save.
+# Scheduling (SM-2-lite over a global "pick clock" in state.clock that ticks once per
+# recorded result, so "due" works independent of the in-memory sitting counter):
+#   correct & not retry -> streak++, reps++; interval grows (rep1->1, rep2->3,
+#     rep>=3 -> round(prev interval * ease)); due = clock + interval; ease nudges up
+#     on a spaced success. reps>=RTSolidReps -> add level to mastered (dedupe),
+#     becameSolid, bump level capped at 2 (bumpedLevel if changed). Streak resets on
+#     becameSolid (kept from the original) but reps/interval continue the schedule.
+#   correct & retry -> consolidation only (no streak/reps/interval progression).
+#   wrong -> streak=0, reps=0, interval=0, lapses++, ease drops (floored), and
+#     due = clock + RTMissDue so the miss resurfaces within the next pick or two.
+# Always attempts++ / correct++ as appropriate; set lastSeen; tick clock; save.
 function RT-RecordResult($topicId,$level,$correct,$isRetry){
   $topicId = [string]$topicId
   $lvl = 1; try{ $lvl = [int]$level }catch{ $lvl = 1 }
@@ -468,12 +637,26 @@ function RT-RecordResult($topicId,$level,$correct,$isRetry){
   $rec.streak = [int]$rec.streak
   $rec.attempts = [int]$rec.attempts + 1
   if($ok){ $rec.correct = [int]$rec.correct + 1 }
+  # Advance the global pick clock first so 'due' offsets are measured from "now".
+  $clock = 0; try{ $clock = [int]$state.clock }catch{ $clock = 0 }
+  $clock = $clock + 1; $state.clock = $clock
+  # Normalize scheduling fields off whatever the (possibly old) record carried.
+  $reps = 0; try{ $reps = [int]$rec.reps }catch{ $reps = 0 }
+  $interval = 0; try{ $interval = [int]$rec.interval }catch{ $interval = 0 }
+  $ease = $script:RTEaseStart; try{ if($null -ne $rec.ease){ $ease = [double]$rec.ease } }catch{}
+  if($ease -lt $script:RTEaseMin){ $ease = $script:RTEaseMin }
+  $lapses = 0; try{ $lapses = [int]$rec.lapses }catch{ $lapses = 0 }
   $mastered = @(); if($rec.mastered){ $mastered = @($rec.mastered | ForEach-Object { [int]$_ }) }
   $becameSolid = $false
   $bumpedLevel = $false
   if($ok -and -not $retry){
     $rec.streak = $rec.streak + 1
-    if($rec.streak -ge 2){
+    $reps = $reps + 1
+    if($reps -le 1){ $interval = 3 }       # after 1 correct, wait ~3 picks (was 1 - too soon, felt like a loop)
+    elseif($reps -eq 2){ $interval = 8 }   # after 2 correct (now graduated), space out ~8 picks before any review
+    else { $interval = [int][math]::Round([math]::Max(1,$interval) * $ease); $ease = [math]::Min(3.0, $ease + $script:RTEaseGain) }
+    if($interval -lt 1){ $interval = 1 }
+    if($reps -ge $script:RTSolidReps){
       if($mastered -notcontains $lvl){ $mastered = @($mastered + $lvl) }
       $becameSolid = $true
       $rec.streak = 0
@@ -481,10 +664,22 @@ function RT-RecordResult($topicId,$level,$correct,$isRetry){
       if($newLevel -ne $rec.level){ $rec.level = $newLevel; $bumpedLevel = $true }
     }
   } elseif($ok -and $retry){
-    # consolidation only - no promotion progress.
+    # consolidation only - no schedule progression.
   } else {
     $rec.streak = 0
+    $reps = 0
+    $interval = 0
+    $lapses = $lapses + 1
+    $ease = [math]::Max($script:RTEaseMin, $ease - $script:RTEaseDrop)
   }
+  $rec.reps = [int]$reps
+  $rec.interval = [int]$interval
+  $rec.ease = [double]$ease
+  $rec.lapses = [int]$lapses
+  # Set the next due tick. A miss is due almost immediately; a correct answer waits
+  # its interval; a consolidation retry keeps the existing due.
+  if(-not $ok){ $rec.due = $clock + $script:RTMissDue }
+  elseif(-not $retry){ $rec.due = $clock + $interval }
   $rec.mastered = @($mastered)
   $rec.lastSeen = (Get-Date).ToString('o')
   $state.topics[$topicId] = $rec
@@ -522,18 +717,31 @@ function RT-TierMap {
 }
 
 # A3: Pick the next topic + level. Returns @{ topicId; level }.
-# Order (first match wins); never returns $lastTopicId unless it is the only candidate:
-#  1. itemsThisSitting < 3 -> easiest UNSEEN must-tier topic at level 1.
-#  2. Any UNSEEN topic (attempts==0), must-tier first then should then nice, at level 1.
-#  3. A Get-WeakTopics topic, served at max(1, current level - 1).
-#  4. Else the lowest-streak / least-recently-seen topic, at its current level.
-function RT-PickNext($state,$itemsThisSitting,$lastTopicId){
+# Spaced-repetition ordering (first non-empty bucket wins); never returns
+# $lastTopicId unless it is the only candidate. A topic is "due" when its scheduled
+# due-tick has been reached (rec.due <= the global pick clock). "Solid" = its mastered
+# list contains the ceiling (2). Buckets, in priority order:
+#  (a) DUE REVIEW OF MISSES: seen + previously lapsed + due (most overdue first) -
+#      served one level below current (min 1) so a miss comes back gentler and SOON.
+#  (b) UNSEEN: attempts==0, tier-ordered (must first). The first few picks of a
+#      sitting (itemsThisSitting<3) intro a must-tier unseen topic, as before.
+#  (c) WEAK / DUE: due-but-not-yet-solid topics, plus perf's Get-WeakTopics, lowest
+#      streak first - served one level below current (min 1).
+#  (d) EVERYTHING ELSE: lowest streak, then most overdue, then least-recently-seen.
+# Light randomization: within the chosen bucket we pick from the few front-runners
+# rather than always index 0, so the drill does not repeat an identical order.
+function RT-PickNext($state,$itemsThisSitting,$lastTopicId,$recentIds){
   $items = 0; try{ $items = [int]$itemsThisSitting }catch{ $items = 0 }
   $lastId = [string]$lastTopicId
+  $recent = @(); try{ if($recentIds){ $recent = @($recentIds | ForEach-Object { [string]$_ }) } }catch{}   # last few served concepts, to avoid back-to-back repeats
   $topics = @(); try{ $topics = @(Get-RTTopics) }catch{}
   if($topics.Count -eq 0){ return @{ topicId=''; level=1 } }
+  # The global pick clock: prefer the passed-in state, fall back to a fresh load.
+  $clock = 0
+  try{ if($state -and ($null -ne $state.clock)){ $clock = [int]$state.clock } }catch{}
+  if($clock -le 0){ try{ $clock = [int](RT-LoadState).clock }catch{ $clock = 0 } }
   $tierMap = RT-TierMap
-  # Annotate each topic with rank/level/streak/attempts/lastSeen.
+  # Annotate each in-scope topic with the fields the buckets sort on.
   $rows = New-Object System.Collections.ArrayList
   foreach($t in $topics){
     $id = [string]$t.id
@@ -542,44 +750,77 @@ function RT-PickNext($state,$itemsThisSitting,$lastTopicId){
     $streak = 0; try{ $streak = [int]$rec.streak }catch{ $streak = 0 }
     $att = 0; try{ $att = [int]$rec.attempts }catch{ $att = 0 }
     $seen = ''; try{ $seen = [string]$rec.lastSeen }catch{ $seen = '' }
+    $due = 0; try{ if($null -ne $rec.due){ $due = [int]$rec.due } }catch{ $due = 0 }
+    $lapses = 0; try{ if($null -ne $rec.lapses){ $lapses = [int]$rec.lapses } }catch{ $lapses = 0 }
+    $mastered = @(); try{ if($rec.mastered){ $mastered = @($rec.mastered | ForEach-Object { [int]$_ }) } }catch{}
+    $solid = (@($mastered).Count -ge 1)   # GRADUATED once the topic is mastered at ANY level (2 correct in a row). Fast graduation = understood concepts leave the active rotation instead of looping; they only return as spaced review (longer interval) at the bumped-up level.
+    $isDue = (($att -gt 0) -and ($due -le $clock))     # seen and its scheduled wait elapsed
+    $overdue = $clock - $due                            # bigger = more overdue
     $tier = ''; if($tierMap.ContainsKey($id)){ $tier = $tierMap[$id] }
-    [void]$rows.Add(@{ id=$id; level=$lvl; streak=$streak; attempts=$att; lastSeen=$seen; tierRank=(RT-TierRank $tier) })
+    $tr=(RT-TierRank $tier); if($id -like 'obs-*'){ $tr=-1 }   # v3: a just-watched concept outranks the fixed curriculum, so "drill what I watched" surfaces first
+    [void]$rows.Add(@{ id=$id; level=$lvl; streak=$streak; attempts=$att; lastSeen=$seen; due=$due; lapses=$lapses; solid=$solid; isDue=$isDue; overdue=$overdue; tierRank=$tr })
   }
   $rows = @($rows.ToArray())
-  # Helper: pick from a candidate list honouring the never-repeat-last rule.
+  # Helper: pick from a candidate list honouring the never-repeat-last rule, with a
+  # little randomization across the front-runners. $spread = how many of the leading
+  # candidates are eligible for the random draw (1 = strict order, no randomization).
   $choose = {
-    param($cands,$lvlOf)
+    param($cands,$lvlOf,$spread)
     $cands = @($cands)
     if($cands.Count -eq 0){ return $null }
-    $nonLast = @($cands | Where-Object { $_.id -ne $lastId })
-    $use = $(if($nonLast.Count -gt 0){ $nonLast } else { $cands })
-    $pick = $use[0]
+    # Prefer candidates that are neither the last-served nor recently served. If NOTHING here is
+    # fresh, YIELD (return null) so the next bucket can add variety - this is what stops the
+    # picker ping-ponging between the only two due topics instead of pulling in unseen ones. A
+    # global fallback at the end guarantees a pick once every bucket has yielded.
+    $use = @($cands | Where-Object { ($_.id -ne $lastId) -and ($recent -notcontains $_.id) })   # @() so a single match stays a list, not a bare hashtable
+    if($use.Count -eq 0){ return $null }
+    $sp = 1; try{ $sp = [int]$spread }catch{ $sp = 1 }
+    if($sp -lt 1){ $sp = 1 }
+    $top = [math]::Min($sp, $use.Count)
+    $idx = 0; if($top -gt 1){ try{ $idx = Get-Random -Minimum 0 -Maximum $top }catch{ $idx = 0 } }
+    $pick = $use[$idx]
     $lvl = 1; if($lvlOf){ $lvl = (& $lvlOf $pick) }
     return @{ topicId=$pick.id; level=$lvl }
   }
-  # 1 + 2: unseen topics, tier-ordered (must first), then by id for stability.
+  $lvlBelow = { param($p) [math]::Max(1, [int]$p.level - 1) }
+  $lvlAt    = { param($p) [math]::Max(1, [int]$p.level) }
+  # (a0) v3: a JUST-WATCHED concept that hasn't been drilled yet is the TOP priority - the
+  # whole point of the product is "drill what I just watched," so a fresh observed concept
+  # outranks even due review of old misses. (Once drilled it leaves this bucket and follows
+  # normal spaced-rep below.)
+  $freshObs = @($rows | Where-Object { ([string]$_.id -like 'obs-*') -and ($_.attempts -le 0) } | Sort-Object @{Expression={$_.id}})
+  $r = (& $choose $freshObs { param($p) 1 } 1)
+  if($r){ return $r }
+  # (a) Due review of previously-missed topics: most overdue first. Resurfaces misses.
+  $dueMiss = @($rows | Where-Object { $_.isDue -and ($_.lapses -gt 0) } | Sort-Object @{Expression={$_.overdue};Descending=$true}, @{Expression={$_.streak}}, @{Expression={$_.id}})
+  $r = (& $choose $dueMiss $lvlBelow 2)
+  if($r){ return $r }
+  # (b) Unseen topics, tier-ordered (must first), then by id for stability.
   $unseen = @($rows | Where-Object { $_.attempts -le 0 } | Sort-Object @{Expression={$_.tierRank}}, @{Expression={$_.id}})
   if($items -lt 3){
     $unseenMust = @($unseen | Where-Object { $_.tierRank -le 0 })
-    $r = (& $choose $unseenMust { param($p) 1 })
+    $r = (& $choose $unseenMust { param($p) 1 } 1)
     if($r){ return $r }
   }
-  $r = (& $choose $unseen { param($p) 1 })
+  $r = (& $choose $unseen { param($p) 1 } 2)
   if($r){ return $r }
-  # 3: a weak topic flagged by perf, served one level below current (min 1).
+  # (c) Weak/due: due-but-not-solid topics + perf's flagged weak topics, lowest streak.
   $weakIds = @()
   if(Get-Command Get-WeakTopics -ErrorAction SilentlyContinue){ try{ $weakIds = @(Get-WeakTopics 5) }catch{} }
-  if($weakIds.Count -gt 0){
-    $weakRows = @($rows | Where-Object { $weakIds -contains $_.id })
-    $r = (& $choose $weakRows { param($p) [math]::Max(1, [int]$p.level - 1) })
-    if($r){ return $r }
-  }
-  # 4: lowest streak, then least-recently-seen (empty lastSeen sorts first), then id.
-  $rest = @($rows | Sort-Object @{Expression={$_.streak}}, @{Expression={$_.lastSeen}}, @{Expression={$_.id}})
-  $r = (& $choose $rest { param($p) [math]::Max(1, [int]$p.level) })
+  $weakRows = @($rows | Where-Object { (($_.isDue -and (-not $_.solid)) -or ($weakIds -contains $_.id)) } | Sort-Object @{Expression={$_.streak}}, @{Expression={$_.overdue};Descending=$true}, @{Expression={$_.id}})
+  $r = (& $choose $weakRows $lvlBelow 2)
   if($r){ return $r }
-  # Fallback: the only/first candidate (e.g. when lastTopicId is the sole topic).
-  $only = $rows[0]
+  # (d) Everything else: lowest streak, then most overdue, then least-recently-seen.
+  # Solid topics sort last here (they are not due), so mastered work spaces out.
+  $rest = @($rows | Sort-Object @{Expression={$_.streak}}, @{Expression={$_.overdue};Descending=$true}, @{Expression={$_.lastSeen}}, @{Expression={$_.id}})
+  $r = (& $choose $rest $lvlAt 2)
+  if($r){ return $r }
+  # Global fallback: every bucket yielded (all their candidates were the last/recent ones).
+  # Pick the least-recently-served topic that isn't the very last one, ignoring the recency
+  # window - guarantees a pick and still never repeats back-to-back.
+  $rest2 = @($rows | Where-Object { $_.id -ne $lastId } | Sort-Object @{Expression={$_.lastSeen}}, @{Expression={$_.id}})
+  if($rest2.Count -eq 0){ $rest2 = @($rows) }
+  $only = $rest2[0]
   return @{ topicId=$only.id; level=[math]::Max(1,[int]$only.level) }
 }
 
@@ -610,7 +851,7 @@ function Get-RTProgress {
     $areaTotal[$dom] = $areaTotal[$dom] + 1
     $rec = RT-TopicRec $state $id
     $mastered = @(); if($rec.mastered){ $mastered = @($rec.mastered | ForEach-Object { [int]$_ }) }
-    $isSolid = ($mastered -contains $ceiling)
+    $isSolid = (@($mastered).Count -ge 1)   # scoreboard counts a topic solid once mastered at any level (matches RT-PickNext graduation)
     if($isSolid){ $solid = $solid + 1; $areaSolid[$dom] = $areaSolid[$dom] + 1 }
   }
   $areas = New-Object System.Collections.ArrayList

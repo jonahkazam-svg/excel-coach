@@ -171,9 +171,15 @@ function Get-DueCards([int]$limit = 20){
     $scopeIds = @{}
     foreach($t in (Get-Curriculum)){ if(Test-DomainInScope $t.domain){ $scopeIds[[string]$t.id] = $true } }
   }
+  # Ground in what the student has actually learned: only surface cards for topics the
+  # watcher logged as covered in lessons (Mastery exposed/shaky/solid). Cold-start: if
+  # nothing is covered yet, skip this filter so practice is never empty.
+  $learnedIds = $null
+  try{ if(Get-Command Get-Mastery -ErrorAction SilentlyContinue){ $mm=Get-Mastery; $tmp=@{}; foreach($k in $mm.Keys){ $st=[string]$mm[$k].status; if($st -eq 'exposed' -or $st -eq 'shaky' -or $st -eq 'solid'){ $tmp[[string]$k]=$true } }; if($tmp.Count -gt 0){ $learnedIds=$tmp } } }catch{}
   foreach($card in $cards){
     $cid = $card.id
     if($scopeIds -and -not $scopeIds.ContainsKey([string]$card.topicId)){ continue }
+    if($learnedIds -and -not $learnedIds.ContainsKey([string]$card.topicId)){ continue }   # not learned with me yet -> skip
     $rec = $state.cards[$cid]
     if(-not $rec){
       # unseen -> seed as due now

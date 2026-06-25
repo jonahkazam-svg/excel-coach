@@ -84,6 +84,7 @@ function Format-XlCell($cell,$val){
     }
     else{
       if($v -match $script:XCTotalRx){ try{ $cell.Font.Bold=$true }catch{} }
+      elseif(($v -cmatch '[A-Z]') -and ($v -cnotmatch '[a-z]') -and ($v -match '\s') -and ($v.Length -ge 6)){ try{ $cell.Font.Bold=$true }catch{} }   # a multi-word ALL-CAPS line is a header/section title (e.g. a cheat-sheet "STEP BY STEP PROCESS") -> bold it for structure
     }
   }catch{}
 }
@@ -546,6 +547,21 @@ function Read-ExcelLive {
       }}
       if($n -ge $cap){ [void]$sb.AppendLine("...(more cells not shown)") }
     }
+    # Pasted-image detection: if the sheet has a large PICTURE shape (e.g. a screenshot of a 10-K's
+    # financial statements pasted in), the figures live in the IMAGE, not the cells. Flag it so the
+    # ask path sends a screenshot (vision) instead of relying on the sparse cell text.
+    $hasImg=$false
+    try{
+      $shps=$sh.Shapes; $sc=0; try{ $sc=[int]$shps.Count }catch{}
+      for($si=1; $si -le $sc -and -not $hasImg; $si++){
+        try{ $shp=$shps.Item($si); $st=0; try{ $st=[int]$shp.Type }catch{}; $sw=0.0; try{ $sw=[double]$shp.Width }catch{}
+          if(($st -eq 13 -or $st -eq 11) -and $sw -ge 150){ $hasImg=$true }
+          [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($shp) }catch{}
+      }
+      [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($shps)
+    }catch{}
+    try{ $sync.sheetHasImg=$hasImg }catch{}
+    if($hasImg){ [void]$sb.AppendLine("NOTE: this sheet contains a large PASTED IMAGE (e.g. a screenshot of financial statements or a chart). The figures for this exercise are likely INSIDE that image, not in the cells above - read them from the attached screenshot.") }
     $out=$sb.ToString()
   } catch { $out=$null } finally { foreach($o in @($ur,$sh,$wb,$xl)){ try{ if($o){ [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($o) } }catch{} } }
   return $out

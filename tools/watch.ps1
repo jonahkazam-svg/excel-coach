@@ -6,6 +6,20 @@
 # Test: watch.ps1 -TestAsync   (starts capture, processes one segment, prints, exits)
 param([switch]$TestAsync)
 
+# --- single-instance guard ---------------------------------------------------------
+# Only one live coach at a time. A second launch (e.g. an accidental double-click of the
+# shortcut) would stack a second overlay bar on top of the first. A named mutex is the
+# race-free way to detect "already running"; it is held for the life of the process and
+# the OS releases it automatically on exit, so a Repair/kill-then-relaunch can reclaim it.
+# We wait briefly (not 0) so a relaunch where the old process is still dying acquires the
+# mutex the instant it dies, instead of falsely bailing. (Skipped in -TestAsync.)
+if(-not $TestAsync){
+  $script:singleInst = New-Object System.Threading.Mutex($false, "Global\ExcelCoachWatchV4")   # v3 has its own mutex so it doesn't block / isn't blocked by a running v2
+  $haveInst = $false
+  try{ $haveInst = $script:singleInst.WaitOne(2500) }catch{ $haveInst = $true }  # abandoned mutex => prior instance died holding it => we may proceed
+  if(-not $haveInst){ exit }   # another coach is already running -> bow out quietly
+}
+
 $Vault=Split-Path $PSScriptRoot -Parent; $Coaching=Join-Path $Vault "Coaching"; $EnvFile=Join-Path $Vault ".env"
 try{ [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $OutputEncoding=[System.Text.Encoding]::UTF8 }catch{}
 Add-Type 'using System; using System.Runtime.InteropServices; public class DpiBoot { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); }'
@@ -26,19 +40,20 @@ if(-not $ff){ $bf=Join-Path (Split-Path $PSScriptRoot -Parent) "bin\ffmpeg.exe";
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$true; $sync.demoActive=$false; $sync.cancelled=$false
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$true; $sync.demoActive=$false; $sync.cancelled=$false; $sync.streamText=""; $sync.streamStamp=0; $sync.sheetHasImg=$false
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
-$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$true; $sync.ttsVol=1.0; $sync.micMute=$false; $sync.woActive=$false; $sync.wHB=(Get-Date)
+$sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$false; $sync.ttsVol=1.0; $sync.micMute=$true; $sync.woActive=$false; $sync.wHB=(Get-Date)
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
-$sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"; $sync.tools=$PSScriptRoot
-$sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you can CLEARLY see it - never guess or nitpick. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
+$sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.fastModel=(Read-EnvVal "FAST_MODEL" "gpt-5-mini"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"; $sync.tools=$PSScriptRoot
+$sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you are HIGHLY CONFIDENT and can CLEARLY see the error in the data in front of you - never guess, never invent a mistake, never nitpick. If you are not sure, or it could be a valid alternative method, a different order of steps, or just unfinished work, stay silent and reply EXACTLY: OK. Do NOT introduce or require any method, convention, formula, or step the student has not been shown in their lesson or sheet. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
 try{ . (Join-Path $PSScriptRoot "curriculum.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "deck.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "practice.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "runthrough.ps1") }catch{}
+try{ . (Join-Path $PSScriptRoot "observed.ps1") }catch{}   # v3 observed curriculum (needs curriculum + runthrough loaded first)
 try{ . (Join-Path $PSScriptRoot "perf.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "updater.ps1") }catch{}
 try{ . (Join-Path $PSScriptRoot "setup.ps1") }catch{}
@@ -50,6 +65,18 @@ $kfb=Join-Path $Coaching "Knowledge.md"
 if(Test-Path $kfb){ $kt=(Get-Content $kfb -Raw); if($kt.Length -gt 2000){ $kt=$kt.Substring($kt.Length-2000) }; $sync.brain=$sync.brain+" Concepts the student has already covered in lessons: "+$kt }
 $WatchCur=(Read-EnvVal "WATCH_CURRICULUM" "1"); $sync.curr=""
 if($WatchCur -eq "1"){ try{ . (Join-Path $PSScriptRoot "curriculum.ps1"); try{ Compact-File (Join-Path $Coaching "Mastery.md") 0 }catch{}; $sync.brain=$sync.brain+(Build-CurriculumBrain); $sync.curr=((Get-Curriculum | ForEach-Object { $_.id+": "+$_.topic }) -join "`n") }catch{} }
+# Course scope gate: confine ALL live coaching/guiding/flagging to the in-scope
+# domains from data\scope.json (read via Get-ScopeDomains). Empty/missing scope =
+# no restriction (preserves prior behavior). $sync.scopeNote is shared with the
+# Excel-watcher and guide threads (xlwork.ps1) so every path knows the boundary.
+$sync.scopeNote=""
+try{
+  $scopeDoms=@(); if(Get-Command Get-ScopeDomains -ErrorAction SilentlyContinue){ $scopeDoms=@(Get-ScopeDomains) }
+  if($scopeDoms.Count -gt 0){
+    $sync.scopeNote=" SCOPE - this course currently covers ONLY these domains: "+($scopeDoms -join ", ")+". Teach, guide, flag, or answer ONLY within these domains. If the student is working on, watching, or asking about material OUTSIDE these domains (for example cost of equity, CAPM, beta, WACC, or a DCF when those domains are not listed above), do NOT coach or flag it - stay completely silent and reply EXACTLY: OK. Never walk the student through an out-of-scope workout or method."
+  }
+}catch{}
+$sync.sys=$sync.sys+$sync.scopeNote
 
 # audio source: microphone. (Capturing system/PC audio via loopback makes the tool
 # look like spyware to Windows Defender, which hard-blocks it; the mic hears the lesson
@@ -66,6 +93,13 @@ try{
   Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -match 'watch_seg' } |
     ForEach-Object { try{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }catch{} }
+  # Also clear the previous coach's OWN orphaned WebView2 helpers (identified by our
+  # UserDataFolder, xc4_wv2_data). A dead coach can leave these holding the UI data
+  # folder, which makes the next launch come up blank / "won't run". Only ours are
+  # matched, so other apps' WebView2 is untouched.
+  Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'xc4_wv2_data' } |
+    ForEach-Object { try{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }catch{} }
   Start-Sleep -Milliseconds 600
 }catch{}
 
@@ -77,872 +111,27 @@ $ffp=Start-Process -FilePath $ff -ArgumentList $ffArgs -WindowStyle Hidden -Pass
 $sync.chime=Join-Path $env:TEMP "xc_chime.wav"; try{ & $ff -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=659:duration=0.10" -f lavfi -i "sine=frequency=988:duration=0.17" -filter_complex "[0]volume=0.15,afade=t=in:st=0:d=0.01,afade=t=out:st=0.05:d=0.05[a];[1]volume=0.17,afade=t=in:st=0:d=0.01,afade=t=out:st=0.10:d=0.07[b];[a][b]concat=n=2:v=0:a=1,aecho=0.8:0.9:40:0.2" -ar 44100 -ac 2 $sync.chime 2>$null }catch{}
 $sync.ffpid=$ffp.Id
 
-$work=@'
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-Add-Type 'using System; using System.Runtime.InteropServices; public class Win2 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags); }'
-try{ . (Join-Path $sync.tools "curriculum.ps1") }catch{}
-try{ if(Get-Command Consolidate-WeakPoints -ErrorAction SilentlyContinue){ Consolidate-WeakPoints }; if(Get-Command Build-StruggleProfile -ErrorAction SilentlyContinue){ Build-StruggleProfile } }catch{}
-
-# The coach's hands: turn a natural-language request into SET/SHEET ops and
-# execute them via Apply-XlOps. Returns the spoken summary, or $null if the
-# request was not really an Excel-building action (caller falls back to Q&A).
-function Invoke-XlAction($req){
-  if(-not (Get-Command Apply-XlOps -ErrorAction SilentlyContinue)){ return $null }
-  $fresh=$null; try{ $fresh=Read-ExcelLive }catch{}
-  if(-not $fresh){ $fresh=[string]$sync.lastXl }
-  $ac=@(@{type='text';text=("REQUEST: "+$req)})
-  if($sync.sheetPurpose){ $ac+=@{type='text';text=("What the student is practicing: "+$sync.sheetPurpose)} }
-  if($sync.companyCtx){ $ac+=@{type='text';text=("Use these saved figures when the request refers to them: "+[string]$sync.companyCtx)} }
-  if($fresh){ $ac+=@{type='text';text=("EXACT current Excel data (active sheet):`n"+$fresh)} }
-  $apay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content="You control Microsoft Excel for a finance student via a tiny operation language. If the REQUEST asks you to build, fill, set up, label, write, fix, or change something in Excel, reply ONLY with operation lines:`nSET <cell> <label or number or =formula>   (writes only if the cell is empty)`nPUT <cell> <label or number or =formula>   (overwrites - use ONLY when the request explicitly asks to change, fix, replace or correct existing content)`nSHEET <NewSheetName>`nDONE <one short spoken confirmation of what you built>`nRules: work on the ACTIVE sheet shown in the data (or create a SHEET first if asked for a new one); do exactly what was asked - minimal, clean, laid out like an investment-banking model; formulas start with =; before writing the DONE line, double-check every formula so its cell references point at cells you actually wrote or that already exist in the data; the LAST line must be the DONE line. If the REQUEST is NOT asking you to write into Excel, reply EXACTLY: NOTACTION"},@{role='user';content=$ac}) } | ConvertTo-Json -Depth 10
-  $abf2="$env:TEMP\xc_act.json"; [IO.File]::WriteAllText($abf2,$apay,(New-Object System.Text.UTF8Encoding($false)))
-  $arr2=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf2)
-  $ajj2=$null; try{ $ajj2=$arr2|ConvertFrom-Json }catch{}
-  if(-not $ajj2.choices){ return $null }
-  $aops=([string]$ajj2.choices[0].message.content).Trim()
-  if((-not $aops) -or ($aops -match '^\s*NOTACTION')){ return $null }
-  if($aops -notmatch '(?m)^(SET|PUT|SHEET)\s'){ return $null }
-  $r=$null; $applied=$false; try{ $r=Apply-XlOps $aops; $applied=$true }catch{ $r="Excel action failed: "+$_.Exception.Message }
-  try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  REQ: "+$req+"`r`nOPS:`r`n"+$aops+"`r`nRESULT: "+$r+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-  # self-verify: re-read the sheet, make the model confirm every requested item landed, repair if not (max 2 rounds)
-  if($applied -and $r -and ($r -notmatch '^(Excel is not open|No active workbook|Excel would not let me in)')){
-    $allOps=$aops; $lastRes=[string]$r; $verified=$false; $vfail=$false
-    for($vround=1;$vround -le 2;$vround++){
-      Start-Sleep -Milliseconds 1500
-      $after=$null; try{ $after=Read-ExcelLive }catch{}
-      if(-not $after){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": could not re-read the sheet - verification skipped`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
-      $vc=@(@{type='text';text=("ORIGINAL REQUEST: "+$req)})
-      $vc+=@{type='text';text=("OPS APPLIED SO FAR:`n"+$allOps)}
-      $vc+=@{type='text';text=("APPLY SUMMARY (names any cells that could NOT be written): "+$lastRes)}
-      $vc+=@{type='text';text=("EXACT Excel data NOW, after the writes (active sheet):`n"+$after)}
-      $vpay=@{ model=$sync.model; max_completion_tokens=2500; reasoning_effort='medium'; messages=@(@{role='system';content="You just wrote into a finance student's Excel using SET/PUT/SHEET operation lines and must now VERIFY your own work. You are given the ORIGINAL REQUEST, the ops applied so far, the apply summary (it lists any cells that could NOT be written - those cells are still empty), and the EXACT sheet data as it is NOW. Recompute every formula from this data and confirm EVERY item the request asked for actually landed with correct cell references, labels, numbers and formulas. If anything is missing or wrong, reply ONLY with repair operation lines, one per line:`nSET <cell> <label or number or =formula>   (for cells that are empty now, including the could-NOT-write ones)`nPUT <cell> <label or number or =formula>   (ONLY to fix a cell the ops above just wrote with wrong content - never touch any other cell)`nNo DONE line, no commentary. If every requested item is present and correct, reply EXACTLY: VERIFIED"},@{role='user';content=$vc}) } | ConvertTo-Json -Depth 10
-      $vbf="$env:TEMP\xc_verify.json"; [IO.File]::WriteAllText($vbf,$vpay,(New-Object System.Text.UTF8Encoding($false)))
-      $vrr=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$vbf)
-      $vjj=$null; try{ $vjj=$vrr|ConvertFrom-Json }catch{}
-      if(-not $vjj.choices){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": no API response`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
-      $vout=([string]$vjj.choices[0].message.content).Trim()
-      if($vout -match '^\s*VERIFIED'){ $verified=$true; try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": VERIFIED`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
-      if($vout -notmatch '(?m)^(SET|PUT)\s'){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+": unusable reply: "+$(if($vout.Length -gt 160){ $vout.Substring(0,160) }else{ $vout })+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}; break }
-      $vfail=$true
-      $vres=$null; try{ $vres=Apply-XlOps $vout }catch{ $vres="Excel repair failed: "+$_.Exception.Message }
-      $allOps=$allOps+"`n"+$vout; $lastRes=[string]$vres
-      try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  VERIFY round "+$vround+" REPAIR`r`nOPS:`r`n"+$vout+"`r`nRESULT: "+$vres+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-    }
-    if($verified){ $r=[string]$r+" - verified." }
-    elseif($vfail){ $r=[string]$r+" - checked twice, may need a look." }
-  }
-  return $r
-}
-# Teach mode: build a MINIMAL worked example of the same scenario on a fresh
-# throwaway sheet while Jarvis (TTS) narrates each step. Coordinated with the
-# $ttsWork thread via $sync.ttsText (start narration) and $sync.ttsBusyUntil
-# (when playback ends) so cells appear while the coach is speaking.
-function Run-Demo($topic){
-  try{
-    $xlchk=$null; try{ $xlchk=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
-    if(-not $xlchk){ $sync.text="Open your workbook in Excel first, then ask me to demonstrate."; $sync.askLabel="Teach demo"; if(-not $sync.mute){ $sync.ttsText="Open your workbook in Excel first." }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-    try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($xlchk) }catch{}
-    $ctx=@(@{type='text';text=("TOPIC the student asked about: "+[string]$topic)})
-    $lx=[string]$sync.lastXl; if($lx.Length -gt 1600){ $lx=$lx.Substring($lx.Length-1600) }
-    if($lx){ $ctx+=@{type='text';text=("The student's currently-open sheet - reuse its scenario/numbers ONLY if it is the SAME topic they are learning now; if it is a DIFFERENT topic, IGNORE this sheet and build a fresh worked example for the current topic:`n"+$lx)} }
-    if($sync.sheetPurpose){ $ctx+=@{type='text';text=("What the student is practicing: "+[string]$sync.sheetPurpose)} }
-    if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
-    if($sync.lessonlog){ $ll=[string]$sync.lessonlog; if($ll.Length -gt 900){ $ll=$ll.Substring($ll.Length-900) }; $ctx+=@{type='text';text=("WHAT THE STUDENT IS LEARNING RIGHT NOW (from the live lesson - build on THIS topic, not an old/open sheet from a different subject): "+$ll)} }
-    if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept behind their most recent mistake (teach this): "+[string]$sync.lastNudge)} }
-    if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reuse: "+[string]$sync.companyCtx)} }
-    $dsys="You are a finance/Excel tutor giving a LIVE, INTERACTIVE lesson on a fresh blank sheet. Do TWO things SIDE BY SIDE about the concept the student just struggled with. ON THE LEFT (start around B2): build a small WORKED example - fully solved, using their scenario - narrating each step as you build it. ON THE RIGHT (start around H2, same rows so they line up): build a PARALLEL PRACTICE version of the SAME concept with DIFFERENT numbers/items, but LEAVE THE ANSWER CELLS BLANK for the student to fill in - mark each blank answer cell so it gets highlighted. Reply ONLY with a script of these line types, nothing else:`nSTEP <one short spoken sentence about what you are adding to the worked example on the left>`nSET <cell> <label or number or =formula>  (a FILLED cell - the whole worked example, plus the labels and given inputs of the practice block)`nBLANK <cell>  (an ANSWER cell in the practice block the student must fill - left empty and highlighted)`nDONE <one short spoken sentence telling them to fill in the highlighted yellow cells and that you will check each one>`nRules: worked example on the LEFT columns, practice block on the RIGHT columns with a gap, same row layout; formulas start with =; label rows; plain ASCII; 5 to 9 STEP groups; put the practice SET and BLANK lines under a final STEP that says you set one up for them to try; the LAST line is the DONE line. Never mention cell colors, fonts, borders, number formats or any styling in a STEP or DONE sentence - narrate only the finance and Excel logic."
-    $dpay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content=$dsys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
-    $dbf="$env:TEMP\xc_demo.json"; [IO.File]::WriteAllText($dbf,$dpay,(New-Object System.Text.UTF8Encoding($false)))
-    $drr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
-    $djj=$null; try{ $djj=$drr|ConvertFrom-Json }catch{}
-    $script=$null; if($djj.choices){ $script=([string]$djj.choices[0].message.content).Trim() }
-    if((-not $script) -or ($script -notmatch '(?m)^\s*STEP\s')){
-      $fb="I could not put together a demo just now. In short: "+[string]$topic+" - rebuild the same scenario on a clean sheet, label each row, and let each formula reference only cells you have already entered."
-      $sync.askLabel="Teach demo"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-      return
-    }
-    # parse the script into ordered steps: each step = narration + the SET/PUT lines that follow it
-    $steps=New-Object System.Collections.ArrayList; $doneSay=""; $curStep=$null
-    foreach($ln in ([string]$script -split "`r?`n")){
-      $l=$ln.Trim(); if(-not $l){ continue }
-      if($l -match '(?i)^STEP\s+(.+)$'){ if($curStep){ [void]$steps.Add($curStep) }; $curStep=@{say=$Matches[1].Trim();ops=(New-Object System.Collections.ArrayList)} }
-      elseif($l -match '(?i)^DONE\s*(.*)$'){ if($curStep){ [void]$steps.Add($curStep); $curStep=$null }; $doneSay=$Matches[1].Trim() }
-      elseif($l -match '^(SET|PUT)\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){ if($curStep){ [void]$curStep.ops.Add(@{addr=$Matches[2].ToUpper();val=$Matches[3].Trim()}) } }
-      elseif($l -match '(?i)^BLANK\s+([A-Za-z]{1,3}[0-9]{1,5})'){ if($curStep){ [void]$curStep.ops.Add(@{addr=$Matches[1].ToUpper();blank=$true}) } }
-    }
-    if($curStep){ [void]$steps.Add($curStep) }
-    if($steps.Count -eq 0){
-      $fb="I could not put together a demo just now. In short: "+[string]$topic+" - rebuild the same scenario on a clean sheet and reference only cells you have already entered."
-      $sync.askLabel="Teach demo"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-      return
-    }
-    $built=0
-    $sync.demoActive=$true
-    try{
-      $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ $sync.text="Open Excel first so I can demonstrate."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-      $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { try{ $wb=$xl.ActiveWorkbook }catch{} }; if($wb){ try{ $wb.Activate() }catch{} }
-      if(-not $wb){ $sync.text="Open a workbook in Excel first so I can demonstrate."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-      $ds=$wb.Worksheets.Add(); try{ $ds.Name=("Coach Demo "+(Get-Date).ToString("HHmm")) }catch{}
-      foreach($st in $steps){
-        $sayTxt=[string]$st.say
-        if($sayTxt){ $sync.ttsText=$sayTxt }
-        $t0=(Get-Date)
-        while($sync.ttsBusyUntil -le $t0 -and ((Get-Date)-$t0).TotalSeconds -lt 6){ Start-Sleep -Milliseconds 200 }
-        foreach($op in $st.ops){
-          $addr=[string]$op.addr
-          if(-not $addr){ continue }
-          $cell=$null
-          try{
-            $cell=$ds.Range($addr)
-            if($op.blank){ try{ $cell.Interior.Color=0x99FFFF }catch{}; try{ $cell.BorderAround() }catch{}; if($sync.formatOn){ try{ $cell.Font.Color=16711680 }catch{}; try{ $cell.NumberFormat='#,##0.00;(#,##0.00)' }catch{} } }
-            else{ $val=[string]$op.val; try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; if($sync.formatOn){ Format-XlCell $cell $val }; $built++ }
-          }catch{}
-          if($cell){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell) }catch{} }
-          Start-Sleep -Milliseconds 250
-        }
-        while((Get-Date) -lt $sync.ttsBusyUntil -and ((Get-Date)-$t0).TotalSeconds -lt 18){ Start-Sleep -Milliseconds 200 }
-        Start-Sleep -Milliseconds 400
-      }
-      if($sync.formatOn){ $allOps=@(); foreach($s in $steps){ foreach($o in $s.ops){ $allOps+=$o } }; try{ Polish-BuiltSheet $ds $allOps }catch{} }
-      if($doneSay){ $sync.ttsText=$doneSay }
-      $shName=""; try{ $shName=[string]$ds.Name }catch{}
-      $recap="Done on the '"+$shName+"' sheet: a worked example on the LEFT (fully solved"+$(if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ ", focused on the spot you just slipped on" }else{ "" })+") and a parallel PRACTICE version on the RIGHT with different numbers. Fill in the highlighted yellow cells yourself - I'll check each one as you go."
-      $sync.text=$recap; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-      try{ foreach($o in @($ds,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } } }catch{}
-    } finally { $sync.demoActive=$false }
-    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  TEACH REQ: "+[string]$topic+"`r`nSCRIPT:`r`n"+[string]$script+"`r`ndemo done ("+[string]$built+" cells)`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-  }catch{
-    $sync.demoActive=$false
-    $sync.text="Sorry - the demo hit a snag."; $sync.askLabel="Teach demo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  TEACH ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-  }
-}
-# Cheat Sheet: drop a compact quick-reference card (the rules + categories for the
-# concept the student is on) into EMPTY columns to the RIGHT of their work, so they
-# can glance at it while they go. Reuses Apply-XlOps (empty-only writes + IB
-# formatting + retries); demoActive guards the watcher during the multi-cell write.
-function Make-CheatSheet($topic){
-  try{
-    if(-not (Get-Command Apply-XlOps -ErrorAction SilentlyContinue)){ $sync.text="Open your workbook in Excel first so I can drop in a cheat sheet."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-    $xlchk=$null; try{ $xlchk=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
-    if(-not $xlchk){ $sync.text="Open your workbook in Excel first, then ask me for a cheat sheet."; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText="Open your workbook in Excel first." }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-    try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($xlchk) }catch{}
-    $fresh=$null; try{ $fresh=Read-ExcelLive }catch{}
-    if(-not $fresh){ $fresh=[string]$sync.lastXl }
-    $ctx=@(@{type='text';text=("TOPIC the student wants a cheat sheet for: "+[string]$topic)})
-    if($sync.sheetPurpose){ $ctx+=@{type='text';text=("What the student is practicing: "+[string]$sync.sheetPurpose)} }
-    if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
-    if($sync.lessonlog){ $ll=[string]$sync.lessonlog; if($ll.Length -gt 900){ $ll=$ll.Substring($ll.Length-900) }; $ctx+=@{type='text';text=("WHAT THE STUDENT IS LEARNING RIGHT NOW (from the live lesson - build on THIS topic, not an old/open sheet from a different subject): "+$ll)} }
-    if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept they most recently slipped on - emphasize it: "+[string]$sync.lastNudge)} }
-    if($fresh){ $ctx+=@{type='text';text=("The student's CURRENT sheet. Place the cheat sheet in EMPTY columns to the RIGHT of this data - never overwrite it:`n"+$fresh)} }
-    if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reference: "+[string]$sync.companyCtx)} }
-    $sys="You are building a CHEAT SHEET - a compact quick-reference card - inside the student's open Excel sheet for the concept they are working on. Look at their current data and place the card starting about TWO columns to the RIGHT of their last used column, in empty cells, so you NEVER overwrite their work. Reply with ONLY these line types, one per line, nothing else. For each cell output a line formatted EXACTLY as: SET <cell> <short text, number, or =formula> - with NO trailing semicolon or punctuation after the value. Then one final line: DONE <one short spoken sentence>. Include a TITLE, then a numbered STEP-BY-STEP PROCESS for completing this kind of task in order (Step 1: do X, Step 2: do Y, ... - the actual order of operations someone follows, not just definitions), then a short reference list of the key formulas or rules. The PROCESS is the most important part - lead with it. Keep it SCANNABLE - short imperative lines, no long paragraphs. Plain ASCII. 12 to 26 SET lines. The LAST line is the DONE line."
-    $pay=@{ model=$sync.model; max_completion_tokens=2500; reasoning_effort='medium'; messages=@(@{role='system';content=$sys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
-    $bf="$env:TEMP\xc_cheat.json"; [IO.File]::WriteAllText($bf,$pay,(New-Object System.Text.UTF8Encoding($false)))
-    $rr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
-    $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
-    $ops=$null; if($jj.choices){ $ops=([string]$jj.choices[0].message.content).Trim() }
-    if((-not $ops) -or ($ops -notmatch '(?im)^\s*SET\s')){
-      $sync.text="I could not put a cheat sheet together just now - give it another go in a moment."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return
-    }
-    $r=$null; $sync.demoActive=$true
-    try{ $r=Apply-XlOps $ops }catch{ $r="Cheat sheet write failed: "+$_.Exception.Message } finally { $sync.demoActive=$false }
-    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  CHEAT REQ: "+[string]$topic+"`r`nOPS:`r`n"+[string]$ops+"`r`nRESULT: "+[string]$r+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-    if([string]$r -match '(?i)(Excel is not open|No active workbook|would not let me in|failed)'){
-      $sync.text=[string]$r; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText="I could not write the cheat sheet - "+[string]$r }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-    } else {
-      $say="Dropped a cheat sheet to the right of your work - the key rules and categories for this, right there to glance at as you go."
-      $sync.text=$say; $sync.askLabel="Cheat sheet"; if(-not $sync.mute){ $sync.ttsText=$say }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-    }
-  }catch{
-    $sync.demoActive=$false
-    $sync.text="Sorry - the cheat sheet hit a snag."; $sync.askLabel="Cheat sheet"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  CHEAT ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-  }
-}
-# Drill mode: build a BLANK but parallel practice exercise on a fresh sheet for
-# the student to solve THEMSELVES (not the worked answer - that is Run-Demo). We
-# lay out labels, the GIVEN inputs and a clear question, and LEAVE the answer
-# cells empty. demoActive returns to $false afterwards so the Excel watcher
-# resumes and grades the student's attempt.
-function Make-Drill($topic){
-  try{
-    $xlchk=$null; try{ $xlchk=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
-    if(-not $xlchk){ $sync.text="Open your workbook in Excel first, then ask me for a practice problem."; $sync.askLabel="Practice"; if(-not $sync.mute){ $sync.ttsText="Open your workbook in Excel first." }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-    try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($xlchk) }catch{}
-    $ctx=@(@{type='text';text=("TOPIC the student asked to practice: "+[string]$topic)})
-    $lx=[string]$sync.lastXl; if($lx.Length -gt 1600){ $lx=$lx.Substring($lx.Length-1600) }
-    if($lx){ $ctx+=@{type='text';text=("The student's currently-open sheet - make a parallel exercise ONLY if it is the SAME topic they are learning now; if it is a DIFFERENT topic, IGNORE this sheet and build a fresh exercise for the current topic:`n"+$lx)} }
-    if($sync.sheetPurpose){ $ctx+=@{type='text';text=("What the student is practicing: "+[string]$sync.sheetPurpose)} }
-    if($sync.lessonModel){ $ctx+=@{type='text';text=("What the instructor's build looks like: "+[string]$sync.lessonModel)} }
-    if($sync.lessonlog){ $ll=[string]$sync.lessonlog; if($ll.Length -gt 900){ $ll=$ll.Substring($ll.Length-900) }; $ctx+=@{type='text';text=("WHAT THE STUDENT IS LEARNING RIGHT NOW (from the live lesson - build on THIS topic, not an old/open sheet from a different subject): "+$ll)} }
-    if($sync.lastNudge -and ($sync.lastNudge -ne "OK")){ $ctx+=@{type='text';text=("The concept behind their most recent mistake (drill this): "+[string]$sync.lastNudge)} }
-    if($sync.companyCtx){ $ctx+=@{type='text';text=("Saved figures you may reuse: "+[string]$sync.companyCtx)} }
-    $dsys="You are a finance/Excel tutor setting up a practice exercise on a blank sheet. Create a SIMILAR but NEW practice exercise on a blank sheet to cement the concept the student just worked on (their last sheet and recent mistake are given). Use DIFFERENT numbers but the same structure/concept. Set up the labels, the GIVEN input values, and a clear question/instruction - but LEAVE THE ANSWER CELLS EMPTY for the student to fill in. Reply ONLY with lines, one per line, nothing else. For each setup cell a line: SET <cell> <label, given number, or question text> (only the setup - do NOT fill the cells the student should solve, and NO trailing semicolon or punctuation). Then a final line: DONE <one short spoken instruction telling them what to solve>. Rules: start around B2, label rows, plain ASCII, the LAST line is the DONE line, 5-14 SET lines. Never mention cell colors, fonts, borders, number formats or any styling - narrate only the finance and Excel logic."
-    $dpay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort='medium'; messages=@(@{role='system';content=$dsys},@{role='user';content=$ctx}) } | ConvertTo-Json -Depth 10
-    $dbf="$env:TEMP\xc_drill.json"; [IO.File]::WriteAllText($dbf,$dpay,(New-Object System.Text.UTF8Encoding($false)))
-    $drr=& curl.exe -s --max-time 70 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
-    $djj=$null; try{ $djj=$drr|ConvertFrom-Json }catch{}
-    $script=$null; if($djj.choices){ $script=([string]$djj.choices[0].message.content).Trim() }
-    if((-not $script) -or ($script -notmatch '(?m)^\s*SET\s')){
-      $fb="I could not set one up - try again."
-      $sync.askLabel="Practice"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-      return
-    }
-    # parse only SET lines for the setup; capture the DONE line as the spoken instruction
-    $ops=New-Object System.Collections.ArrayList; $doneSay=""
-    foreach($ln in ([string]$script -split "`r?`n")){
-      $l=$ln.Trim(); if(-not $l){ continue }
-      if($l -match '(?i)^DONE\s*(.*)$'){ $doneSay=$Matches[1].Trim() }
-      elseif($l -match '^SET\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){ [void]$ops.Add(@{addr=$Matches[1].ToUpper();val=$Matches[2].Trim()}) }
-    }
-    if($ops.Count -eq 0){
-      $fb="I could not set one up - try again."
-      $sync.askLabel="Practice"; $sync.text=$fb; if(-not $sync.mute){ $sync.ttsText=$fb }; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-      return
-    }
-    $built=0; $shName=""
-    $sync.demoActive=$true
-    try{
-      $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ $sync.text="Open Excel first so I can set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-      $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { try{ $wb=$xl.ActiveWorkbook }catch{} }; if($wb){ try{ $wb.Activate() }catch{} }
-      if(-not $wb){ $sync.text="Open a workbook in Excel first so I can set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; return }
-      $ds=$wb.Worksheets.Add(); try{ $ds.Name=("Practice "+(Get-Date).ToString("HHmm")) }catch{}
-      try{ $shName=[string]$ds.Name }catch{}
-      foreach($op in $ops){
-        $addr=[string]$op.addr; $val=[string]$op.val
-        if(-not $addr){ continue }
-        $cell=$null
-        try{ $cell=$ds.Range($addr); try{ $cell.Formula=$val }catch{ $cell.Value2=$val }; if($sync.formatOn){ Format-XlCell $cell $val }; $built++ }catch{}
-        if($cell){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cell) }catch{} }
-        Start-Sleep -Milliseconds 120
-      }
-      if($sync.formatOn){ try{ Polish-BuiltSheet $ds $ops }catch{} }
-      if($doneSay -and (-not $sync.mute)){ $sync.ttsText=$doneSay }
-      $sync.text="Set up a practice problem on the '"+$shName+"' sheet - fill in the blank cells and I'll check your answer."
-      $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-      try{ foreach($o in @($ds,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } } }catch{}
-    } finally { $sync.demoActive=$false }
-    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  DRILL REQ: "+[string]$topic+"`r`nSCRIPT:`r`n"+[string]$script+"`r`npractice set up ("+[string]$built+" cells) on '"+$shName+"'`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-  }catch{
-    $sync.demoActive=$false
-    $sync.text="Sorry - I could not set up a practice."; $sync.askLabel="Practice"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-    try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_hands.log"),((Get-Date).ToString("HH:mm:ss")+"  DRILL ERROR: "+$_.Exception.Message+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-  }
-}
-function Cap($path){
-  $h=[Win2]::GetForegroundWindow(); $r=New-Object Win2+RECT; [void][Win2]::GetWindowRect($h,[ref]$r)
-  $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
-  if($w -gt 300 -and $ht -gt 200){
-    $cap=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($cap)
-    try{ $g.CopyFromScreen($r.Left,$r.Top,0,0,(New-Object System.Drawing.Size($w,$ht))) }catch{}; $g.Dispose()
-  } else {
-    $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; $w=$b.Width; $ht=$b.Height
-    $cap=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($cap); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $g.Dispose()
-  }
-  $mw=1700.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
-  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g2=[System.Drawing.Graphics]::FromImage($sm); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($cap,0,0,$nw,$nh); $g2.Dispose()
-  $sm.Save($path,[System.Drawing.Imaging.ImageFormat]::Png); $cap.Dispose(); $sm.Dispose()
-}
-function CapWin2($proc){
-  $p=Get-Process $proc -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | Sort-Object { $_.MainWindowTitle.Length } -Descending | Select-Object -First 1
-  if(-not $p){ return $null }
-  $h=$p.MainWindowHandle; $r=New-Object Win2+RECT; [void][Win2]::GetWindowRect($h,[ref]$r); $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
-  if($w -lt 200 -or $ht -lt 200){ return $null }
-  $bmp=New-Object System.Drawing.Bitmap $w,$ht; $g=[System.Drawing.Graphics]::FromImage($bmp); $hdc=$g.GetHdc(); [void][Win2]::PrintWindow($h,$hdc,2); $g.ReleaseHdc($hdc); $g.Dispose()
-  $mw=1500.0; $s=[Math]::Min(1.0,$mw/$w); $nw=[int]($w*$s); $nh=[int]($ht*$s)
-  $sm=New-Object System.Drawing.Bitmap $nw,$nh; $g3=[System.Drawing.Graphics]::FromImage($sm); $g3.InterpolationMode='HighQualityBicubic'; $g3.DrawImage($bmp,0,0,$nw,$nh); $g3.Dispose()
-  $f=Join-Path $env:TEMP ("wcap_"+$proc+".png"); $sm.Save($f,[System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $sm.Dispose()
-  return [Convert]::ToBase64String([IO.File]::ReadAllBytes($f))
-}
-$lastSeg=-1; $rolling=New-Object System.Collections.ArrayList; $lastNudgeT=(Get-Date).AddDays(-1); $lastStruggleLogged=""; $flashed=@{}; $seenNodes=@{}; $revisitLogged=@{}; $lastXlHash=0; $lastXlChange=(Get-Date); $stuckOffered=$false; $askHist=New-Object System.Collections.ArrayList; $followUntil=(Get-Date).AddDays(-1); $seenWb=@{}; $lastCheckT=(Get-Date).AddDays(-1); $lastJumpT=(Get-Date).AddDays(-1); $chatUntil=(Get-Date).AddDays(-1); $lastLessonCap=(Get-Date).AddDays(-1)
-while(-not $sync.stop){
-  if($sync.typedAsk){
-    try{
-      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__"); $isWhy=($tq -eq "__WHY__"); $isCheat=($tq -eq "__CHEAT__")
-      if($isCheat){ Make-CheatSheet "the concept on this sheet"; continue }
-      $isTrace=((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})')); if($isTrace){ $tdet=$true }
-      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
-        $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-        continue
-      }
-      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(cheat ?sheet|reference (card|table|sheet)|quick reference|summary (table|card)|give me the rules|rules (table|card)|lesson sheet)')){
-        Make-CheatSheet $tq
-        continue
-      }
-      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk ?through|how do (i|you) build|show me a|demo|worked example)\b')){
-        Run-Demo $tq
-        continue
-      }
-      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|practice exercise|let me (try|practice)|give me (a|another) (problem|exercise|practice|drill|workout)|generate (me )?(a|an|one)?\s*(demo|practice|drill|workout|exercise|problem)|build (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|make (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|drill me|quiz me on this|make me a|make me one|build me one)\b')){
-        Make-Drill $tq
-        continue
-      }
-      if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
-        $axr=Invoke-XlAction $tq
-        if($axr){
-          $sync.text=$axr; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-          [void]$askHist.Add(@{q=$tq;a=$axr}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
-          continue
-        }
-      }
-      $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }
-      $afgh=[Win2]::GetForegroundWindow(); $aexFg=$false; try{ $aexFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $afgh }) }catch{}
-      $fbB=$null; if(-not $aexFg){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
-      $xlA=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xlA=Read-ExcelLive }catch{} }
-      $sysA="You are a sharp, accurate finance and Excel tutor at Breaking Into Wall Street / investment-banking level. Answer the student's question or help with whatever they are doing right now. Work carefully and double-check before answering. Format cleanly with ## headers, **bold** for key terms and the final answer, - bullets, a markdown table (| col | col |) whenever the data is tabular (a comparison, a categorization, or a line-by-line breakdown), and thousands-separated numbers when useful."
-      if($isKick){
-        $ua="I want a kick-start on the sheet I have open. Look at my Excel and tell me, briefly and directly: what this sheet is asking me to do and the FIRST concrete step to get moving (name the actual starting cell or row from the data). If I have clearly already started, point me at the NEXT step instead. 2-3 sentences, direct and encouraging - do not solve it for me, just get me going."
-      } elseif($isWhy){
-        $ua="I am STUCK on the single cell my cursor is in right now - the ACTIVE CELL named on the first line of the Excel data (for example 'Active cell D14'). Find that cell's row and read its row label to see what item or decision it is. Teach me JUST this one thing: explain the REASONING for what this specific cell should be, and give me the general RULE I can reuse for cells like it - lead with the concept and the rule, then use the specific answer only as the example that illustrates it. Keep it to 3-5 sentences. Do NOT audit, solve, or comment on the rest of the sheet. Be concrete about WHY, at Breaking Into Wall Street level. If the active cell is empty because I have not answered it yet, that is expected - teach me how to reason it out rather than just stating the answer."
-      } elseif($isAudit){
-        $ua="Do a THOROUGH final audit of my Excel work, using the EXACT cell data below as the ground truth. Check EVERY cell that holds a formula or entered value against what this sheet is meant to practice and the standard investment-banking method: verify each formula's logic, references, and signs, and recompute the numbers to confirm them. Then report with these sections: '## Verdict' - one line, either correct and complete, or how many issues; '## Issues' - each one as the exact cell, what is wrong, and the exact fix (the correct formula or value); '## Still to do' - only if parts are unfinished; '## Done right' - one short line. Be rigorous; do not wave anything through."
-      } else {
-        $ua=$(if($isAssist){ "Help me with whatever I am working on right now." }else{ "I ask: "+$tq })
-        $ua+=" My practice is NOT always an Excel build. Right now it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF) with no Excel involved. Use the images of what I am actually looking at and help with THAT. If there is no real Excel work in progress, read the question or exercise on my screen and answer or explain it directly - do not dismiss the other window as irrelevant. Cite exact Excel cells only when there is real Excel data. "+$(if($tdet){ "Explain in detail with the full reasoning and steps." }else{ "Be concise: the direct answer or fix in 1 to 3 short sentences." })
-        if($sync.handsOn){ $ua+=" NOTE: your hands are enabled - you genuinely CAN write into my Excel yourself. Never say you cannot edit Excel; if I am asking you to build or change something, say you can do it and ask me to give it as a direct command." }
-        if($isTrace){ $ua+=" TRACE MODE: I want to understand where a value comes from. Identify the exact cell(s) I am asking about, then follow the formula dependency chain BACKWARD step by step using the EXACT cell data, explaining each link in plain English (for example: 'C39 = gross PP&E in C37 minus accumulated depreciation in C38; C38 rolls forward from last period C30 plus this period's depreciation D12'). Finish with one line on what the number ultimately represents." }
-      }
-      $ca=@(@{type='text';text=$ua})
-      if($xlA){ $ca+=@{type='text';text=("[EXACT live Excel data, if relevant - authoritative]:`n"+$xlA)} }
-      if($sync.sheetPurpose){ $ca+=@{type='text';text=("Excel sheet context: "+$sync.sheetPurpose)} }
-      if($sync.lessonModel){ $ca+=@{type='text';text=("What the instructor's build looks like (from the lesson video): "+$sync.lessonModel)} }
-      if($sync.companyCtx){ $ca+=@{type='text';text=[string]$sync.companyCtx} }
-      if($sync.lessonlog){ $les2=$sync.lessonlog; if($les2.Length -gt 600){ $les2=$les2.Substring($les2.Length-600) }; $ca+=@{type='text';text=("Recent lesson context: "+$les2)} }
-      if($exB){ $ca+=@{type='text';text='[Image: Excel window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail='high'}} }
-      if($coB){ $ca+=@{type='text';text='[Image: browser window]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail='high'}} }
-      if($fbB){ $ca+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $ca+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail='high'}} }
-      $hm=@(); foreach($h in $askHist){ $hm+=@{role='user';content=[string]$h.q}; $hm+=@{role='assistant';content=[string]$h.a} }
-      $ma=@(@{role='system';content=($sysA+$sync.brain)})+$hm+@(@{role='user';content=$ca})
-      $pa=@{ model=$sync.model; max_completion_tokens=$(if($isAudit){4500}elseif($tdet){3500}elseif($isKick){600}elseif($isWhy){1100}else{900}); reasoning_effort=$(if($isKick){'low'}else{'medium'}); messages=$ma } | ConvertTo-Json -Depth 12
-      $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
-      $ar=& curl.exe -s --max-time 220 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf)
-      $aj=$null; try{ $aj=$ar|ConvertFrom-Json }catch{}
-      $ans=if($aj.choices){ ([string]$aj.choices[0].message.content).Trim() }elseif($aj.error){ "Error: "+$aj.error.message }else{ "No response - check your connection." }
-      if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ans=Clean-Answer $ans }
-      if(-not $ans){ $ans="That check came back empty - the sheet may be large or the model was slow. Try Check my sheet again." }
-      $sync.text=$ans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-      if($ans -and ($ans -notmatch '^(Error|No response|Sorry)')){
-        $qrec=$(if($isAudit){ "(deep audit of my sheet)" }elseif($isKick){ "(kick-start on this sheet)" }elseif($isWhy){ "(why is this cell what it is)" }elseif($isAssist){ "(help with what is on my screen)" }else{ $tq })
-        $arec=$(if($ans.Length -gt 1200){ $ans.Substring(0,1200) }else{ $ans })
-        [void]$askHist.Add(@{q=$qrec;a=$arec}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
-        try{ $alog=$(if($ans.Length -gt 600){ $ans.Substring(0,600) }else{ $ans }); [IO.File]::AppendAllText(($env:TEMP+"\xc_ask.log"),((Get-Date).ToString("HH:mm:ss")+"  "+[string]$qrec+" => "+$alog+"`r`n`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{}
-      }
-      if($isKick){
-        try{
-          $sigF=Join-Path $sync.coaching "Signals.md"
-          if(-not (Test-Path $sigF)){ [IO.File]::AppendAllText($sigF,"# Signals - behavioral struggle signals`r`n",(New-Object System.Text.UTF8Encoding($false))) }
-          $sigP=[string]$sync.sheetPurpose; if(-not $sigP){ $sigP="unknown" }
-          [IO.File]::AppendAllText($sigF,("- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+" | kick | "+$sigP+"`r`n"),(New-Object System.Text.UTF8Encoding($false)))
-        }catch{}
-      }
-      if($isAudit -and $ans -and ($ans -match '##\s*Issues')){
-        try{
-          $isec=([regex]::Match($ans,'(?s)##\s*Issues(.*?)(?=##|$)')).Groups[1].Value.Trim()
-          if($isec -and ($isec -notmatch '^\s*(none|no issues)')){
-            if($isec.Length -gt 700){ $isec=$isec.Substring(0,700) }
-            if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle ("Sheet audit found: "+(($isec -replace '\s+',' ').Trim())) }catch{} }
-            if($sync.curr){
-              $mp=@{ model="gpt-4o-mini"; max_tokens=40; temperature=0; messages=@(@{role="system";content="Given a CURRICULUM (lines 'ID: topic') and ISSUES found auditing a student's practice sheet, reply with ONLY the single best-matching node ID (like DCF-02), or NONE."},@{role="user";content=("CURRICULUM:`n"+$sync.curr+"`n`nISSUES:`n"+$isec)}) } | ConvertTo-Json -Depth 6
-              $mbf="$env:TEMP\xc_amap.json"; [IO.File]::WriteAllText($mbf,$mp,(New-Object System.Text.UTF8Encoding($false)))
-              $mr=& curl.exe -s --max-time 20 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$mbf)
-              $mj=$null; try{ $mj=$mr|ConvertFrom-Json }catch{}
-              if($mj.choices){ $mid=([string]$mj.choices[0].message.content).Trim(); if(($mid -match '^[A-Z]{2,3}-\d{2}$') -and (Get-Command Bump-Mastery -ErrorAction SilentlyContinue)){ try{ Bump-Mastery $mid 'shaky' 'sheet audit found issues' }catch{} } }
-            }
-          }
-        }catch{}
-      }
-    }catch{ $sync.text="Sorry - that question failed. Try again."; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1 }
-    continue
-  }
-  if($sync.formReq){
-    $sync.formReq=$false
-    try{
-      $fl=[string]$sync.lessonlog; if($fl.Length -gt 500){ $fl=$fl.Substring($fl.Length-500) }
-      $fc=@(@{type='text';text="List the 6 to 8 most relevant Excel formulas for what I am practicing right now, most useful first. Reply with ONE formula per line, each line EXACTLY in this format: Name | =FORMULA(example cell refs) | very short when-to-use. Plain ASCII. No preamble, no numbering, nothing else."})
-      if($sync.sheetPurpose){ $fc+=@{type='text';text=("What I am practicing: "+$sync.sheetPurpose)} }
-      if($fl){ $fc+=@{type='text';text=("Recent lesson: "+$fl)} }
-      $fpay=@{ model=$sync.model; max_completion_tokens=900; reasoning_effort='low'; messages=@(@{role='system';content="You are a finance/Excel tutor. Output exactly the requested lines and nothing else."},@{role='user';content=$fc}) } | ConvertTo-Json -Depth 10
-      $fbf="$env:TEMP\xc_form.json"; [IO.File]::WriteAllText($fbf,$fpay,(New-Object System.Text.UTF8Encoding($false)))
-      $fr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$fbf)
-      $fj=$null; try{ $fj=$fr|ConvertFrom-Json }catch{}
-      if($fj.choices){ $ft=([string]$fj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ft=Clean-Answer $ft }; $sync.formText=$ft } else { $sync.formText="" }
-    }catch{ $sync.formText="" }
-    $sync.formStamp=$sync.formStamp+1
-    continue
-  }
-  if($sync.idReq){
-    $sync.idReq=$false
-    try{
-      $il=[string]$sync.lessonlog; if($il.Length -gt 400){ $il=$il.Substring($il.Length-400) }
-      $ixl=[string]$sync.lastXl; if($ixl.Length -gt 3500){ $ixl=$ixl.Substring(0,3500) }
-      $ic=@(@{type='text';text="Below is the EXACT data from my Excel practice sheet. Categorize the line items I am looking at into the buckets that actually fit THIS exercise (for example: current assets vs current liabilities vs long-term items; or operating vs investing vs financing flows; or debt vs cash vs equity in an EV bridge; or inputs vs calculations vs outputs - whichever categories genuinely apply). IMPORTANT: use the classification scheme and the exact terminology MY COURSE has taught me - my covered concepts and the recent lesson are in your context; bucket items the way the instructor would, not generic textbook labels. Reply ONE item per line, EXACTLY in this format: Category | Item name (cell) | very short note on what it contributes to. Put lines of the same category together, most important category first. Plain ASCII. No preamble, nothing else."})
-      if($sync.sheetPurpose){ $ic+=@{type='text';text=("What I am practicing: "+$sync.sheetPurpose)} }
-      if($il){ $ic+=@{type='text';text=("Recent lesson: "+$il)} }
-      if($ixl){ $ic+=@{type='text';text=("EXACT Excel data:`n"+$ixl)} }
-      $ipay=@{ model=$sync.model; max_completion_tokens=1100; reasoning_effort='low'; messages=@(@{role='system';content=("You are a finance/Excel tutor who teaches with the student's own course conventions."+$sync.brain)},@{role='user';content=$ic}) } | ConvertTo-Json -Depth 10
-      $ibf="$env:TEMP\xc_ident.json"; [IO.File]::WriteAllText($ibf,$ipay,(New-Object System.Text.UTF8Encoding($false)))
-      $ir=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$ibf)
-      $ij=$null; try{ $ij=$ir|ConvertFrom-Json }catch{}
-      if($ij.choices){ $it=([string]$ij.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $it=Clean-Answer $it }; $sync.idText=$it } else { $sync.idText="" }
-    }catch{ $sync.idText="" }
-    $sync.idStamp=$sync.idStamp+1
-    continue
-  }
-  if($sync.paused -or $sync.micMute){ Start-Sleep -Milliseconds 400; continue }
-  try {
-    $segs=@(Get-ChildItem $sync.segdir -Filter "seg_*.wav" -ErrorAction SilentlyContinue | Sort-Object Name)
-    if($segs.Count -ge 2){
-      $newest=$segs[$segs.Count-2]; $segN=-1; try{ $segN=[int]($newest.BaseName.Substring(4)) }catch{}
-      if($segN -lt $lastSeg){ $lastSeg=-1 }
-      if($segN -gt $lastSeg){
-        $lastSeg=$segN; $seg=$newest.FullName; $segT=$newest.LastWriteTime
-        $e="$env:TEMP\watch_vol.txt"; & $sync.ff -hide_banner -i $seg -af volumedetect -f null NUL 2>$e
-        $ln=Get-Content $e | Where-Object { $_ -match 'mean_volume' } | Select-Object -First 1
-        $level=if($ln -match '(-?[0-9.]+) dB'){ [double]$Matches[1] } else { -100 }
-        $silent=($level -lt -45); $txt=""
-        if(-not $silent){
-          $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/audio/transcriptions" -H ("Authorization: Bearer "+$sync.key) -F ("file=@"+$seg) -F "model=whisper-1" -F "response_format=json"
-          $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}; if($jj.text){ $txt=([string]$jj.text).Trim() }
-        }
-        $heyHit=($txt -and ($txt -match '(?i)\bhey,?\s*coach\b'))
-        $inChatWin=((Get-Date) -lt $chatUntil); $sync.chatOn=$inChatWin
-        $isFollow=($txt -and ($txt -notmatch '(?i)\bcoach\b') -and (-not $inChatWin) -and ($txt.Trim().Length -ge 12) -and ($segT -gt $sync.ttsBusyUntil) -and ((Get-Date) -lt $followUntil))
-        $asked=($sync.micMode -and (-not $sync.muteMe) -and (-not $heyHit) -and (-not $inChatWin) -and (($txt -match '(?i)\bcoach\b') -or $isFollow))
-        if($asked){ $sync.ackPing=$true }
-        try{ if($txt -and $txt.Length -gt 2){ [IO.File]::AppendAllText(($env:TEMP+"\xc_voice.log"),((Get-Date).ToString("HH:mm:ss")+"  hey="+[int][bool]$heyHit+" ask="+[int][bool]$asked+" chat="+[int][bool]$inChatWin+" | "+$txt+"`r`n"),(New-Object System.Text.UTF8Encoding($false))) } }catch{}
-        if($asked -and ($txt -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk ?through|how do (i|you) build|show me a|demo|worked example)\b')){
-          Run-Demo $txt
-          continue
-        }
-        if($asked -and ($txt -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|practice exercise|let me (try|practice)|give me (a|another) (problem|exercise|practice|drill|workout)|generate (me )?(a|an|one)?\s*(demo|practice|drill|workout|exercise|problem)|build (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|make (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|drill me|quiz me on this|make me a|make me one|build me one)\b')){
-          Make-Drill $txt
-          continue
-        }
-        if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
-          $axr3=Invoke-XlAction $txt
-          if($axr3){
-            [void]$askHist.Add(@{q=$txt;a=$axr3}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
-            $sync.askLabel="Excel action"; $sync.text=$axr3; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-            continue
-          }
-        }
-        $isChat=$false; $chatQ=""
-        if($sync.micMode -and (-not $sync.muteMe) -and $txt -and ($segT -gt $sync.ttsBusyUntil) -and (-not $asked)){
-          if($heyHit){
-            $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
-            $cq=($txt -replace '(?i)^.*?\bhey,?\s*coach\b[\s,.!?]*','').Trim()
-            if($cq.Length -gt 3){ $isChat=$true; $chatQ=$cq }
-            else{
-              $sync.askLabel="Chat"; $sync.text="I'm here - what's up?"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-              continue
-            }
-          }
-          elseif($inChatWin -and $txt.Trim().Length -ge 3){
-            if($txt -match '(?i)(thanks,?\s*coach|thank you,?\s*coach|that.s all|i.m good|\bim good\b|never ?mind|back to work)'){
-              $chatUntil=(Get-Date).AddDays(-1); $sync.chatOn=$false
-              $sync.askLabel="Chat"; $sync.text="Got it - back to watching."; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-              continue
-            }
-            $isChat=$true; $chatQ=$txt.Trim()
-          }
-        }
-        if($isChat -and ($chatQ -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
-          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
-          $sync.askLabel="Scorecard"; $sync.text=(Build-Scorecard); $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-          continue
-        }
-        if($isChat -and ($chatQ -match '(?i)\b(teach me|show me how|demonstrate|walk me through|walk ?through|how do (i|you) build|show me a|demo|worked example)\b')){
-          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
-          Run-Demo $chatQ
-          continue
-        }
-        if($isChat -and ($chatQ -match '(?i)\b(similar (exercise|problem|question)|practice (problem|question|this|exercise)|practice exercise|let me (try|practice)|give me (a|another) (problem|exercise|practice|drill|workout)|generate (me )?(a|an|one)?\s*(demo|practice|drill|workout|exercise|problem)|build (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|make (me )?(a|an|one)?\s*(demo|drill|workout|practice|exercise|problem)|drill me|quiz me on this|make me a|make me one|build me one)\b')){
-          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
-          Make-Drill $chatQ
-          continue
-        }
-        if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
-          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
-          $axr2=Invoke-XlAction $chatQ
-          if($axr2){
-            [void]$askHist.Add(@{q=$chatQ;a=$axr2}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
-            $sync.askLabel="Excel action"; $sync.text=$axr2; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-            continue
-          }
-        }
-        if($isChat){
-          $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75); $sync.chatOn=$true
-          $hm3=@(); foreach($h in $askHist){ $hm3+=@{role='user';content=[string]$h.q}; $hm3+=@{role='assistant';content=[string]$h.a} }
-          $cctx="You are a sharp, friendly finance and Excel tutor having a QUICK spoken conversation with a student mid-study. Answer in 1-3 short conversational sentences - direct and natural, like speech. No markdown, no lists, no headers. If they ask about their sheet, use the Excel data provided."
-          if($sync.handsOn){ $cctx=$cctx+" NOTE: your hands are enabled - you genuinely CAN write into their Excel. Never say you cannot edit Excel; if they wanted you to build or change something, say you can do it and ask them to give it as a direct command (like: fill row 5 with years, or: fix D24)." }
-          $cxl=[string]$sync.lastXl; if($cxl.Length -gt 1500){ $cxl=$cxl.Substring(0,1500) }
-          $cmsg=$chatQ
-          if($sync.sheetPurpose){ $cmsg=$cmsg+"`n(Context - what I am practicing: "+$sync.sheetPurpose+")" }
-          if($sync.companyCtx){ $cmsg=$cmsg+"`n("+[string]$sync.companyCtx+")" }
-          if($cxl){ $cmsg=$cmsg+"`n(My Excel right now:`n"+$cxl+")" }
-          if($chatQ -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})'){ $cmsg=$cmsg+" TRACE MODE: I want to understand where a value comes from. Identify the exact cell(s) I am asking about, then follow the formula dependency chain BACKWARD step by step using the EXACT cell data, explaining each link in plain English (for example: 'C39 = gross PP&E in C37 minus accumulated depreciation in C38; C38 rolls forward from last period C30 plus this period's depreciation D12'). Finish with one line on what the number ultimately represents." }
-          $cmsgs=@(@{role='system';content=$cctx})+$hm3+@(@{role='user';content=$cmsg})
-          if($sync.chatModel -match '^gpt-5'){ $cpay=@{ model=$sync.chatModel; max_completion_tokens=600; reasoning_effort='none'; messages=$cmsgs } | ConvertTo-Json -Depth 10 }
-          else { $cpay=@{ model=$sync.chatModel; max_tokens=220; temperature=0.5; messages=$cmsgs } | ConvertTo-Json -Depth 10 }
-          $cbf="$env:TEMP\xc_chat.json"; [IO.File]::WriteAllText($cbf,$cpay,(New-Object System.Text.UTF8Encoding($false)))
-          $crr=& curl.exe -s --max-time 25 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf)
-          $cjj=$null; try{ $cjj=$crr|ConvertFrom-Json }catch{}
-          $cans=if($cjj.choices){ ([string]$cjj.choices[0].message.content).Trim() }else{ "Sorry - say that again?" }
-          if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $cans=Clean-Answer $cans }
-          if($cans){ [void]$askHist.Add(@{q=$chatQ;a=$cans}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) } }
-          $sync.askLabel="Chat"; $sync.text=$cans; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
-          continue
-        }
-        if(-not $asked -and $txt){ [void]$rolling.Add($txt); while($rolling.Count -gt 6){ $rolling.RemoveAt(0) }; $sync.lessonlog=($sync.lessonlog+" "+$txt).Trim(); if($sync.lessonlog.Length -gt 6000){ $sync.lessonlog=$sync.lessonlog.Substring($sync.lessonlog.Length-6000) }; try{ [IO.File]::WriteAllText("$env:TEMP\xc_live_lesson.txt",$sync.lessonlog,(New-Object System.Text.UTF8Encoding($false))) }catch{}; $sync.lessonNoteAt=(Get-Date); $sync.lessonNotes=([int]$sync.lessonNotes)+1 }
-        $lessonCtx=($rolling -join " "); $paused=($silent -or $lessonCtx.Length -lt 3)
-        $fgh=[Win2]::GetForegroundWindow(); $excelFg=$false; try{ $excelFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $fgh }) }catch{}
-        $working=($excelFg -or $paused)
-        if((-not $asked) -and $excelFg -and $txt -and ($txt.Trim().Length -gt 15) -and (-not $sync.typedAsk) -and (((Get-Date)-$lastJumpT).TotalSeconds -ge 120) -and ($txt -match '(?i)(\bwhy\b|how come|\bwait\b|what does|what is|how do|how does|confus|don.t get|do not get|don.t understand|not sure|no idea|i thought|doesn.t make sense)')){
-          try{
-            $jp=@{ model="gpt-4o-mini"; max_tokens=90; temperature=0; messages=@(@{role="system";content="A finance student is working in Excel and thinking aloud (mic transcription). Decide if they are GENUINELY voicing confusion or a question they would want answered - not reading exercise text aloud, not casual muttering, not talking to someone else. Reply EXACTLY with 'YES: <their question restated clearly>' or 'NO'."},@{role="user";content=$txt}) } | ConvertTo-Json -Depth 6
-            $jbf="$env:TEMP\xc_jump.json"; [IO.File]::WriteAllText($jbf,$jp,(New-Object System.Text.UTF8Encoding($false)))
-            $jr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$jbf)
-            $jj2=$null; try{ $jj2=$jr|ConvertFrom-Json }catch{}
-            if($jj2.choices){ $jt=([string]$jj2.choices[0].message.content).Trim(); if($jt -match '(?s)^YES:\s*(.+)$'){ $lastJumpT=(Get-Date); $sync.ackPing=$true; $sync.askLabel="You sounded unsure - jumping in"; $sync.typedDetail=$false; $sync.typedAsk=$Matches[1].Trim() } }
-          }catch{}
-        }
-        $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" }; if($coB){ $sync.courseSeenAt=(Get-Date) }
-        $fbB=$null; if((-not $exB -and -not $coB) -or (-not $excelFg)){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
-        $xlLive=$null; if($asked -and (Get-Command Read-ExcelLive -ErrorAction SilentlyContinue)){ try{ $xlLive=Read-ExcelLive }catch{} }
-        $doCheck=($asked -or (-not $working))
-        if($doCheck){
-        if($asked){
-          $u="The student spoke to you and asked: '"+$txt+"'. What the instructor has recently been teaching (lesson audio): '"+$sync.lessonlog+"'. You are given up to two labeled images: MY Excel sheet (my own work) and the course/lesson. Read the exact question carefully, work it out step by step and double-check any arithmetic, then answer clearly and helpfully in 1 to 4 sentences - explain it so they understand, like a good tutor. Use my Excel, the course image, this lesson context, and your memory of their weak points. If it was not a real question, reply EXACTLY: OK"
-          if($sync.handsOn){ $u+=" NOTE: your hands are enabled - you genuinely CAN write into the student's Excel yourself; never say you cannot edit Excel." }
-          if($txt -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})'){ $u+=" TRACE MODE: I want to understand where a value comes from. Identify the exact cell(s) I am asking about, then follow the formula dependency chain BACKWARD step by step using the EXACT cell data, explaining each link in plain English (for example: 'C39 = gross PP&E in C37 minus accumulated depreciation in C38; C38 rolls forward from last period C30 plus this period's depreciation D12'). Finish with one line on what the number ultimately represents." }
-          $useModel=$sync.model; $det="high"; $maxtok=700; $effort="medium"
-        } else {
-          if($paused){ $u="The lesson video is paused - I'm working on something (a quiz, an exercise, my Excel). You are given up to two labeled images: MY Excel sheet and the course/lesson. Compare my Excel to what the lesson is teaching. ONLY if you can clearly see a real mistake or that I'm stuck, say specifically what's wrong or the next step (1-2 sentences), citing exact cell addresses ONLY from the EXACT live-Excel data block if one is provided (never guess a cell from the image). If it looks fine or you're unsure, reply EXACTLY: OK." }
-          else { $u="Recent lesson audio: '"+$lessonCtx+"'. You are given up to two labeled images: MY Excel sheet and the course/lesson. ONLY if you can clearly see a real, specific mistake in MY Excel versus what the lesson is teaching, point it out (1-2 sentences). If it looks fine or you're not sure, reply EXACTLY: OK - do not guess or nitpick." }
-          $u=$(if($working){ "I am working in my Excel right now." }else{ "I am watching the lesson. Recent lesson audio: '"+$lessonCtx+"'." })+" Speak up ONLY for a GENUINE ERROR: a wrong formula, a wrong cell reference, a clearly wrong number, a broken or incorrect link, a wrong sign, or a real conceptual mistake versus standard investment-banking practice. Do NOT comment on the ORDER I do things, building things in a different sequence, a valid alternative method or layout, work that is simply incomplete or in progress, or style. Standard conventions matter for correctness only, never for the order or method I choose. Do NOT compute quiz/test answers yourself; reply OK for those. Before flagging anything, RECOMPUTE it yourself from the EXACT data block and confirm it is truly wrong - if it could be a valid alternative method, a different order, or just unfinished work, it is NOT an error. If there is a genuine error, give ONE short sentence naming the exact cell (from the EXACT data block, never a guessed cell). Otherwise reply EXACTLY: OK."
-          if($sync.lastNudge -and $sync.lastNudge -ne 'OK'){ $u+=" You last told me: '"+$sync.lastNudge+"'. Don't repeat it." }
-          $useModel=$sync.model; $det=$(if($working){"low"}else{"auto"}); $maxtok=$(if($working){320}else{110}); $effort=$(if($working){"low"}else{"none"})
-        }
-        $content=@(@{type='text';text=$u})
-        if($xlLive){ $content+=@{type='text';text=("[EXACT live data from MY Excel - authoritative; use these cell addresses, values and formulas; never guess a cell from the image]:`n"+$xlLive)} }
-        if($sync.sheetPurpose){ $content+=@{type='text';text=("What this practice sheet is for (already understood): "+$sync.sheetPurpose)} }
-        if($sync.companyCtx){ $content+=@{type='text';text=[string]$sync.companyCtx} }
-        if($asked -or $working){ $content+=@{type='text';text="Identify the SPECIFIC skill the lesson is teaching right now and what I am trying to BUILD in my Excel, then connect them. When you help or flag something, cite the exact cell/formula from the data above (never a guessed cell) and give the precise next step toward that goal."} }
-        $content+=@{type='text';text="My practice is NOT always an Excel build - it may be a quiz, a multiple-choice question, or a written exercise in another window (browser, Word, a PDF). Consider what I am ACTUALLY looking at in the images; never dismiss the other window as irrelevant just because it is not Excel."}
-        if($exB){ $content+=@{type='text';text='[Image: MY Excel sheet (my own work)]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$exB);detail=$det}} }
-        if($coB){ $content+=@{type='text';text='[Image: the course / lesson]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail=$det}} }
-        if($fbB){ $content+=@{type='text';text='[Image: my full screen - what I am actually looking at right now]'}; $content+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$fbB);detail=$det}} }
-        $hm2=@(); if($asked){ foreach($h in $askHist){ $hm2+=@{role='user';content=[string]$h.q}; $hm2+=@{role='assistant';content=[string]$h.a} } }
-        $msgs=@(@{role='system';content=($sync.sys+$sync.brain)})+$hm2+@(@{role='user';content=$content})
-        if($useModel -match '^gpt-5'){ $payload=@{ model=$useModel; max_completion_tokens=$maxtok; reasoning_effort=$effort; messages=$msgs } | ConvertTo-Json -Depth 12 }
-        else { $payload=@{ model=$useModel; max_tokens=$maxtok; temperature=0; messages=$msgs } | ConvertTo-Json -Depth 12 }
-        $bf="$env:TEMP\watch_body.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
-        $vr=& curl.exe -s --max-time 45 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
-        $vj=$null; try{ $vj=$vr|ConvertFrom-Json }catch{}
-        $sync.text=if($vj.choices){ $at=([string]$vj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $at=Clean-Answer $at }; $at } else { "OK" }
-        if($asked -and $sync.text -and $sync.text -ne "OK"){ $arec2=$(if($sync.text.Length -gt 1200){ $sync.text.Substring(0,1200) }else{ $sync.text }); [void]$askHist.Add(@{q=$txt;a=$arec2}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }; $followUntil=(Get-Date).AddSeconds(60) }
-        } else { $sync.text="OK" }
-        if((-not $asked) -and $sync.text -ne "OK" -and $sync.text -ne ""){ if(((Get-Date)-$lastNudgeT).TotalSeconds -lt 25){ $sync.text="OK" } else { $lastNudgeT=(Get-Date) } }
-        if((-not $asked) -and $working -and $sync.text -ne "OK" -and $sync.text -ne ""){ $newStr=$true; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $newStr=(-not (XC-SameIssue $sync.text $lastStruggleLogged)) }; if($newStr){ $lastStruggleLogged=$sync.text; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $sync.text }catch{} } } }
-        if((-not $asked) -and ($sync.text -eq "OK" -or $sync.text -eq "")){
-          $flashTxt=($lessonCtx+" "+[string]$sync.sheetPurpose).Trim()
-          if((Get-Command Find-WeakFlash -ErrorAction SilentlyContinue) -and $flashTxt.Length -gt 5){
-            $fb=$null; try{ $fb=Find-WeakFlash $flashTxt }catch{}
-            if($fb){ $fp=$fb -split '\|',2; if(-not $flashed.ContainsKey($fp[0])){ $flashed[$fp[0]]=$true; $sync.text="Heads up - '"+$fp[0]+"' tripped you up before"+$(if($fp.Count -gt 1 -and $fp[1]){ " ("+$fp[1]+")" }else{ "" })+". Take it slow here." } }
-          }
-        }
-        $sync.lesson=$lessonCtx; $sync.isPaused=$working; $sync.isAnswer=$asked; $sync.stamp=$sync.stamp+1
-        if((-not $asked) -and (-not $working) -and $txt -and $coB -and (((Get-Date)-$lastLessonCap).TotalSeconds -ge 90)){
-          $lastLessonCap=(Get-Date)
-          try{
-            $lmC=@(@{type='text';text="This is a frame from a finance course video. If the instructor is showing a spreadsheet/model being built, extract its STRUCTURE compactly: each visible row as '<label>: <formula or value>' lines, plus a one-line note of what is being built. If no spreadsheet is visible reply EXACTLY: NOLESSON."})
-            $lmC+=@{type='image_url';image_url=@{url=('data:image/png;base64,'+$coB);detail='high'}}
-            $lmPay=@{ model=$sync.model; max_completion_tokens=1200; reasoning_effort='low'; messages=@(@{role='system';content="You extract spreadsheet structure from a single course-video frame for a finance student."},@{role='user';content=$lmC}) } | ConvertTo-Json -Depth 10
-            $lmBf="$env:TEMP\xc_lesmodel.json"; [IO.File]::WriteAllText($lmBf,$lmPay,(New-Object System.Text.UTF8Encoding($false)))
-            $lmR=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$lmBf)
-            $lmJ=$null; try{ $lmJ=$lmR|ConvertFrom-Json }catch{}
-            if($lmJ.choices){
-              $lmT=([string]$lmJ.choices[0].message.content).Trim()
-              if($lmT -and ($lmT -notmatch '^\s*NOLESSON')){
-                $lmBlk="["+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"]`n"+$lmT
-                $lmRoll=([string]$sync.lessonModel+"`n`n"+$lmBlk).Trim()
-                if($lmRoll.Length -gt 2500){ $lmRoll=$lmRoll.Substring($lmRoll.Length-2500) }
-                $sync.lessonModel=$lmRoll
-                try{
-                  $lmDir=Join-Path $sync.coaching "LessonModels"; New-Item -ItemType Directory -Force -Path $lmDir | Out-Null
-                  $lmF=Join-Path $lmDir ((Get-Date).ToString("yyyy-MM-dd")+".md")
-                  if(-not(Test-Path $lmF)){ [IO.File]::AppendAllText($lmF,("# Lesson models - "+(Get-Date).ToString("yyyy-MM-dd")+"`r`n"),(New-Object System.Text.UTF8Encoding($false))) }
-                  [IO.File]::AppendAllText($lmF,("`r`n## "+(Get-Date).ToString("HH:mm")+"`r`n"+$lmT+"`r`n"),(New-Object System.Text.UTF8Encoding($false)))
-                }catch{}
-              }
-            }
-          }catch{}
-        }
-        if($segs.Count -gt 40){ for($i=0;$i -lt ($segs.Count-40);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
-        if(-not $asked -and $txt){ $sync.distillbuf=($sync.distillbuf+" "+$txt).Trim(); $sync.distillCount=$sync.distillCount+1 }
-        if($sync.distillCount -ge 36 -and $sync.distillbuf.Length -gt 120){
-          $dp=@{ model="gpt-4o-mini"; max_tokens=220; temperature=0; messages=@(@{role="system";content="Extract the 1-3 most important finance/Excel concepts or facts taught in this lesson excerpt as concise one-line bullets starting with '- '. No preamble; skip trivial chatter."},@{role="user";content=$sync.distillbuf}) } | ConvertTo-Json -Depth 6
-          $dbf="$env:TEMP\xc_distill.json"; [IO.File]::WriteAllText($dbf,$dp,(New-Object System.Text.UTF8Encoding($false)))
-          $dr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$dbf)
-          $dj=$null; try{ $dj=$dr|ConvertFrom-Json }catch{}
-          if($dj.choices){ $kf=Join-Path $sync.coaching "Knowledge.md"; if(-not(Test-Path $kf)){ [IO.File]::AppendAllText($kf,"# Knowledge - concepts from the lessons`n",(New-Object System.Text.UTF8Encoding($false))) }; [IO.File]::AppendAllText($kf,"`n"+([string]$dj.choices[0].message.content).Trim()+"`n",(New-Object System.Text.UTF8Encoding($false))) }
-          $wp=@{ model="gpt-4o-mini"; max_tokens=160; temperature=0; messages=@(@{role="system";content="This is a transcript of a study session: an instructor teaching, plus the STUDENT reacting and thinking aloud. Output ONLY genuine signs the STUDENT was confused, unsure, guessed, or struggled, as 1-2 short bullets starting with '- ' (quote the student's words if useful). Ignore the instructor's explanations. If there are no real struggle signs, reply exactly: NONE"},@{role="user";content=$sync.distillbuf}) } | ConvertTo-Json -Depth 6
-          $wbf="$env:TEMP\xc_wp.json"; [IO.File]::WriteAllText($wbf,$wp,(New-Object System.Text.UTF8Encoding($false)))
-          $wr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$wbf)
-          $wj=$null; try{ $wj=$wr|ConvertFrom-Json }catch{}
-          if($wj.choices){ $wpt=([string]$wj.choices[0].message.content).Trim(); if($wpt -and ($wpt -match '(?m)^\s*-\s') -and ($wpt -notmatch '(?i)\bnone\b')){ $wpf2=Join-Path $sync.coaching "Weak Points.md"; if(-not(Test-Path $wpf2)){ [IO.File]::AppendAllText($wpf2,"# Weak Points (accumulating across sessions)`n",(New-Object System.Text.UTF8Encoding($false))) }; [IO.File]::AppendAllText($wpf2,"`n## (live) "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"`n"+$wpt+"`n",(New-Object System.Text.UTF8Encoding($false))) } }
-          if($sync.curr){
-            $cp=@{ model="gpt-4o-mini"; max_tokens=180; temperature=0; messages=@(@{role="system";content="You map a study-session transcript to a finance curriculum. Given the CURRICULUM (lines 'ID: topic') and a TRANSCRIPT EXCERPT, output one line per relevant node: '<ID>|COVERED|HIGH' if the excerpt clearly teaches or practices it (HIGH only if unambiguous, else use LOW), or '<ID>|STRUGGLED' if the STUDENT seemed confused or unsure about it. Only list nodes with real evidence. If none, reply exactly: NONE"},@{role="user";content=("CURRICULUM:`n"+$sync.curr+"`n`nTRANSCRIPT EXCERPT:`n"+$sync.distillbuf)}) } | ConvertTo-Json -Depth 6
-            $cbf="$env:TEMP\xc_curr.json"; [IO.File]::WriteAllText($cbf,$cp,(New-Object System.Text.UTF8Encoding($false)))
-            $cr=& curl.exe -s --max-time 15 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf)
-            $cj=$null; try{ $cj=$cr|ConvertFrom-Json }catch{}
-            if($cj.choices){ $ct=([string]$cj.choices[0].message.content).Trim(); foreach($cl in ($ct -split "`n")){ $cpp=$cl.Trim() -split '\|'; if($cpp.Count -ge 2){ $nid=$cpp[0].Trim(); $kind=$cpp[1].Trim().ToUpper();
-              if($nid){
-                if($seenNodes.ContainsKey($nid)){
-                  if(-not $revisitLogged.ContainsKey($nid)){
-                    $revisitLogged[$nid]=$true
-                    try{
-                      $rtopic=$nid
-                      if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ $cn=Get-Curriculum | Where-Object { $_.id -eq $nid } | Select-Object -First 1; if($cn){ $rtopic=$cn.topic } }
-                      if($rtopic -eq $nid -and $sync.curr){ foreach($crl in ($sync.curr -split "`n")){ if($crl -match ('^\s*'+[regex]::Escape($nid)+'\s*:\s*(.+)$')){ $rtopic=$Matches[1].Trim(); break } } }
-                      $sigF2=Join-Path $sync.coaching "Signals.md"
-                      if(-not (Test-Path $sigF2)){ [IO.File]::AppendAllText($sigF2,"# Signals - behavioral struggle signals`r`n",(New-Object System.Text.UTF8Encoding($false))) }
-                      [IO.File]::AppendAllText($sigF2,("- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+" | revisit | "+$rtopic+"`r`n"),(New-Object System.Text.UTF8Encoding($false)))
-                    }catch{}
-                  }
-                } else { $seenNodes[$nid]=$true }
-              }
-              if($kind -eq 'COVERED' -and $cpp.Count -ge 3 -and $cpp[2].Trim().ToUpper() -eq 'HIGH'){ try{ Bump-Mastery $nid 'exposed' 'covered in lesson' }catch{} } elseif($kind -eq 'STRUGGLED'){ try{ Bump-Mastery $nid 'shaky' 'struggled in lesson' }catch{} } } } }
-          }
-          $sync.distillbuf=""; $sync.distillCount=0
-          if(Get-Command Build-FullBrain -ErrorAction SilentlyContinue){ try{ $sync.brain=Build-FullBrain }catch{} }
-        }
-      }
-    }
-  } catch {}
-  Start-Sleep -Milliseconds 700
-}
-'@
+# Load workers by DOT-SOURCING their file PATH, not an in-memory string copy. A Defender
+# folder exclusion can only suppress the AMSI script-scan when the script has a real file
+# path to match; an in-memory AddScript(content) has none, so the exclusion would miss it.
+# The $*Path vars are reused by the watchdog reloads below.
+$workPath = (Join-Path $PSScriptRoot "workers\work.ps1")
 $rs=[runspacefactory]::CreateRunspace(); $rs.ApartmentState='STA'; $rs.ThreadOptions='ReuseThread'; $rs.Open()
 $rs.SessionStateProxy.SetVariable('sync',$sync)
-$psw=[powershell]::Create(); $psw.Runspace=$rs; [void]$psw.AddScript($work); [void]$psw.BeginInvoke()
+$psw=[powershell]::Create(); $psw.Runspace=$rs; [void]$psw.AddScript(". `"$workPath`""); [void]$psw.BeginInvoke()
 
 # --- Excel watcher: dedicated thread that ONLY catches mistakes. Polls the live
 # workbook via COM (no screenshots), checks the exact cells the moment they change,
 # and is never blocked by transcription, asks, audits or distillation. ---
-$xlWork=@'
-function XLog($m){ try{ [IO.File]::AppendAllText(($env:TEMP+"\xc_watcher.log"),((Get-Date).ToString("HH:mm:ss")+"  "+$m+"`r`n"),(New-Object System.Text.UTF8Encoding($false))) }catch{} }
-function HashOf($s){ $i=([string]$s).IndexOf("`n"); if($i -gt 0){ return $s.Substring($i).GetHashCode() }; return ([string]$s).GetHashCode() }
-try{ . (Join-Path $sync.tools "curriculum.ps1") }catch{ XLog ("curriculum load FAILED: "+$_.Exception.Message) }
-try{ Add-Type 'using System; using System.Runtime.InteropServices; public class WinX { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }' -ErrorAction Stop }catch{}
-XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1; $guideOverviewSheet=""; $lastNudgePub=""
-while(-not $sync.stop){
- try{
-  $sync.wHB=(Get-Date); if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
-  if($sync.paused){ Start-Sleep -Milliseconds 800; continue }
-  $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive }catch{ XLog ("read threw: "+$_.Exception.Message) } }
-  if($xl -and $xl.Length -lt 130){ $xl=$null }
-  if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 3; continue }
-  if($nullStreak){ $nullStreak=$false; XLog "Excel readable again" }
-  if($sync.demoActive){ Start-Sleep -Seconds 2; continue }
-  $sync.lastXl=$xl
-  if(($xl -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
-    $sync.lastWb=$Matches[1]
-    if($seen.ContainsKey($sync.lastWb)){ $sync.sheetPurpose=[string]$seen[$sync.lastWb] }
-    else{
-      try{
-        $les=$sync.lessonlog; if($les.Length -gt 700){ $les=$les.Substring($les.Length-700) }
-        $sp=@{ model="gpt-4o-mini"; max_tokens=110; temperature=0; messages=@(@{role="system";content="In ONE concise line, state what this Excel sheet is for the student to practice and the method/goal, inferred from its cells, labels, any visible question or prompt, and the recent lesson. Format exactly: 'Practicing <topic> via <method>; goal: <goal>'. Be specific; no preamble."},@{role="user";content=("Recent lesson: "+$les+"`n`nThe Excel sheet:`n"+$xl)}) } | ConvertTo-Json -Depth 8
-        $sbf="$env:TEMP\xc_sheet.json"; [IO.File]::WriteAllText($sbf,$sp,(New-Object System.Text.UTF8Encoding($false)))
-        $sr=& curl.exe -s --max-time 20 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$sbf)
-        $sj=$null; try{ $sj=$sr|ConvertFrom-Json }catch{}
-        if($sj.choices){
-          $purp=([string]$sj.choices[0].message.content).Trim()
-          if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $purp=Clean-Answer $purp }
-          $sync.sheetPurpose=$purp; $seen[$sync.lastWb]=$purp
-          $sf=Join-Path $sync.coaching "Sheets.md"; if(-not(Test-Path $sf)){ [IO.File]::AppendAllText($sf,"# Sheets - what each practice workbook is for`r`n",(New-Object System.Text.UTF8Encoding($false))) }
-          [IO.File]::AppendAllText($sf,"`r`n- "+(Get-Date).ToString("yyyy-MM-dd HH:mm")+"  '"+$sync.lastWb+"': "+$purp,(New-Object System.Text.UTF8Encoding($false)))
-        }
-      }catch{}
-    }
-    $lastHash=(HashOf $xl); $lastChange=(Get-Date); $stuck=$false; $lastState="OK"; $prevXl=$xl; $sweptHash=$lastHash
-    $shN=''; try{ if($xl -match "sheet '([^']+)'"){ $shN=$Matches[1] } }catch{}; $sync.lastSheet=$shN; XLog ("workbook: '"+$sync.lastWb+"' sheet '"+$shN+"'")
-    Start-Sleep -Seconds 2; continue
-  }
-  # During a live drill exercise, stay silent (skip the error-check + guide nudges)
-  # so the coach does not interrupt or pre-grade the Workout sheet. Workbook tracking
-  # above still runs every iteration, so generation/grading target the right book.
-  if($sync.woActive){ Start-Sleep -Seconds 2; continue }
-  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($guideOverviewSheet -ne $sync.lastWb)){
-    $guideOverviewSheet=$sync.lastWb; $guideT=(Get-Date)
-    try{
-      $ou=@(@{type='text';text=("Goal of this sheet: "+[string]$sync.sheetPurpose)})
-      $ou+=@{type='text';text=("The student's sheet:`n"+$xl)}
-      $ou+=@{type='text';text="This is UNFAMILIAR material for the student. In 3 to 4 short sentences, paint the FULL PICTURE of this whole exercise before they start the steps: what it is overall, its major parts or sections and how they connect, and the end goal - how they will know the whole thing is complete (the final tie-out or check). Plain language, no numeric answers, no preamble - just orient them to the whole."}
-      $opay=@{ model="gpt-4o-mini"; max_tokens=350; temperature=0; messages=@(@{role='system';content="You orient a student to an unfamiliar finance/Excel exercise by giving the big picture - the whole structure and the end goal - before any individual step."},@{role='user';content=$ou}) } | ConvertTo-Json -Depth 10
-      $obf="$env:TEMP\xc_guideov.json"; [IO.File]::WriteAllText($obf,$opay,(New-Object System.Text.UTF8Encoding($false)))
-      $orr=& curl.exe -s --max-time 25 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$obf)
-      $ojj=$null; try{ $ojj=$orr|ConvertFrom-Json }catch{}
-      if($ojj.choices){ $ov=([string]$ojj.choices[0].message.content).Trim(); if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $ov=Clean-Answer $ov }; if($ov){ $sync.xlText=("GUIDE: Big picture -- "+$ov); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE overview: "+$ov) } }
-    }catch{ XLog ("guide overview error: "+$_.Exception.Message) }
-  }
-  if($sync.guideOn -and $sync.sheetPurpose -and (-not $sync.demoActive) -and ($lastGuideStep -ne "DONE") -and ( (((HashOf $xl) -ne $guideHash) -and ((Get-Date)-$guideT).TotalSeconds -ge 30) -or ((((Get-Date)-$guideT).TotalSeconds -ge $(if($lastGuideStep){240}else{75})) -and (((Get-Date)-$lastChange).TotalMinutes -lt 15)) )){
-    $guideHash=(HashOf $xl); $guideT=(Get-Date)
-    try{
-      $gu=@(@{type='text';text=("Goal of this sheet: "+[string]$sync.sheetPurpose)})
-      $gu+=@{type='text';text=("The student's CURRENT sheet (what they have filled in so far):`n"+$xl)}
-      $gu+=@{type='text';text="Identify the SINGLE step the student should do NOW, based on what is filled in versus the goal. Reply EXACTLY one line, no preamble, using | as the separator: KEY: <a 1 or 2 word slug naming this step, e.g. operating, capex, fcf, financing, reconcile> | <complete guidance a stuck student can follow: WHAT to do and in which section or cells, HOW to do it as a short process that references the exact cells and values they already have, and WHY it matters - enough that someone with no idea how to do it can follow. Do NOT state the final numeric answer; point them at the cells and let them compute.> | <the check or tie-out that proves it is right>. If the whole task is already complete and ties out, reply instead: DONE | <one short sentence: what they finished and the tie-out they hit>."}
-      $gpay=@{ model="gpt-4o-mini"; max_tokens=450; temperature=0; messages=@(@{role='system';content="You are a finance/Excel tutor guiding a student through a worksheet ONE step at a time. For the current step you explain WHAT, WHERE, HOW (the process, referencing their actual cells), and WHY - enough that someone who has no idea how to do it can follow - but you NEVER give the final numeric answer; you point at the cells and let them compute it."},@{role='user';content=$gu}) } | ConvertTo-Json -Depth 10
-      $gbf="$env:TEMP\xc_guide.json"; [IO.File]::WriteAllText($gbf,$gpay,(New-Object System.Text.UTF8Encoding($false)))
-      $grr=& curl.exe -s --max-time 25 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$gbf)
-      $gjj=$null; try{ $gjj=$grr|ConvertFrom-Json }catch{}
-      if($gjj.choices){
-        $gt=([string]$gjj.choices[0].message.content).Trim()
-        if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $gt=Clean-Answer $gt }
-        if($gt -match '(?im)^\s*DONE\s*\|\s*(.+)$'){ if($lastGuideStep -ne "DONE"){ $lastGuideStep="DONE"; $sync.xlText=("GUIDE: "+$Matches[1].Trim()); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE done: "+$Matches[1].Trim()) } }
-        elseif($gt -match '(?im)^\s*(?:KEY:\s*)?([A-Za-z][A-Za-z0-9 /]{0,24})\s*\|\s*(.+)$'){
-          $gkey=$Matches[1].Trim().ToLower(); $grest=$Matches[2].Trim(); $gmsg=$grest; $gchk=""
-          if($grest -match '^(.*\S)\s*\|\s*(.+)$'){ $gmsg=$Matches[1].Trim(); $gchk=$Matches[2].Trim() }
-          if($gkey -ne $lastGuideStep){ $lastGuideStep=$gkey; $sync.xlText=("GUIDE: "+$gmsg+$(if($gchk){ "  -- you'll know it's right when: "+$gchk }else{ "" })); $sync.xlStamp=$sync.xlStamp+1; XLog ("GUIDE step '"+$gkey+"': "+$gmsg) } else { XLog ("guide same step '"+$gkey+"' - suppressed") } }
-        else { XLog ("guide unparsed: "+$(if($gt.Length -gt 140){ $gt.Substring(0,140) }else{ $gt })) }
-      }
-    }catch{ XLog ("guide error: "+$_.Exception.Message) }
-  }
-  $h=(HashOf $xl)
-  $mode=""; $diffTxt=""
-  if($h -ne $lastHash){ $mode="change" }
-  elseif(($h -ne $sweptHash) -and (((Get-Date)-$lastChange).TotalSeconds -ge 45)){ $mode="sweep"; $sweptHash=$h; XLog "deep sweep - full recheck" }
-  if($mode -eq "change"){
-    $lastHash=$h; $lastChange=(Get-Date); $stuck=$false
-    XLog "sheet changed - checking"
-    Start-Sleep -Milliseconds 2500
-    try{ $x2=Read-ExcelLive; if($x2 -and $x2.Length -ge 130){ $xl=$x2; $lastHash=(HashOf $xl) } }catch{}
-    $diffTxt=""
-    if($prevXl){
-      $po=$prevXl -split "`r?`n"; $co=$xl -split "`r?`n"
-      $addL=@($co | Where-Object { $_ -and ($po -notcontains $_) } | Select-Object -First 6)
-      $remL=@($po | Where-Object { $_ -and ($co -notcontains $_) } | Select-Object -First 4)
-      if($addL.Count -gt 0){ $diffTxt="CELLS I JUST CHANGED OR ADDED:`n"+($addL -join "`n") }
-      if($remL.Count -gt 0){ $diffTxt=$diffTxt+"`nOLD LINES REPLACED OR REMOVED:`n"+($remL -join "`n") }
-    }
-    $prevXl=$xl
-  }
-  if($mode){
-    $les2=[string]$sync.lessonlog; if($les2.Length -gt 500){ $les2=$les2.Substring($les2.Length-500) }
-    $inst="Below is the EXACT live data from my Excel practice sheet (every non-empty cell: address, value, formula). Check ONLY for a GENUINE ERROR: a wrong formula, a wrong cell reference, a clearly wrong number, a broken or incorrect link, a wrong sign, or a real conceptual mistake versus standard investment-banking practice. RECOMPUTE the values yourself from the data before flagging anything - if it could be a valid alternative method, a different order of steps, or just unfinished work, it is NOT an error (unfinished is fine). Focus FIRST on the cells I just changed (listed below if any) - recompute those carefully. PREDICT AND COMPARE: for each number or formula I have entered, independently work out what that cell SHOULD be from the model's logic; if the instructor's build (lesson structure) is in your context, treat it as the intended target for the matching cells. If my value MATERIALLY differs from what it should be, that is an error. Pay EXTRA attention to mistakes matching my known weak points (in your context). Never reveal the answer to an exercise I have not attempted yet; once I HAVE entered an answer or formula, verify it by computing the correct result yourself. If a genuine error exists: name the exact cell, the EXPECTED value or formula it should be, the fix, and briefly WHY, in one or two short sentences; if it repeats one of my known weak points, add one short sentence stating the underlying rule so I stop repeating it. Otherwise reply EXACTLY: OK."
-    if($mode -eq "sweep"){ $inst="This is a periodic DEEP RE-CHECK: do a full careful pass over EVERY formula and entered value on the sheet, recomputing each one - a fast earlier check may have missed something. "+$inst }
-    $uc=@(@{type='text';text=$inst})
-    if($diffTxt){ $uc+=@{type='text';text=$diffTxt} }
-    if($sync.sheetPurpose){ $uc+=@{type='text';text=("What this sheet practices: "+$sync.sheetPurpose)} }
-    if($sync.lessonModel){ $uc+=@{type='text';text=("What the instructor's build looks like (from the lesson video): "+$sync.lessonModel)} }
-    if($sync.companyCtx){ $uc+=@{type='text';text=[string]$sync.companyCtx} }
-    if($les2){ $uc+=@{type='text';text=("Recent lesson context: "+$les2)} }
-    if($sync.lastNudge -and $sync.lastNudge -ne "OK"){ $uc+=@{type='text';text=("You last told me: '"+$sync.lastNudge+"'. If I fixed it and nothing else is wrong, reply OK. If it is STILL not fixed, flag it again.")} }
-    $uc+=@{type='text';text=("EXACT Excel data:`n"+$xl)}
-    $pay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort="medium"; messages=@(@{role='system';content=("You are a precise, conservative checker and tutor for a finance student rebuilding course models in Excel."+$sync.brain)},@{role='user';content=$uc}) } | ConvertTo-Json -Depth 12
-    $bfx="$env:TEMP\xc_xlcheck.json"; [IO.File]::WriteAllText($bfx,$pay,(New-Object System.Text.UTF8Encoding($false)))
-    $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bfx)
-    $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
-    if($jj.choices){
-      $t=([string]$jj.choices[0].message.content).Trim()
-      if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $t=Clean-Answer $t }
-      XLog ("verdict: "+$(if($t -eq ""){ "<EMPTY>" }elseif($t.Length -gt 140){ $t.Substring(0,140) }else{ $t }))
-      if($t -eq ""){ }
-      elseif($t -match '^\s*OK'){
-        if($lastState -ne "OK"){ $lastState="OK"; $lastNudgePub=""; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1; XLog "cleared (fixed)" }
-      } else {
-        $sameIssue=$false; if($lastNudgePub){ if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $sameIssue=(XC-SameIssue $t $lastNudgePub) }else{ $sameIssue=($t -eq $lastNudgePub) } }
-        $cool=$(if($sameIssue){ 180 }elseif($lastNudgePub){ 150 }else{ 20 })
-        if(((Get-Date)-$nudgeT).TotalSeconds -ge $cool){
-          $nudgeT=(Get-Date); $lastState=$t; $lastNudgePub=$t; $sync.xlText=$t; $sync.xlStamp=$sync.xlStamp+1; XLog "PUBLISHED nudge"
-          $dupS=$false; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $dupS=(XC-SameIssue $t $lastLogged) }
-          if(-not $dupS){ $lastLogged=$t; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $t }catch{} } }
-        } else { XLog ("suppressed ("+$(if($sameIssue){"same issue, "+$cool+"s"}else{[string]$cool+"s cooldown"})+")") }
-      }
-    } elseif($jj.error){ XLog ("API error: "+$jj.error.message) } else { XLog "no API response (timeout?)" }
-    if(($mode -eq "sweep") -and (((Get-Date)-$lastCoSave).TotalSeconds -ge 360)){
-      $lastCoSave=(Get-Date)
-      try{
-        $cuc=@(@{type='text';text="Look at my Excel sheet data. FIRST decide which real-world company this work is about, if any (a named company like Amazon or Tesla - generic practice exercises are NONE). Reply line 1 EXACTLY: COMPANY: <name or NONE>. If it IS about a company, follow with the key REUSABLE data points from this sheet - assumptions, inputs, and important computed outputs - one per line as '- <what> = <value> (cell <ref>)'. Only genuinely reusable finance figures (rates, growth, margins, multiples, totals, share counts, prices, valuations), max 12 lines. Plain ASCII, nothing else."})
-        $cuc+=@{type='text';text=("EXACT Excel data:`n"+$xl)}
-        $cpay=@{ model=$sync.model; max_completion_tokens=900; reasoning_effort="low"; messages=@(@{role='system';content="You extract reusable company figures from a finance student's Excel sheet."},@{role='user';content=$cuc}) } | ConvertTo-Json -Depth 12
-        $cbf2="$env:TEMP\xc_company.json"; [IO.File]::WriteAllText($cbf2,$cpay,(New-Object System.Text.UTF8Encoding($false)))
-        $crr2=& curl.exe -s --max-time 35 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$cbf2)
-        $cjj2=$null; try{ $cjj2=$crr2|ConvertFrom-Json }catch{}
-        if($cjj2.choices){
-          $ct=([string]$cjj2.choices[0].message.content).Trim()
-          if($ct -match '(?m)^\s*COMPANY:\s*(.+)$'){
-            $cname=$Matches[1].Trim()
-            if($cname -and ($cname -notmatch '^(?i)none')){
-              $cdata=($ct -replace '(?m)^\s*COMPANY:.*$','').Trim()
-              if($cdata -and (Get-Command Save-CompanyData -ErrorAction SilentlyContinue)){ try{ Save-CompanyData $cname $sync.lastWb $cdata }catch{} }
-              $sync.company=$cname
-              if(Get-Command Get-CompanyData -ErrorAction SilentlyContinue){ try{ $cc=Get-CompanyData $cname; if($cc){ $sync.companyCtx=("Saved figures for "+$cname+" from my models (company ledger in Obsidian):`n"+$cc) } }catch{} }
-              XLog ("company ledger updated: "+$cname)
-            } else { $sync.company=""; $sync.companyCtx="" }
-          }
-        }
-      }catch{}
-    }
-  }
-  Start-Sleep -Seconds 4
- }catch{ XLog ("LOOP ERROR: "+$_.Exception.Message); Start-Sleep -Seconds 5 }
-}
-'@
+$xlWorkPath = (Join-Path $PSScriptRoot "workers\xlwork.ps1")
 $rsX=[runspacefactory]::CreateRunspace(); $rsX.ApartmentState='STA'; $rsX.ThreadOptions='ReuseThread'; $rsX.Open()
 $rsX.SessionStateProxy.SetVariable('sync',$sync)
-$psx=[powershell]::Create(); $psx.Runspace=$rsX; [void]$psx.AddScript($xlWork); [void]$psx.BeginInvoke()
+$psx=[powershell]::Create(); $psx.Runspace=$rsX; [void]$psx.AddScript(". `"$xlWorkPath`""); [void]$psx.BeginInvoke()
 
 # --- voice thread: OpenAI TTS (natural) with Windows-voice fallback; non-blocking ---
-$ttsWork=@'
-Add-Type -AssemblyName System.Speech
-$sp=New-Object System.Speech.Synthesis.SpeechSynthesizer; try{ $sp.Rate=1 }catch{}
-$cur=$null
-while(-not $sync.stop){
-  if($sync.ttsStop){ $sync.ttsStop=$false; if($cur){ try{ $cur.Stop() }catch{} }; try{ $sp.SpeakAsyncCancelAll() }catch{} }
-  $t=$sync.ttsText
-  if($t){
-    $sync.ttsText=""
-    $t=$t -replace '\*\*','' -replace '__','' -replace '`','' -replace '(?m)^\s{0,3}#{1,6}\s*','' -replace '(?m)^\s*[\*\-\+]\s+',''
-    if($cur){ try{ $cur.Stop() }catch{} }; try{ $sp.SpeakAsyncCancelAll() }catch{}
-    $spoke=$false
-    if($sync.ttsMode -eq 'fish' -and $sync.fishKey){
-      try{
-        $fb=@{ text=$t; format="mp3" }
-        if($sync.fishVoice){ $fb.reference_id=$sync.fishVoice }
-        $fbody=$fb | ConvertTo-Json -Compress
-        $fbf="$env:TEMP\xc_fish_body.json"; [IO.File]::WriteAllText($fbf,$fbody,(New-Object System.Text.UTF8Encoding($false)))
-        $fraw="$env:TEMP\xc_fish_raw.mp3"; if(Test-Path $fraw){ Remove-Item $fraw -Force -ErrorAction SilentlyContinue }
-        & curl.exe -s --max-time 30 "https://api.fish.audio/v1/tts" -H ("Authorization: Bearer "+$sync.fishKey) -H "Content-Type: application/json" -d ("@"+$fbf) -o $fraw 2>$null
-        if((Test-Path $fraw) -and ((Get-Item $fraw).Length -gt 800)){
-          $pcm="$env:TEMP\xc_tts_pcm.wav"; if(Test-Path $pcm){ Remove-Item $pcm -Force -ErrorAction SilentlyContinue }
-          & $sync.ff -hide_banner -loglevel error -y -i $fraw -af ("volume="+[string]::Format([Globalization.CultureInfo]::InvariantCulture,"{0:0.##}",[double]$sync.ttsVol)) -ar 44100 -ac 2 -c:a pcm_s16le $pcm 2>$null
-          if((Test-Path $pcm) -and ((Get-Item $pcm).Length -gt 1000) -and (-not $sync.mute)){ $cur=New-Object System.Media.SoundPlayer $pcm; try{ $cur.Play(); $spoke=$true; $sync.ttsBusyUntil=(Get-Date).AddSeconds(((Get-Item $pcm).Length/176400.0)+1.5) }catch{} }
-        }
-      }catch{}
-    }
-    if((-not $spoke) -and $sync.key){
-      try{
-        $body=@{ model="gpt-4o-mini-tts"; voice=$sync.ttsVoice; input=$t; response_format="wav"; instructions="Speak like a warm, confident investment-banking tutor: clear, encouraging, natural pacing." } | ConvertTo-Json -Compress
-        $bf="$env:TEMP\xc_tts_body.json"; [IO.File]::WriteAllText($bf,$body,(New-Object System.Text.UTF8Encoding($false)))
-        $raw="$env:TEMP\xc_tts_raw.wav"; if(Test-Path $raw){ Remove-Item $raw -Force -ErrorAction SilentlyContinue }
-        & curl.exe -s --max-time 30 "https://api.openai.com/v1/audio/speech" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf) -o $raw 2>$null
-        if((Test-Path $raw) -and ((Get-Item $raw).Length -gt 1000)){
-          $pcm="$env:TEMP\xc_tts_pcm.wav"; if(Test-Path $pcm){ Remove-Item $pcm -Force -ErrorAction SilentlyContinue }
-          & $sync.ff -hide_banner -loglevel error -y -i $raw -af ("volume="+[string]::Format([Globalization.CultureInfo]::InvariantCulture,"{0:0.##}",[double]$sync.ttsVol)) -ar 44100 -ac 2 -c:a pcm_s16le $pcm 2>$null
-          if((Test-Path $pcm) -and ((Get-Item $pcm).Length -gt 1000) -and (-not $sync.mute)){ $cur=New-Object System.Media.SoundPlayer $pcm; try{ $cur.Play(); $spoke=$true; $sync.ttsBusyUntil=(Get-Date).AddSeconds(((Get-Item $pcm).Length/176400.0)+1.5) }catch{} }
-        }
-      }catch{}
-    }
-    if((-not $spoke) -and (-not $sync.mute)){ try{ $sp.Volume=[int]([math]::Max(0,[math]::Min(100,[double]$sync.ttsVol*100))) }catch{}; try{ $sp.SpeakAsync($t)|Out-Null; $sync.ttsBusyUntil=(Get-Date).AddSeconds(($t.Length/12.0)+1.5) }catch{} }
-  }
-  Start-Sleep -Milliseconds 150
-}
-'@
+$ttsWorkPath = (Join-Path $PSScriptRoot "workers\ttswork.ps1")
 $rsT=[runspacefactory]::CreateRunspace(); $rsT.ApartmentState='STA'; $rsT.Open(); $rsT.SessionStateProxy.SetVariable('sync',$sync)
-$pst=[powershell]::Create(); $pst.Runspace=$rsT; [void]$pst.AddScript($ttsWork); [void]$pst.BeginInvoke()
+$pst=[powershell]::Create(); $pst.Runspace=$rsT; [void]$pst.AddScript(". `"$ttsWorkPath`""); [void]$pst.BeginInvoke()
 
 function Kill-FF { try{ Stop-Process -Id $sync.ffpid -Force -ErrorAction SilentlyContinue }catch{} }
 
@@ -1110,7 +299,7 @@ function New-GlassWebForm($w,$h){
   $f.FormBorderStyle='None'; $f.TopMost=$true; $f.ShowInTaskbar=$false; $f.StartPosition='Manual'; $f.Width=$w; $f.Height=$h; $f.BackColor=[System.Drawing.Color]::Black
   $wv=New-Object Microsoft.Web.WebView2.WinForms.WebView2
   $cp=New-Object Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
-  $cp.UserDataFolder=Join-Path $env:TEMP "xc_wv2_data"
+  $cp.UserDataFolder=Join-Path $env:TEMP "xc4_wv2_data"
   $wv.CreationProperties=$cp
   $wv.DefaultBackgroundColor=[System.Drawing.Color]::Transparent
   $wv.Dock='Fill'
@@ -1123,10 +312,19 @@ function Tune-WebView($wv){
     $st.AreDefaultContextMenusEnabled=$false; $st.IsZoomControlEnabled=$false; $st.AreDevToolsEnabled=$false; $st.IsStatusBarEnabled=$false
   }catch{}
 }
+# ---- persisted strip position: remember where the user last dragged the pill so it
+# reopens there every launch (instead of snapping back to screen center each time) ----
+function Strip-PosFile { return (Join-Path $env:APPDATA 'ExcelCoach\strip.txt') }
+function Load-StripPos { try{ $f=(Strip-PosFile); if(Test-Path $f){ $v=([string](Get-Content $f -Raw)).Trim(); $n=0; if([int]::TryParse($v,[ref]$n)){ return $n } } }catch{}; return $null }
+function Save-StripPos($x){ try{ $d=Split-Path (Strip-PosFile) -Parent; if(-not(Test-Path $d)){ New-Item -ItemType Directory -Force -Path $d | Out-Null }; [IO.File]::WriteAllText((Strip-PosFile),[string][int]$x,(New-Object System.Text.UTF8Encoding($false))) }catch{} }
+# ---- persisted panel size: remember the size the user dragged the big panel to (device px) ----
+function Panel-SizeFile { return (Join-Path $env:APPDATA 'ExcelCoach\panelsize.txt') }
+function Load-PanelSize { try{ $f=(Panel-SizeFile); if(Test-Path $f){ $p=(([string](Get-Content $f -Raw)).Trim()) -split ','; if($p.Count -eq 2){ $w=0;$h=0; if([int]::TryParse($p[0].Trim(),[ref]$w) -and [int]::TryParse($p[1].Trim(),[ref]$h)){ return @{ w=$w; h=$h } } } } }catch{}; return $null }
+function Save-PanelSize($w,$h){ try{ $d=Split-Path (Panel-SizeFile) -Parent; if(-not(Test-Path $d)){ New-Item -ItemType Directory -Force -Path $d | Out-Null }; [IO.File]::WriteAllText((Panel-SizeFile),([string][int]$w+','+[string][int]$h),(New-Object System.Text.UTF8Encoding($false))) }catch{} }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false; $script:pendingExercise=$null
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''; $script:rtSession=$false
-$script:seen=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''; $script:rtSession=$false; $script:userLeft=(Load-StripPos); $script:lastSavedLeft=$script:userLeft; $script:woLastResult=$null; $script:woLastCorrect=$false; $script:woConcept=''; $script:woRung=1; $script:woRungMiss=0; $script:woLadderTop=3; $script:woPendingLadder=$null; $script:woConceptMiss=0; $script:woRecent=@()
+$script:seen=0; $script:seenStream=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
 $strip=$mkS.f; $wvS=$mkS.wv; $script:strip=$strip; $script:wvS=$wvS
@@ -1134,6 +332,15 @@ $wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $strip.Left=$wa.Left+[int](($wa.Width-$strip.Width)/2); $strip.Top=$wa.Bottom-$strip.Height-(Px 14)
 $mkP=New-GlassWebForm (Px 600) (Px 400)
 $panel=$mkP.f; $wvP=$mkP.wv; $script:panel=$panel; $script:wvP=$wvP
+# Fit the big panel to THIS screen (it's DPI-scaled, so 600x400 can be too big on a small
+# high-DPI laptop) and restore the size the user last dragged it to. Always clamped to fit.
+$waP=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$pw=$panel.Width; $ph=$panel.Height
+$psz=Load-PanelSize; if($psz){ $pw=[int]$psz.w; $ph=[int]$psz.h }
+$pmaxW=$waP.Width-(Px 12); $pmaxH=$waP.Height-(Px 12); $pminW=(Px 280); $pminH=(Px 170)
+if($pw -gt $pmaxW){ $pw=$pmaxW }; if($ph -gt $pmaxH){ $ph=$pmaxH }
+if($pw -lt $pminW){ $pw=$pminW }; if($ph -lt $pminH){ $ph=$pminH }
+$panel.Width=$pw; $panel.Height=$ph
 function Place-PanelHome {
   $wa3=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
   $panel.SetBounds(($wa3.Right-$panel.Width-(Px 16)),($wa3.Bottom-$panel.Height-(Px 14)),$panel.Width,$panel.Height)
@@ -1143,8 +350,17 @@ function Set-Dot($hex,$pulse){ $k=$hex+(BoolJs $pulse); if($script:dotState -ne 
 function Apply-Strip {
   if($script:animating){ return }
   $wa4=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 400 }else{ 0 }) }
-  $nl=$wa4.Left+[int](($wa4.Width-$nw)/2); $nt=$wa4.Bottom-$nh-(Px 14)
+  if($script:collapsed){ $script:menuOpen=$false; $nw=(Px 280); $nh=(Px 40) } else { $nw=(Px 780); $nh=(Px 80)+$(if($script:menuOpen){ Px 320 }else{ 0 }) }
+  # Honor the user's dragged horizontal position (clamped fully on-screen for the new
+  # width) instead of always re-centering - else opening the menu / expanding snaps the
+  # strip back to screen center every time. $script:userLeft is $null until first drag.
+  if($null -ne $script:userLeft){
+    $nl=[int]$script:userLeft; $maxL=$wa4.Right-$nw; $minL=$wa4.Left
+    if($nl -gt $maxL){ $nl=$maxL }; if($nl -lt $minL){ $nl=$minL }
+  } else {
+    $nl=$wa4.Left+[int](($wa4.Width-$nw)/2)
+  }
+  $nt=$wa4.Bottom-$nh-(Px 14)
   JS $script:wvS ("XC.setMode('"+$(if($script:collapsed){'pill'}else{'bar'})+"')")
   $sb=$strip.Bounds; $ox=$sb.X; $oy=$sb.Y; $ow=$sb.Width; $oh=$sb.Height
   if($ow -eq $nw -and $oh -eq $nh -and $ox -eq $nl -and $oy -eq $nt){ return }
@@ -1190,6 +406,66 @@ function Show-PanelLoading {
   Place-PanelHome
   if(-not $panel.Visible){ $panel.Show() }
   if($script:panelReady){ JS $script:wvP ("XC.setAnswerLoading()") } else { $script:pendingLoad=$true }
+}
+# --- Demo showcase -----------------------------------------------------------------
+# Instantly fills the panel with three polished, realistic notifications (a next-step
+# guide, a caught mistake, and a deep chained explanation) so the panel quality AND the
+# notification switcher both show well on demand - no waiting for live events to pile up.
+# Triggered by the "Demo Coach" desktop shortcut (writes act:demo to the cmd file). The
+# content is canned but true-to-form: it's exactly what the live coach surfaces.
+function Start-Demo {
+  $script:lastActive=(Get-Date)
+  # Show the panel FIRST so its WebView2 navigates, then WAIT until it's live. Only then
+  # push - otherwise the three setAnswer calls collapse into one pending answer (last
+  # wins) and the switcher shows 1 entry instead of 3.
+  Place-PanelHome
+  if(-not $panel.Visible){ $panel.Show() }
+  $tries=0
+  while(-not $script:panelReady -and $tries -lt 120){ [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 50; $tries++ }
+  [System.Windows.Forms.Application]::DoEvents()
+  if($script:panelReady){ try{ JS $script:wvP ("XC.resetNotifs()") }catch{} }   # clean slate so each run shows exactly these three
+  $guide=@'
+## Next step - build the depreciation schedule
+You've got revenue and EBITDA flowing. The next block that unlocks the model is **D&A**.
+
+- Lay out a small schedule below the model: opening PP&E, **+ CapEx**, **- depreciation**, = closing PP&E
+- Drive depreciation off a simple **% of opening PP&E** (or a useful-life assumption) for now
+- Then link the closing balance back to the **PP&E line on the balance sheet**
+
+Do this and the three statements start talking to each other - which is exactly what the other two notes are about.
+'@
+  $issue=@'
+## Heads up - your balance sheet won't balance
+**Assets exceed Liabilities + Equity by ~$40 (cell C28).**
+
+The culprit is **Retained Earnings** in C24. You rolled it forward as:
+
+> `prior RE + Net Income`
+
+but left out the dividend. Retained earnings should be:
+
+**prior RE + Net Income - Dividends paid**
+
+Add the dividend subtraction and the sheet ties. A broken balance check is almost always retained earnings, working capital, or a sign error - worth burning into muscle memory.
+'@
+  $answer=@'
+## Why depreciation is the classic 3-statement question
+This is *the* interview question because one number touches all three statements. Follow $100 of depreciation through, at a 25% tax rate:
+
+1. **Income statement** - it's an expense, so pre-tax income drops $100. Tax falls by $25, and **Net Income drops $75**.
+2. **Cash flow statement** - depreciation is **non-cash**, so you **add the full $100 back** at the top of CFO. Net effect on cash: **+$25** - the tax shield. Cash actually *rises*.
+3. **Balance sheet** - accumulated depreciation cuts **PP&E by $100**, cash is **up $25**, retained earnings is **down $75**. Assets fall $75, equity falls $75 - **it balances.**
+
+**The connective tissue:** a non-cash expense is really a *timing and tax* story. You spent the cash years ago on CapEx; depreciation just spreads that cost across the income statement, and the only live cash effect today is the tax it saves. Lock this in and DCF, LBO, and the cash flow statement all click - same mechanic underneath.
+'@
+  Show-Answer $guide  'guide'  0
+  [System.Windows.Forms.Application]::DoEvents()
+  Show-Answer $issue  'issue'  0
+  [System.Windows.Forms.Application]::DoEvents()
+  Show-Answer $answer 'answer' 0
+  $script:lastFull=$answer
+  $script:baseStatus="Demo loaded - tap the list icon to switch between notes"; $script:idle=$true
+  Set-Dot '#22c55e' $true; Set-Msg "Demo loaded - 3 notifications ready"
 }
 function Simplify-Answer($text){
   $sysS="You simplify finance/Excel explanations for a beginner. Keep all cell references and numbers exactly. Use the same markdown style (optional ## header, - bullets, **bold** for key terms) but plainer words and shorter sentences. Output only the simplified explanation."
@@ -1311,7 +587,7 @@ function Explain-Mistake($exercise, $perCell){
   if($wrong.Count -lt 1){ return "" }
   $given=""; try{ foreach($g in @($exercise.layout.given)){ $given += [string]$g.label+" = "+[string]$g.value+"; " } }catch{}
   $miss=""; foreach($pc in $wrong){ $miss += "- "+[string]$pc.label+": they entered "+[string]$pc.got+", correct = "+[string]$pc.expected+" ("+[string]$pc.formula+")`n" }
-  $sysM="You are a patient finance/Excel tutor. The student just got a calculation WRONG. In 2-3 short sentences, explain WHY their specific answer is likely wrong (what they probably did or forgot) and the correct REASONING in context - WHY the right approach is right here. CRITICAL: explain the mistake ONLY in terms of the GIVEN formula and values. Do NOT invent or introduce any method, convention, or concept that is not in the given formula (e.g. do NOT mention mid-year convention, extra steps, or anything the question did not ask for). Identify which part of the stated calculation they likely got wrong. Be specific to their numbers and encouraging. No preamble. Plain ASCII only."
+  $sysM="You are a patient finance/Excel tutor. The student just got a calculation WRONG (this was confirmed by an exact grader - the cells listed below are genuinely wrong). In 2-3 short sentences, explain WHY their specific answer is likely wrong (what they probably did or forgot) and the correct REASONING in context - WHY the right approach is right here. CRITICAL: explain the mistake ONLY in terms of the GIVEN formula and values. Do NOT invent or introduce any method, convention, or concept that is not in the given formula (e.g. do NOT mention mid-year convention, extra steps, or anything the question did not ask for), and do NOT claim anything else on the sheet is wrong beyond the cells listed below. Identify which part of the stated calculation they likely got wrong. Be specific to their numbers and encouraging. No preamble. Plain ASCII only."
   $usr="Question: "+[string]$exercise.prompt+"`nGiven values: "+$given+"`nWhat they got wrong:`n"+$miss
   $payload=@{ model="gpt-4o-mini"; max_tokens=220; temperature=0.3; messages=@(@{role="system";content=$sysM},@{role="user";content=$usr}) } | ConvertTo-Json -Depth 8
   $bf="$env:TEMP\xc_whymistake.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
@@ -1320,20 +596,75 @@ function Explain-Mistake($exercise, $perCell){
   if($j.choices){ $a=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $a=Clean-Answer $a }; return $a }
   return ""
 }
+# FULL teach-from-the-ground-up explanation of the current exercise, on demand ("Go
+# deeper"). Unlike Explain-Mistake (deliberately terse, introduces nothing new), this
+# IS allowed to teach the underlying concept and walk every step - for when the short
+# "Why" left the student still not understanding. $perCell may be $null (pill answers).
+function Explain-Deep($exercise, $perCell){
+  if(-not $sync.key){ return "I can't reach the model right now to go deeper - check your connection and try again." }
+  $given=""; try{ foreach($g in @($exercise.layout.given)){ $given += "  - "+[string]$g.label+" ("+[string]$g.cell+") = "+[string]$g.value+"`n" } }catch{}
+  $cells=""; try{ foreach($a in @($exercise.layout.answerCells)){ $cells += "  - "+[string]$a.cell+" ("+[string]$a.label+"): correct answer = "+[string]$a.expected+", computed as "+[string]$a.formula+"`n" } }catch{}
+  $mine=""; try{ foreach($pc in @($perCell)){ if(-not $pc.ok){ $mine += "  - "+[string]$pc.cell+": I entered "+[string]$pc.got+" (correct = "+[string]$pc.expected+")`n" } } }catch{}
+  $ansLine=""; if([string]$exercise.answer){ $ansLine="`nCorrect answer: "+[string]$exercise.answer }
+  # --- CHAINING CONTEXT: place this concept in the course (what comes before/after),
+  # tie to what the student already knows, and aim it at the sheet's end goal, so the
+  # explanation can connect the dots instead of teaching an isolated fact. ---
+  $chain=""
+  try{
+    $tid=[string]$exercise.topicId
+    if($sync.curr -and $tid){
+      $lines=@([string]$sync.curr -split "`r?`n" | Where-Object { $_.Trim() })
+      $idx=-1; for($i=0;$i -lt $lines.Count;$i++){ if($lines[$i] -match ('^\s*'+[regex]::Escape($tid)+'\s*:')){ $idx=$i; break } }
+      if($idx -ge 0){
+        $lo=[Math]::Max(0,$idx-3); $hi=[Math]::Min($lines.Count-1,$idx+3); $win=@()
+        for($i=$lo;$i -le $hi;$i++){ $win += ($(if($i -eq $idx){ "  >> " }else{ "     " })+$lines[$i]) }
+        $chain="Where this sits in the course (>> = this topic; items above are earlier/prerequisite, below are what it leads into):`n"+($win -join "`n")+"`n"
+      }
+    }
+  }catch{}
+  $covered=""; try{ if($sync.brain){ $b=[string]$sync.brain; if($b.Length -gt 1400){ $b=$b.Substring($b.Length-1400) }; $covered="What the student has already covered + known weak points (connect to these; do not re-teach from zero what they already know, and call out a relevant weak point if this touches one):`n"+$b+"`n" } }catch{}
+  $goal=""; try{ if([string]$sync.sheetPurpose){ $goal="Overall goal of the current sheet (chain this step toward this end goal): "+[string]$sync.sheetPurpose+"`n" } }catch{}
+  $sysM="You are an exceptional finance/Excel tutor for a student in a Breaking Into Wall Street course. The student did an exercise and wants to TRULY understand it - not as an isolated fact but as part of the whole picture. Give a COMPLETE, CONNECTED explanation that CHAINS the ideas together: show how this concept builds on what comes before it, how it feeds into what comes next, and how the numbers flow through the broader model (for example how an income-statement item flows into the cash flow statement and the balance sheet, or how a driver rolls forward period to period). You MAY teach necessary background. Use markdown with these sections: '## What it's really asking' (restate plainly), '## The idea' (the underlying concept and WHY the approach is right), '## Step by step' (plug the ACTUAL given numbers in and show every step to the exact answer, thousands separators; if they got it wrong, fold their specific slip in here), '## How it all connects' (THE KEY SECTION - the chain: what this builds on, what it feeds into, and where these numbers flow in the bigger model and toward the sheet's goal; tie it explicitly to concepts the student has already covered), and '## Remember this' (the one-line rule plus the most common pitfall). Be concrete with THEIR numbers, genuinely connected (not a list of disconnected facts), and encouraging. Plain ASCII only."
+  $usr="Exercise question: "+[string]$exercise.prompt+"`n`nWhat it's teaching: "+[string]$exercise.concept+$ansLine+"`n`nGiven values:`n"+$given+"`nAnswer cells:`n"+$cells+$(if($mine){ "`nWhat I got wrong:`n"+$mine }else{ "" })+$(if([string]$exercise.worked){ "`nReference worked solution: "+[string]$exercise.worked+"`n" }else{ "" })+$(if($chain){ "`n"+$chain }else{ "" })+$(if($goal){ "`n"+$goal }else{ "" })+$(if($covered){ "`n"+$covered }else{ "" })
+  $payload=@{ model="gpt-4o-mini"; max_tokens=1200; temperature=0.3; messages=@(@{role="system";content=$sysM},@{role="user";content=$usr}) } | ConvertTo-Json -Depth 8
+  $bf="$env:TEMP\xc_deepwhy.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
+  $r=& curl.exe -s --max-time 60 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $j=$null; try{ $j=$r|ConvertFrom-Json }catch{}
+  if($j.choices){ $a=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $a=Clean-Answer $a }; return $a }
+  return "I couldn't generate a deeper explanation just now (connection issue). Try again in a moment."
+}
 # Pick the next workout topic FROM MEMORY (unseen topics first, then weak ones, via
 # the run-through picker) and generate it with a fresh nonce so numbers always differ.
 function Gen-WorkoutEx {
-  $topicId=$null
+  $script:woSeq=([int]$script:woSeq)+1
+  # ADAPTIVE LADDER: if Check-Workout queued a move on the CURRENT concept, honor it instead
+  # of picking a new topic. 'expand' grows the just-passed exercise one step harder (same
+  # scenario); 'vary' serves a fresh variation of the same concept+rung after a miss.
+  if($script:woPendingLadder){
+    $d=$script:woPendingLadder; $script:woPendingLadder=$null
+    $tid=[string]$d.concept; $rg=[int]$d.rung; if($rg -lt 1){ $rg=1 }
+    $ex=$null
+    if($d.prior){ try{ $ex=Make-Exercise $tid $rg ("v"+$script:woSeq) $d.prior ([string]$d.mode) }catch{} }   # expand or vary, both use the prior
+    if(-not $ex){ try{ $ex=Make-Exercise $tid $rg ("v"+$script:woSeq) }catch{} }   # fallback: plain generation
+    return $ex
+  }
+  # PICKER: move to a NEW concept and start a fresh ladder for it.
+  $topicId=$null; $lvl=1
   if(Get-Command RT-PickNext -ErrorAction SilentlyContinue){
-    try{ $pick=RT-PickNext (RT-LoadState) ([int]$script:woIdx) ([string]$script:woLast); if($pick){ $topicId=[string]$pick.topicId } }catch{}
+    try{ $pick=RT-PickNext (RT-LoadState) ([int]$script:woIdx) ([string]$script:woLast) ([string[]]$script:woRecent); if($pick){ $topicId=[string]$pick.topicId; $lvl=[int]$pick.level } }catch{}
   }
   if(-not $topicId -and (Get-Command Get-Curriculum -ErrorAction SilentlyContinue)){
     try{ $cur=@(Get-Curriculum | Where-Object { (-not (Get-Command Test-DomainInScope -ErrorAction SilentlyContinue)) -or (Test-DomainInScope $_.domain) }); if($cur.Count){ $topicId=[string]$cur[($script:woIdx % $cur.Count)].id } }catch{}
   }
   if(-not $topicId){ return $null }
+  if($lvl -lt 1){ $lvl=1 }
   $script:woIdx=([int]$script:woIdx)+1; $script:woLast=$topicId
-  $script:woSeq=([int]$script:woSeq)+1
-  $ex=$null; try{ $ex=Make-Exercise $topicId 2 ("v"+$script:woSeq) }catch{}
+  # Recency queue: remember the last few concepts so the picker can avoid re-serving them
+  # back-to-back (stops the run-through ping-ponging between two topics).
+  $script:woRecent=@(@($script:woRecent) + $topicId | Select-Object -Last 6)
+  $script:woConcept=$topicId; $script:woRung=$lvl; $script:woRungMiss=0; $script:woConceptMiss=0   # new concept -> fresh ladder, starting at the picker's level
+  # Difficulty TRACKS mastery + the fresh nonce keeps numbers different each time.
+  $ex=$null; try{ $ex=Make-Exercise $topicId $lvl ("v"+$script:woSeq) }catch{}
   return $ex
 }
 # Re-open the CURRENT run-through exercise's pill view - used to RESUME after the
@@ -1371,6 +702,11 @@ function Start-Workout {
   if($script:woNext){ $ex=$script:woNext; $script:woNext=$null }
   else { JS $script:wvP ("XC.setAnswerLoading()"); [System.Windows.Forms.Application]::DoEvents(); $ex=Gen-WorkoutEx }
   if(-not $ex){ $script:woBusy=$false; Show-Answer "I could not build the next exercise right now (connection issue). Try again in a moment." 'note' 0; return }
+  # Lock the ladder state to the exercise actually shown. This matters for SKIPPING via "Next"
+  # (no Check in between): without it woRung never advances, so the speculative preload keeps
+  # regenerating the SAME rung and you see the same concept forever. With it, skipping climbs
+  # the rung and tops out into a new concept. (On the Check path these already match.)
+  try{ if([string]$ex.topicId){ $script:woConcept=[string]$ex.topicId }; if($null -ne $ex.level -and [int]$ex.level -ge 1){ $script:woRung=[int]$ex.level } }catch{}
   if([string]$ex.surface -eq 'excel'){
     $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{}
     if(-not $xl){ $script:woBusy=$false; $script:woActive=$false; $sync.woActive=$false; Show-Answer "Open Excel first, then pick **Run-through** in the menu so I can set up the Workout sheet." 'note' 0; return }
@@ -1388,9 +724,15 @@ function Start-Workout {
     if($chs.Count -ge 2){ $pl['choices']=$chs } else { $pl['answer']=[string]$ex.answer }
     Open-Ex $pl
   }
-  # Preload the NEXT exercise now (memory-driven), while the student works on this
-  # one - so the Next button is instant. The latency is masked by their working time.
-  [System.Windows.Forms.Application]::DoEvents(); try{ if(-not $script:woNext){ $script:woNext=Gen-WorkoutEx } }catch{}
+  # Preload the LIKELY next exercise NOW, while you start working on this one, so "Next" is
+  # instant on the common path. We assume a pass -> the next is THIS exercise expanded one
+  # rung. A miss regenerates a fresh variation at Check time (masked by the explanation);
+  # the top rung graduates to a new concept at Check time. This is what keeps the run-through
+  # from stalling between questions.
+  [System.Windows.Forms.Application]::DoEvents()
+  if([int]$script:woRung -lt [int]$script:woLadderTop){
+    try{ $script:woPendingLadder=@{ mode='expand'; concept=[string]$script:woConcept; rung=([int]$script:woRung+1); prior=$script:rtCur }; $script:woNext=Gen-WorkoutEx }catch{ $script:woNext=$null }
+  } else { $script:woNext=$null }
   $script:woBusy=$false
 }
 function Check-Workout {
@@ -1401,6 +743,7 @@ function Check-Workout {
   if(-not $xl){ $script:woBusy=$false; JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md="I could not reach Excel to check. Make sure the Workout sheet is open, then press Check answer again."}) -Depth 4)+")"); return }
   $res=$null; try{ $res=Grade-ExcelExercise $script:rtCur $xl }catch{}
   if(-not $res){ $script:woBusy=$false; JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md="I could not read your answers. Make sure the Workout sheet is open, then press Check answer again."}) -Depth 4)+")"); return }
+  $script:woLastResult=$res; $script:woLastCorrect=[bool]$res.correct   # keep for the "Go deeper" follow-up
   if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null ([bool]$res.correct) | Out-Null }catch{} }
   if(Get-Command RT-RecordResult -ErrorAction SilentlyContinue){ try{ RT-RecordResult ([string]$script:rtCur.topicId) ([int]$script:rtCur.level) ([bool]$res.correct) $false | Out-Null }catch{} }
   $nw=0; try{ if(Get-Command Mark-ExcelMistakes -ErrorAction SilentlyContinue){ $nw=Mark-ExcelMistakes $script:rtCur $xl $res.perCell } }catch{}
@@ -1421,6 +764,43 @@ function Check-Workout {
     if($why){ $body+="`n`n**Why:** "+$why }
     JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md=($body+$tail)}) -Depth 6)+")")
   }
+  # ADAPTIVE LADDER: decide the next exercise from THIS result and preload it (so "Next
+  # exercise" is instant; the latency is masked while the student reads the result). A pass
+  # grows the same concept one rung (expand the scenario); the top rung graduates it (the
+  # picker serves a new concept). A miss serves a FRESH variation at the same rung; a 2nd
+  # miss in a row drops a rung to scaffold down.
+  if($script:woConcept){
+    $top=[int]$script:woLadderTop; if($top -lt 1){ $top=3 }
+    if($script:woLastCorrect){
+      $script:woRungMiss=0; $script:woConceptMiss=0   # progress on this concept -> reset the give-up counter
+      if([int]$script:woRung -lt $top){
+        # PASS below the top: the expansion we already preloaded WHILE YOU WORKED is the right
+        # next - keep it (so Next is instant), just advance the rung to match. Only regenerate
+        # if the speculative preload had failed.
+        $script:woRung=[int]$script:woRung+1
+        if(-not $script:woNext){ $script:woPendingLadder=@{ mode='expand'; concept=[string]$script:woConcept; rung=[int]$script:woRung; prior=$script:rtCur }; try{ $script:woNext=Gen-WorkoutEx }catch{} }
+      } else {
+        # PASS at the top rung: concept mastered -> move to a new one (regenerated now).
+        $script:woPendingLadder=$null; try{ $script:woNext=Gen-WorkoutEx }catch{ $script:woNext=$null }
+      }
+    } else {
+      # MISS: the preloaded expansion is wrong -> regenerate. After 3 misses on the SAME concept,
+      # STOP hammering it - move on to a different concept (spaced-rep resurfaces this one later,
+      # at a lower rung). This is the core fix for "same questions on repeat": a concept you keep
+      # failing no longer loops forever at rung 1. Otherwise serve a fresh variation (a 2nd miss
+      # in a row scaffolds down a rung). The gen overlaps the explanation shown below it.
+      $script:woRungMiss=[int]$script:woRungMiss+1
+      $script:woConceptMiss=[int]$script:woConceptMiss+1
+      if($script:woConceptMiss -ge 3){
+        $script:woConcept=''; $script:woRungMiss=0; $script:woConceptMiss=0; $script:woPendingLadder=$null
+        try{ $script:woNext=Gen-WorkoutEx }catch{ $script:woNext=$null }   # picker serves a DIFFERENT concept (avoids recent)
+      } else {
+        if($script:woRungMiss -ge 2 -and [int]$script:woRung -gt 1){ $script:woRung=[int]$script:woRung-1; $script:woRungMiss=0 }
+        $script:woPendingLadder=@{ mode='vary'; concept=[string]$script:woConcept; rung=[int]$script:woRung; prior=$script:rtCur }
+        try{ $script:woNext=Gen-WorkoutEx }catch{ $script:woNext=$null }
+      }
+    }
+  }
   $script:woBusy=$false
 }
 # Compact "X of N solid" scoreboard for the exercise header.
@@ -1435,6 +815,7 @@ function Handle-WorkoutAnswer($choice){
   $script:woBusy=$true
   $g=$null; try{ $g=Grade-PillExercise $script:rtCur ([int]$choice) }catch{}
   $ok=$false; if($g){ $ok=[bool]$g.correct }
+  $script:woLastResult=$null; $script:woLastCorrect=$ok   # keep for the "Go deeper" follow-up (pills have no per-cell grid)
   if(Get-Command Record-Answer -ErrorAction SilentlyContinue){ try{ Record-Answer $script:rtCur.topicId $null $ok | Out-Null }catch{} }
   if(Get-Command RT-RecordResult -ErrorAction SilentlyContinue){ try{ RT-RecordResult ([string]$script:rtCur.topicId) ([int]$script:rtCur.level) $ok $false | Out-Null }catch{} }
   $body=""
@@ -1532,6 +913,15 @@ function Handle-Act($k){
       Show-PanelLoading
       $sync.askLabel="Cheat sheet"; $sync.typedDetail=$false; $sync.typedAsk="__CHEAT__"
     }
+    'demopractice' {
+      if($script:askBusy){ return }
+      $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
+      JS $script:wvS ("XC.busy(true)")
+      Set-Msg "Building a demo + practice sheet..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Demo + practice"
+      Show-PanelLoading
+      $sync.askLabel="Demo + practice"; $sync.typedDetail=$false; $sync.typedAsk="__DEMO__"
+    }
+    'demo'     { Start-Demo }
     'close'    { Shutdown-Coach }
   }
 }
@@ -1543,6 +933,17 @@ function Handle-Panel($k,$term){
     'copytext' { try{ if($term){ [System.Windows.Forms.Clipboard]::SetText([string]$term) } }catch{} }
     'workoutcheck' { if(Get-Command Check-Workout -ErrorAction SilentlyContinue){ Check-Workout } }
     'workoutnext'  { if(Get-Command Start-Workout -ErrorAction SilentlyContinue){ Start-Workout } }
+    'workoutdeep'  {
+      if($script:woBusy -or -not $script:rtCur){ return }
+      $script:woBusy=$true
+      JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$script:woLastCorrect; md="_Going deeper - one moment..._"}) -Depth 4)+")")
+      [System.Windows.Forms.Application]::DoEvents()
+      $deep=""; try{ $deep=Explain-Deep $script:rtCur $script:woLastResult }catch{}
+      if(-not $deep){ $deep="I couldn't go deeper just now - try again in a moment." }
+      $tail="`n`nPress **Next exercise** to continue, or **End** to save and exit."
+      JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$script:woLastCorrect; md=($deep+$tail)}) -Depth 6)+")")
+      $script:woBusy=$false
+    }
     'workoutend'   { $script:woActive=$false; $sync.woActive=$false; $script:rtSession=$false; $script:rtCur=$null; $script:woNext=$null; JS $script:wvP ("XC.closeExercise()"); $sb=(WO-Scoreboard); Show-Answer ("Run-through ended - your progress is saved."+$(if($sb){ "  You're at "+$sb+" of the course." }else{ "" })+"  Open the ... menu and pick Run-through any time to keep going.") 'note' 0 }
     'formulas' {
       $fxKey=[string]$sync.sheetPurpose
@@ -1596,7 +997,7 @@ $wvS.add_WebMessageReceived({
     'ready' { $script:stripReady=$true; Push-StripState }
     'act'   { Handle-Act ([string]$m.k) }
     'ask'   { Handle-Ask ([string]$m.q) }
-    'drag'  { $script:lastActive=(Get-Date); $script:strip.Left+=[int]([double]$m.dx*$script:S); $script:strip.Top+=[int]([double]$m.dy*$script:S) }
+    'drag'  { $script:lastActive=(Get-Date); $script:strip.Left+=[int]([double]$m.dx*$script:S); $script:strip.Top+=[int]([double]$m.dy*$script:S); $script:userLeft=$script:strip.Left }
     'panel' { if(([string]$m.k) -eq 'close'){ try{ $script:panel.Hide() }catch{} } }
     'menu'  { $script:menuOpen=[bool]$m.open; Apply-Strip }
     'vol'   { try{ $sync.ttsVol=[math]::Max(0.0,[math]::Min(1.0,[double]$m.value/100.0)) }catch{} }
@@ -1621,6 +1022,20 @@ $wvP.add_WebMessageReceived({
     }
     'panel' { $pk=[string]$m.k; if($pk -eq 'practice'){ Handle-Practice ([string]$m.action) ([string]$m.cardId) $m.quality $m.choice } elseif($pk -eq 'workoutanswer'){ Handle-WorkoutAnswer $m.choice } else { Handle-Panel $pk ([string]$m.term) } }
     'drag'  { $script:lastActive=(Get-Date); $script:panel.Left+=[int]([double]$m.dx*$script:S); $script:panel.Top+=[int]([double]$m.dy*$script:S) }
+    'panelresize' {
+      $script:lastActive=(Get-Date)
+      try{
+        $nw=$script:panel.Width + [int]([double]$m.dw*$script:S)
+        $nh=$script:panel.Height + [int]([double]$m.dh*$script:S)
+        $war=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        $mnW=(Px 280); $mnH=(Px 170); $mxW=$war.Width-(Px 12); $mxH=$war.Height-(Px 12)
+        if($nw -lt $mnW){ $nw=$mnW }; if($nw -gt $mxW){ $nw=$mxW }
+        if($nh -lt $mnH){ $nh=$mnH }; if($nh -gt $mxH){ $nh=$mxH }
+        $script:panel.Width=$nw; $script:panel.Height=$nh
+        Place-PanelHome                 # keep the bottom-right corner anchored as it resizes
+        Save-PanelSize $nw $nh          # remember it for next launch
+      }catch{}
+    }
   }
 })
 $strip.Add_Shown({ Glass-On $script:strip; [void]$script:wvS.EnsureCoreWebView2Async($null) })
@@ -1629,7 +1044,9 @@ $panel.Add_Shown({ Glass-On $script:panel; [void]$script:wvP.EnsureCoreWebView2A
 $ui=New-Object System.Windows.Forms.Timer; $ui.Interval=400
 $ui.Add_Tick({
   try{
-    $cmdF=(Join-Path $env:TEMP "xc_cmd.txt")
+    # persist the pill's dragged X (throttled: only when it changed since last save)
+    if($null -ne $script:userLeft -and $script:userLeft -ne $script:lastSavedLeft){ Save-StripPos $script:userLeft; $script:lastSavedLeft=$script:userLeft }
+    $cmdF=(Join-Path $env:TEMP "xc4_cmd.txt")
     if([IO.File]::Exists($cmdF)){
       $cmdLine=""; try{ $cmdLine=([IO.File]::ReadAllText($cmdF)).Trim() }catch{}
       try{ [IO.File]::Delete($cmdF) }catch{}
@@ -1650,14 +1067,14 @@ $ui.Add_Tick({
   if(-not $sync.stop){
     $wS=[string]$psw.InvocationStateInfo.State
     if($wS -eq 'Completed' -or $wS -eq 'Failed' -or $wS -eq 'Stopped'){
-      try{ $script:rs=[runspacefactory]::CreateRunspace(); $script:rs.ApartmentState='STA'; $script:rs.ThreadOptions='ReuseThread'; $script:rs.Open(); $script:rs.SessionStateProxy.SetVariable('sync',$sync); $script:psw=[powershell]::Create(); $script:psw.Runspace=$script:rs; [void]$script:psw.AddScript($work); [void]$script:psw.BeginInvoke(); $script:baseStatus="Coach engine restarted - back up" }catch{}
+      try{ $script:rs=[runspacefactory]::CreateRunspace(); $script:rs.ApartmentState='STA'; $script:rs.ThreadOptions='ReuseThread'; $script:rs.Open(); $script:rs.SessionStateProxy.SetVariable('sync',$sync); $script:psw=[powershell]::Create(); $script:psw.Runspace=$script:rs; [void]$script:psw.AddScript(". `"$workPath`""); [void]$script:psw.BeginInvoke(); $script:baseStatus="Coach engine restarted - back up" }catch{}
     }
     $xS=[string]$psx.InvocationStateInfo.State
     $xHung=$false
     try{ if($sync.wHB -and (((Get-Date)-[datetime]$sync.wHB).TotalSeconds -gt 300) -and (((Get-Date)-$script:lastXWdog).TotalSeconds -gt 180)){ $xHung=$true } }catch{}
     if($xS -eq 'Completed' -or $xS -eq 'Failed' -or $xS -eq 'Stopped' -or $xHung){
       if($xHung){ try{ $script:psx.BeginStop($null,$null) }catch{}; try{ [IO.File]::AppendAllText((Join-Path $env:TEMP 'xc_watcher.log'),((Get-Date).ToString('HH:mm:ss')+"  WATCHDOG: watcher hung (no stamp 5min+) - force-restarting`r`n")) }catch{} }
-      try{ $script:rsX=[runspacefactory]::CreateRunspace(); $script:rsX.ApartmentState='STA'; $script:rsX.ThreadOptions='ReuseThread'; $script:rsX.Open(); $script:rsX.SessionStateProxy.SetVariable('sync',$sync); $script:psx=[powershell]::Create(); $script:psx.Runspace=$script:rsX; [void]$script:psx.AddScript($xlWork); [void]$script:psx.BeginInvoke(); $script:lastXWdog=(Get-Date); $sync.wHB=(Get-Date); $script:baseStatus="Mistake-watcher restarted - back up" }catch{}
+      try{ $script:rsX=[runspacefactory]::CreateRunspace(); $script:rsX.ApartmentState='STA'; $script:rsX.ThreadOptions='ReuseThread'; $script:rsX.Open(); $script:rsX.SessionStateProxy.SetVariable('sync',$sync); $script:psx=[powershell]::Create(); $script:psx.Runspace=$script:rsX; [void]$script:psx.AddScript(". `"$xlWorkPath`""); [void]$script:psx.BeginInvoke(); $script:lastXWdog=(Get-Date); $sync.wHB=(Get-Date); $script:baseStatus="Mistake-watcher restarted - back up" }catch{}
     }
   }
   $lv=-1; if((-not $sync.paused) -and (-not $sync.micMute)){ $lv=Get-MicLevel }
@@ -1668,7 +1085,7 @@ $ui.Add_Tick({
   if($script:idle){
     if($script:heardAt -and (((Get-Date)-$script:heardAt).TotalSeconds -lt 1.6)){ Set-Msg $(if($sync.chatOn){ "Hearing you (chat)..." }else{ "Hearing you..." }) }
     elseif($sync.lessonNoteAt -and (((Get-Date)-[datetime]$sync.lessonNoteAt).TotalSeconds -lt 2.5)){ Set-Msg "Noting the lesson..." }
-    elseif($script:baseStatus -eq "Listening to the lesson"){ $cw=$false; try{ if(($sync.lessonNoteAt -and (((Get-Date)-[datetime]$sync.lessonNoteAt).TotalSeconds -lt 45)) -or ($sync.courseSeenAt -and (((Get-Date)-[datetime]$sync.courseSeenAt).TotalSeconds -lt 120))){ $cw=$true } }catch{}; Set-Msg $(if($cw){ "Watching the course" }else{ "Listening for the course" }) }
+    elseif($script:baseStatus -eq "Listening to the lesson"){ if($sync.micMute){ Set-Msg "Mic off - open the ... menu to start listening" } else { $cw=$false; try{ if(($sync.lessonNoteAt -and (((Get-Date)-[datetime]$sync.lessonNoteAt).TotalSeconds -lt 45)) -or ($sync.courseSeenAt -and (((Get-Date)-[datetime]$sync.courseSeenAt).TotalSeconds -lt 120))){ $cw=$true } }catch{}; Set-Msg $(if($cw){ "Watching the course" }else{ "Listening for the course" }) } }
     else { Set-Msg $script:baseStatus }
   }
   if(-not $script:collapsed){
@@ -1730,6 +1147,13 @@ $ui.Add_Tick({
       $sync.lastNudge=$rx
       if(Get-Command Show-Answer -ErrorAction SilentlyContinue){ $script:curIssue=([int]$script:curIssue)+1; Show-Answer $rx 'issue' $script:curIssue; Set-Query "Issue to fix" }
     }
+  }
+  # v4 streaming: while the worker streams tokens, push the growing partial to the panel (no TTS /
+  # no history entry). The guard stops once the final answer (stamp) is ready - the block below then
+  # renders the full markdown + speaks it, replacing the partial.
+  if(($sync.streamStamp -gt $script:seenStream) -and ($sync.stamp -le $script:seen)){
+    $script:seenStream=$sync.streamStamp; $sp=[string]$sync.streamText
+    if($sp){ if($script:collapsed){ $script:collapsed=$false; Apply-Strip }; if(-not $panel.Visible){ Place-PanelHome; $panel.Show() }; JS $script:wvP ("XC.streamAnswer("+(ConvertTo-Json $sp)+")") }
   }
   if($sync.stamp -gt $script:seen){
     $script:seen=$sync.stamp; $r=$sync.text

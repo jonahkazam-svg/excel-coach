@@ -29,6 +29,11 @@
     overflow:hidden; display:flex; flex-direction:column;
     padding:20px 24px 14px;
   }
+  /* resize grip - top-left corner (the panel is anchored bottom-right, so dragging the
+     top-left corner grows/shrinks it). Subtle by default, brighter on hover. */
+  #rsz{ position:fixed; top:0; left:0; width:22px; height:22px; z-index:60; cursor:nwse-resize; border-top-left-radius:20px; touch-action:none; }
+  #rsz::before{ content:''; position:absolute; top:7px; left:7px; width:7px; height:7px; border-top:2px solid rgba(255,255,255,0.35); border-left:2px solid rgba(255,255,255,0.35); border-top-left-radius:3px; transition:border-color .15s ease; }
+  .card:hover #rsz::before{ border-color:rgba(255,255,255,0.8); }
   #sheen{ position:absolute; width:320px; height:320px; border-radius:50%; pointer-events:none; z-index:0;
     background:radial-gradient(circle, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.035) 45%, rgba(255,255,255,0) 70%);
     transform:translate(-160px,-160px); opacity:0; transition:opacity .25s ease; }
@@ -70,6 +75,35 @@
   #navNew{ font-size:10px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase;
     color:var(--accent); margin-left:3px; opacity:0; transition:opacity .2s ease; flex:0 0 auto; }
   #navNew.show{ opacity:1; }
+
+  /* ---------- notification list: see + jump between everything the coach surfaced ---------- */
+  #navList{ display:none; margin-left:1px; }
+  #navList.show{ display:flex; }
+  #navList.active svg{ color:var(--accent); }
+  #notifList{ position:absolute; top:44px; right:14px; width:302px; max-height:64%;
+    background:rgba(20,22,28,0.985); border:1px solid rgba(255,255,255,0.12); border-radius:14px;
+    box-shadow:0 18px 54px rgba(0,0,0,0.58); z-index:30; display:flex; flex-direction:column; overflow:hidden; }
+  #notifList.hidden{ display:none; }
+  #notifListHdr{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px 8px;
+    font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
+    color:rgba(255,255,255,0.5); border-bottom:1px solid rgba(255,255,255,0.08); }
+  #notifClose{ width:18px; height:18px; }
+  #notifListItems{ overflow-y:auto; padding:5px; }
+  .nlRow{ display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:9px; cursor:pointer;
+    transition:background .12s ease; }
+  .nlRow:hover{ background:rgba(255,255,255,0.07); }
+  .nlRow.nlCur{ background:rgba(138,180,255,0.14); }
+  .nlDot{ flex:0 0 auto; width:8px; height:8px; border-radius:50%; }
+  .nlKind{ flex:0 0 auto; width:54px; font-size:9.5px; font-weight:700; letter-spacing:0.3px; text-transform:uppercase; }
+  .nlTitle{ flex:1 1 auto; font-size:12.5px; color:rgba(255,255,255,0.92); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .nlTime{ flex:0 0 auto; font-size:10.5px; color:rgba(255,255,255,0.38); font-variant-numeric:tabular-nums; }
+  .nl-issue{ color:#f5a623; } .nlDot.nl-issue{ background:#f5a623; }
+  .nl-fixed{ color:#22c55e; } .nlDot.nl-fixed{ background:#22c55e; }
+  .nl-guide{ color:#8ab4ff; } .nlDot.nl-guide{ background:#8ab4ff; }
+  .nl-note{ color:rgba(255,255,255,0.62); } .nlDot.nl-note{ background:rgba(255,255,255,0.5); }
+  .nl-answer{ color:#8ab4ff; } .nlDot.nl-answer{ background:#8ab4ff; }
+  .nlRow.nlFixed .nlTitle{ color:rgba(255,255,255,0.5); text-decoration:line-through; }
+  .nlEmpty{ padding:16px 12px; color:rgba(255,255,255,0.5); font-size:12.5px; text-align:center; }
 
   /* ---------- status badge (top of body) ---------- */
   #badge{ display:flex; align-items:center; gap:6px; flex:0 0 auto; margin-bottom:11px;
@@ -238,6 +272,7 @@
   .wobtn:hover{ background:rgba(255,255,255,0.13); }
   .wobtn.primary{ background:var(--accent); border-color:transparent; color:#0b0b0c; }
   .wobtn.primary:hover{ filter:brightness(1.08); }
+  .wobtn.busy{ opacity:.45; pointer-events:none; }   /* in-flight: ignore extra clicks so they don't queue up */
 
   /* shared practice button rows */
   #pracActions{ flex:0 0 auto; margin-top:auto; padding-top:12px; }
@@ -366,6 +401,7 @@
 </style>
 </head>
 <body>
+  <div id="rsz" title="Drag to resize"></div>
   <div class="card">
     <div id="sheen"></div>
     <div id="hdr">
@@ -383,6 +419,9 @@
           <div class="ghost disabled" id="navFwd" title="Next answer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
+          <div class="ghost" id="navList" title="All notifications - jump to any">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="4.5" cy="6" r="1.4" fill="currentColor"/><circle cx="4.5" cy="12" r="1.4" fill="currentColor"/><circle cx="4.5" cy="18" r="1.4" fill="currentColor"/><path d="M9 6h11M9 12h11M9 18h11" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+          </div>
           <span id="navNew" title="A newer answer arrived">New</span>
         </div>
         <div class="ghost" id="fxBtn" title="Formulas - the relevant formulas for what you're doing right now (tap one to copy)">
@@ -399,6 +438,14 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </div>
       </div>
+    </div>
+    <div id="notifList" class="hidden">
+      <div id="notifListHdr"><span>Notifications</span>
+        <div class="ghost" id="notifClose" title="Close">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div id="notifListItems"></div>
     </div>
     <div id="badge" class="hidden"></div>
     <div id="body"></div>
@@ -497,6 +544,7 @@
 
       <div id="exActions">
         <button id="exCheckBtn" class="wobtn primary">Check answer</button>
+        <button id="exDeepBtn" class="wobtn hidden">Go deeper</button>
         <button id="exNextBtn" class="wobtn">Next exercise</button>
       </div>
     </div>
@@ -622,6 +670,12 @@
   var pracMode = 'review';  // 'review' | 'quiz'
   var pracAnswered = false; // quiz: has a choice been chosen yet
   var exAnswered = false;   // exercise quiz: has a choice been chosen yet
+  // Debounce Check / Next: each click posts to the host, which generates or grades (a few
+  // seconds). Without this, mashing the button queues one action per click and the run-through
+  // jumps through several exercises. exNavBusy holds from the click until the host renders the
+  // next view (openExercise / showExerciseResult); extra clicks in that gap are ignored. A
+  // timeout clears it if the host never answers (e.g. a generation error) so it can't stick.
+  var exNavBusy = false, exNavTimer = null;
   function showRow(id){
     ['pracShowRow','pracRateRow','pracNextRow','pracDoneRow'].forEach(function(r){
       $(r).classList.toggle('hidden', r !== id);
@@ -752,6 +806,17 @@
     });
     post({type:'panel', k:'workoutanswer', choice: choice});
   }
+  function setExNavBusy(b){
+    exNavBusy = b;
+    ['exCheckBtn','exNextBtn','woDoneBtn','woNextBtn'].forEach(function(id){
+      var el = $(id); if(el){ el.classList.toggle('busy', b); }
+    });
+    var nx = $('exNextBtn'); if(nx){ nx.textContent = b ? 'Loading...' : 'Next exercise'; }
+    if (exNavTimer){ clearTimeout(exNavTimer); exNavTimer = null; }
+    if (b){ exNavTimer = setTimeout(function(){ setExNavBusy(false); }, 45000); }
+  }
+  // one Check/Next in flight at a time - the host renders the next view, which clears it
+  function exNav(k){ if (exNavBusy) return; setExNavBusy(true); post({type:'panel', k:k}); }
   function rateCard(quality){
     if (!pracCard) return;
     post({type:'panel', k:'practice', action:'rate', cardId: pracCard.id, quality: quality});
@@ -763,8 +828,11 @@
 
   /* ---------- history model ---------- */
   // each entry: { md, kind:'issue'|'answer'|'guide'|'note', id:<number>, status:'open'|'fixed' }
-  var history = [];
-  var cursor = -1;          // index into history currently displayed (-1 = nothing yet)
+  // NOTE: must NOT be named `history` - at global scope that collides with the
+  // read-only built-in window.history (History API), so the array assignment is
+  // ignored, .push() throws, and the answer panel renders blank. (XC bug fix)
+  var answerHist = [];
+  var cursor = -1;          // index into answerHist currently displayed (-1 = nothing yet)
 
   var BADGE_CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none">' +
     '<path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" ' +
@@ -804,7 +872,7 @@
 
   // show the history entry at index i (badge + body + nav state)
   function renderEntry(i){
-    var entry = history[i];
+    var entry = answerHist[i];
     if (!entry) return;
     cursor = i;
     renderBadge(entry);
@@ -814,8 +882,10 @@
 
   // refresh arrow enabled/disabled state + "n / N" position indicator
   function updateNav(){
-    var n = history.length;
+    var n = answerHist.length;
     var pos = $('navPos'), back = $('navBack'), fwd = $('navFwd');
+    $('navList').classList.toggle('show', n >= 2);   // the switcher appears once there's >1 to switch between
+    if (n < 2 && !$('notifList').classList.contains('hidden')) closeNotifList();
     if (n <= 0){ pos.classList.add('hidden'); back.classList.add('disabled'); fwd.classList.add('disabled'); return; }
     pos.classList.remove('hidden');
     pos.textContent = (cursor + 1) + ' / ' + n;
@@ -826,9 +896,55 @@
   }
 
   function navTo(i){
-    if (i < 0 || i >= history.length || i === cursor) return;
+    if (i < 0 || i >= answerHist.length || i === cursor) return;
     renderEntry(i);
   }
+
+  /* ---------- notification list: review + jump between everything surfaced ---------- */
+  // A short, clean one-line title for an entry: first real line of its markdown,
+  // stripped of #/**/bullet markers, truncated.
+  function entryTitle(e){
+    var lines = String(e && e.md != null ? e.md : '').replace(/\r/g,'').split('\n');
+    var line = '';
+    for (var i=0;i<lines.length;i++){ if (lines[i].trim()){ line = lines[i].trim(); break; } }
+    line = line.replace(/^#+\s*/,'').replace(/^[-*+]\s+/,'').replace(/\*\*/g,'').replace(/`/g,'');
+    if (line.length > 56) line = line.slice(0,55) + '…';
+    return line || '(no text)';
+  }
+  function nlKindClass(e){
+    if (e.kind === 'issue') return e.status === 'fixed' ? 'nl-fixed' : 'nl-issue';
+    if (e.kind === 'guide') return 'nl-guide';
+    if (e.kind === 'note')  return 'nl-note';
+    return 'nl-answer';
+  }
+  function nlKindLabel(e){
+    if (e.kind === 'issue') return e.status === 'fixed' ? 'Fixed' : 'Issue';
+    if (e.kind === 'guide') return 'Next step';
+    if (e.kind === 'note')  return 'Note';
+    return 'Answer';
+  }
+  function renderNotifList(){
+    var box = $('notifListItems');
+    if (!answerHist.length){ box.innerHTML = '<div class="nlEmpty">No notifications yet.</div>'; return; }
+    var html = '';
+    for (var i = answerHist.length - 1; i >= 0; i--){      // newest first
+      var e = answerHist[i], kc = nlKindClass(e);
+      var fixedCls = (e.kind === 'issue' && e.status === 'fixed') ? ' nlFixed' : '';
+      html += '<div class="nlRow' + (i === cursor ? ' nlCur' : '') + fixedCls + '" data-i="' + i + '">' +
+                '<span class="nlDot ' + kc + '"></span>' +
+                '<span class="nlKind ' + kc + '">' + nlKindLabel(e) + '</span>' +
+                '<span class="nlTitle">' + esc(entryTitle(e)) + '</span>' +
+                '<span class="nlTime">' + esc(e.t || '') + '</span>' +
+              '</div>';
+    }
+    box.innerHTML = html;
+    [].forEach.call(box.querySelectorAll('.nlRow'), function(r){
+      r.addEventListener('click', function(){ var i = +r.dataset.i; closeNotifList(); if (i !== cursor) renderEntry(i); });
+    });
+  }
+  function openNotifList(){ if (!answerHist.length) return; renderNotifList(); $('notifList').classList.remove('hidden'); $('navList').classList.add('active'); }
+  function closeNotifList(){ $('notifList').classList.add('hidden'); $('navList').classList.remove('active'); }
+  function toggleNotifList(){ if ($('notifList').classList.contains('hidden')) openNotifList(); else closeNotifList(); }
 
   window.XC = {
     /* watch.ps1 drives one card at a time:
@@ -868,40 +984,63 @@
       h.innerHTML = '<div class="phelpHead">In plain English</div>' + safe;
       $('pracBody').scrollTop = $('pracBody').scrollHeight;
     },
+    /* resetNotifs() - wipe the whole notification history so the next pushes start
+       from a clean slate. Used by the demo trigger so every run shows exactly its
+       set, never stacked on top of a previous run. */
+    resetNotifs(){
+      answerHist = [];
+      cursor = -1;
+      $('navNew').classList.remove('show');
+      if (!$('notifList').classList.contains('hidden')) closeNotifList();
+      updateNav();
+    },
     /* setAnswer(md) or setAnswer(md, { kind, id }) - pushes a history entry and
        renders it. meta is optional; with no meta it behaves like before
        (kind 'answer', id 0). */
     setAnswer(md, meta){
+      var atNewest = (cursor >= answerHist.length - 1);   // following live?
       document.body.classList.remove('loading');
       document.body.classList.remove('practice');
       document.body.classList.remove('exercise');
-      var atNewest = (cursor >= history.length - 1);   // following live?
-      history.push({
+      var nowT = $('clock').textContent; if (!nowT || nowT === '--:--'){ nowT = new Date().toTimeString().slice(0,5); }
+      answerHist.push({
         md: md,
         kind: (meta && meta.kind) || 'answer',
         id: (meta && meta.id) || 0,
-        status: 'open'
+        status: 'open',
+        t: nowT
       });
       if (atNewest){
         // auto-advance to the new entry (live)
-        renderEntry(history.length - 1);
+        renderEntry(answerHist.length - 1);
       } else {
         // user is viewing an older entry - don't yank them forward
         updateNav();                       // just refresh the "n / N" count
         $('navNew').classList.add('show'); // subtle hint that something new arrived
       }
+      if (!$('notifList').classList.contains('hidden')) renderNotifList();  // keep the open list live
     },
     /* mark every issue entry with this id as fixed; live-update the badge if shown */
     markFixed(id){
-      for (var i = 0; i < history.length; i++){
-        var e = history[i];
+      for (var i = 0; i < answerHist.length; i++){
+        var e = answerHist[i];
         if (e.kind === 'issue' && e.id === id){
           e.status = 'fixed';
           if (i === cursor) renderBadge(e);   // currently displayed -> live badge swap
         }
       }
+      if (!$('notifList').classList.contains('hidden')) renderNotifList();  // reflect fixed state in the list
     },
     setAnswerLoading(){ document.body.classList.add('loading'); },
+    /* #4 streaming: render a growing PARTIAL answer live as tokens arrive. No history push -
+       the final setAnswer() pushes the real entry + does the full render. Scrolls to follow. */
+    streamAnswer(text){
+      document.body.classList.remove('loading');
+      document.body.classList.remove('practice');
+      document.body.classList.remove('exercise');
+      var b = $('body');
+      if (b){ b.innerHTML = mdToHtml(String(text == null ? '' : text)); b.scrollTop = b.scrollHeight; }
+    },
     setWorkoutBar(show){ $('workoutBar').classList.toggle('hidden', !show); },
     setTime(t){ $('clock').textContent = t; },
     setQuery(q){
@@ -921,6 +1060,7 @@
       try { p = (typeof payloadJson === 'string') ? JSON.parse(payloadJson) : payloadJson; }
       catch(e){ p = {}; }
       p = p || {};
+      setExNavBusy(false);   // next exercise arrived -> re-enable Check/Next
       document.body.classList.remove('loading');
       document.body.classList.remove('practice');
       document.body.classList.add('exercise');
@@ -977,6 +1117,7 @@
       var res = $('exResult');
       res.classList.add('hidden'); res.classList.remove('ok', 'no'); res.innerHTML = '';
       $('exNextBtn').classList.remove('hidden');
+      $('exDeepBtn').classList.add('hidden');   // no result yet -> nothing to go deeper on
       $('exBody').scrollTop = 0;
     },
     /* grade the current exercise:
@@ -987,6 +1128,7 @@
       try { p = (typeof payloadJson === 'string') ? JSON.parse(payloadJson) : payloadJson; }
       catch(e){ p = {}; }
       p = p || {};
+      setExNavBusy(false);   // grade arrived -> re-enable (Next becomes the action)
       var res = $('exResult');
       var ok = !!p.correct;
       res.classList.remove('hidden', 'ok', 'no');
@@ -1006,6 +1148,7 @@
       }
       $('exCheckBtn').classList.add('hidden');
       $('exNextBtn').classList.remove('hidden');
+      $('exDeepBtn').classList.remove('hidden');   // a result is shown -> offer a full deep-dive explanation
       $('exBody').scrollTop = $('exBody').scrollHeight;
     },
     /* close exercise mode - return to the normal answer pill */
@@ -1034,10 +1177,30 @@
   });
   $('navBack').addEventListener('click', () => navTo(cursor - 1));
   $('navFwd').addEventListener('click', () => navTo(cursor + 1));
+  $('navList').addEventListener('click', (e) => { e.stopPropagation(); toggleNotifList(); });
+  $('notifClose').addEventListener('click', (e) => { e.stopPropagation(); closeNotifList(); });
+  // click anywhere outside the list (and not on the list button) closes it
+  document.addEventListener('pointerdown', (e) => {
+    if ($('notifList').classList.contains('hidden')) return;
+    if (e.target.closest('#notifList, #navList')) return;
+    closeNotifList();
+  }, true);
   $('copyBtn').addEventListener('click', () => post({type:'panel', k:'copy'}));
-  $('woDoneBtn').addEventListener('click', () => post({type:'panel', k:'workoutcheck'}));
-  $('woNextBtn').addEventListener('click', () => post({type:'panel', k:'workoutnext'}));
+  $('woDoneBtn').addEventListener('click', () => exNav('workoutcheck'));
+  $('woNextBtn').addEventListener('click', () => exNav('workoutnext'));
   $('closeBtn').addEventListener('click', () => post({type:'panel', k:'close'}));
+  // Resize grip: drag the top-left corner. Post incremental size deltas to the host, which
+  // resizes the form keeping the bottom-right corner anchored. Throttled via rAF so the
+  // drag stays smooth. (Native edge-resize can't work here - the WebView2 covers the form.)
+  (function(){
+    var rz=$('rsz'); if(!rz) return;
+    var on=false, lx=0, ly=0, dw=0, dh=0, pend=false;
+    function flush(){ pend=false; if(dw||dh){ post({type:'panelresize', dw:dw, dh:dh}); dw=0; dh=0; } }
+    rz.addEventListener('pointerdown', function(e){ on=true; lx=e.screenX; ly=e.screenY; try{ rz.setPointerCapture(e.pointerId); }catch(_){} e.preventDefault(); });
+    rz.addEventListener('pointermove', function(e){ if(!on) return; dw += (lx - e.screenX); dh += (ly - e.screenY); lx=e.screenX; ly=e.screenY; if(!pend){ pend=true; requestAnimationFrame(flush); } });
+    function end(e){ if(!on) return; on=false; try{ rz.releasePointerCapture(e.pointerId); }catch(_){} flush(); }
+    rz.addEventListener('pointerup', end); rz.addEventListener('pointercancel', end);
+  })();
   $('explain').addEventListener('click', () => post({type:'panel', k:'explain'}));
   $('defineBtn').addEventListener('click', () => { if (defineTerm) post({type:'panel', k:'define', term: defineTerm}); });
   $('simplifyBtn').addEventListener('click', () => post({type:'panel', k:'simplify'}));
@@ -1060,12 +1223,14 @@
   });
 
   /* exercise wiring */
-  $('exCheckBtn').addEventListener('click', () => post({type:'panel', k:'workoutcheck'}));
-  $('exNextBtn').addEventListener('click', () => post({type:'panel', k:'workoutnext'}));
+  $('exCheckBtn').addEventListener('click', () => exNav('workoutcheck'));
+  $('exDeepBtn').addEventListener('click', () => post({type:'panel', k:'workoutdeep'}));
+  $('exNextBtn').addEventListener('click', () => exNav('workoutnext'));
   $('exEndBtn').addEventListener('click', () => post({type:'panel', k:'workoutend'}));
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (!$('notifList').classList.contains('hidden')){ closeNotifList(); return; }  // Esc closes the list first
     if (document.body.classList.contains('exercise')){ post({type:'panel', k:'workoutend'}); return; }
     if (document.body.classList.contains('practice')){ closePractice(); }
     else { post({type:'panel', k:'close'}); }
