@@ -10,13 +10,23 @@ Built for self-studying finance (Breaking Into Wall Street / IB-style 3-statemen
 
 ## Quick start (Windows 10/11)
 
-1. **Download** this repo — click **Code → Download ZIP**, then unzip it (or `git clone`).
-2. **Double-click `Start Coach.bat`.**
-   - On the first run it asks for your **OpenAI API key** — paste it and press Enter. (Get one at <https://platform.openai.com/api-keys>.)
-   - It then launches the coach: a small floating bar appears at the bottom of your screen.
-3. Open Excel and start working. Click the bar's buttons or just ask out loud / type.
+### Easiest: one-line install (recommended)
+1. Press the **Windows key**, type **PowerShell**, and press **Enter**.
+2. Paste this and press **Enter**:
+   ```
+   irm https://raw.githubusercontent.com/jonahkazam-svg/excel-coach/main/quick-install.ps1 | iex
+   ```
+3. When asked, **paste your OpenAI API key** (get one at <https://platform.openai.com/api-keys>).
 
-That's it. To stop it, click the **✕** on the bar.
+It downloads everything, drops an **Excel Coach** icon on your Desktop, and launches. Run the same line again anytime to update.
+
+*Prefer double-clicking?* Download **`Install Excel Coach.bat`** from this repo and run it — same result.
+
+### Or set it up by hand
+1. **Download** this repo — **Code → Download ZIP**, then unzip (or `git clone`).
+2. **Double-click `Start Coach.bat`** — on first run it asks for your OpenAI API key, then launches.
+
+Then open Excel and start working — click the bar's buttons or just ask. To stop it, click the **✕** on the bar.
 
 ---
 
