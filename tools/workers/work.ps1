@@ -36,10 +36,19 @@ function Build-Recap {
 while(-not $sync.stop){
   if($sync.typedAsk){
     try{
-      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__"); $isWhy=($tq -eq "__WHY__"); $isCheat=($tq -eq "__CHEAT__"); $isDemo=($tq -eq "__DEMO__")
+      $tq=$sync.typedAsk; $sync.typedAsk=""; $tdet=$sync.typedDetail; $isAssist=($tq -eq "__ASSIST__"); $isAudit=($tq -eq "__AUDIT__"); $isKick=($tq -eq "__KICK__"); $isWhy=($tq -eq "__WHY__"); $isCheat=($tq -eq "__CHEAT__"); $isDemo=($tq -eq "__DEMO__"); $isUndo=($tq -eq "__UNDO__")
+      if($isUndo){ $ur=$(if(Get-Command Undo-XlOps -ErrorAction SilentlyContinue){ Undo-XlOps }else{ "Undo isn't available in this build." }); $sync.text=$ur; $sync.askLabel="Undo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; if(-not $sync.mute){ $sync.ttsText=$ur }; continue }
       if($isCheat){ Make-CheatSheet "the concept on this sheet"; continue }
       if($isDemo){ Run-Demo "the concept on this sheet"; continue }   # Demo+practice button: worked example + blank practice on a new tab
+      if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq.Length -lt 42) -and ($tq -match '(?i)^\s*(undo|revert)( (that|it|the last( edit)?|your last( edit)?|that edit|the changes?))?\s*$|^\s*(take that back|put it back|go back)\s*$') -and (Get-Command Undo-XlOps -ErrorAction SilentlyContinue)){
+        $ur=Undo-XlOps; $sync.text=$ur; $sync.askLabel="Undo"; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1; if(-not $sync.mute){ $sync.ttsText=$ur }; continue
+      }
       $isTrace=((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(where (does|do) .*(come|comes) from|trace (cell )?[a-z]{1,3}[0-9]{1,4}|what feeds|how (is|are) .*(calculated|computed|derived)|break (it )?down|walk me back|explain (cell )?[a-z]{1,3}[0-9]{1,4})')); if($isTrace){ $tdet=$true }
+      # DATA-LOCATING questions ("which exact number / what value should X be / where do I get the
+      # starting figure") must go DEEP (strong model + screenshot + reasoning) so the coach actually
+      # HUNTS the sheet for the real number instead of giving generic 'use prior period / pick a plug'
+      # methodology on the cheap tier. This was the "not helpful - won't give me the actual number" bug.
+      $isLocate=((-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(which (exact |specific )?(number|value|figure|amount|cell)|what (exact |specific )?(number|value|figure|amount) (do|should|to)|what should .{0,30}\bbe\b|where (do|does|can) .{0,40}(come|comes|get|find|from)|exact (number|value|figure)|starting (number|value|point|figure|balance)|what.?s the (number|value|figure)|first (beginning|opening|starting))'))   # routes to deep tier (strong model + screenshot) below, but stays CONCISE (not the verbose 'explain in detail' format)
       # FAST Assist routing: quick typed asks / Assist (not "Explain in detail", not an audit/kick/why) go to the fast vision model with a small budget and downscaled images. Everything thorough stays on the heavy model.
       $askFast=((-not $tdet) -and (-not $isAudit) -and (-not $isKick) -and (-not $isWhy))
       if((-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)(how (am i|did i) do|how.s my progress|scorecard|progress report|where do i stand)') -and (Get-Command Build-Scorecard -ErrorAction SilentlyContinue)){
@@ -62,7 +71,7 @@ while(-not $sync.stop){
         Make-Drill $tq
         continue
       }
-      if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
+      if($sync.handsOn -and (-not $isAssist) -and (-not $isAudit) -and (-not $isKick) -and ($tq -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it|format|re-?format|colou?r|colou?r ?code|highlight|shade|bold|italic|underline|border|outline|align|style|clean ?up|organize|organise)\b')){
         $axr=Invoke-XlAction $tq
         if($axr){
           $sync.text=$axr; $sync.isAnswer=$true; $sync.stamp=$sync.stamp+1
@@ -79,8 +88,10 @@ while(-not $sync.stop){
       if(Get-Command CapWin2 -ErrorAction SilentlyContinue){ try{ $exB=CapWin2 "EXCEL"; $coB=CapWin2 "chrome"; if(-not $coB){ $coB=CapWin2 "msedge" }; if(-not $coB){ $coB=CapWin2 "firefox" } }catch{} }
       $aexFg=$false; try{ $afgh=[Win2]::GetForegroundWindow(); $aexFg=[bool](Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $afgh }) }catch{}
       $fbB=$null; if((-not $aexFg) -and (Get-Command Cap -ErrorAction SilentlyContinue)){ try{ Cap $sync.png; $fbB=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sync.png)) }catch{} }
-      $xlA=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xlA=Read-ExcelLive }catch{} }
-      $sysA="You are a sharp, accurate finance and Excel tutor at Breaking Into Wall Street / investment-banking level. Answer the student's question or help with whatever they are doing right now. Work carefully and double-check before answering. Format cleanly with ## headers, **bold** for key terms and the final answer, - bullets, a markdown table (| col | col |) whenever the data is tabular (a comparison, a categorization, or a line-by-line breakdown), and thousands-separated numbers when useful."
+      # AUDIT reads the WHOLE model (cap 1500), not the first 300 cells - otherwise a big 3-statement
+      # model is half-invisible and the audit only catches the top third (the "misses a lot" bug).
+      $xlA=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xlA=Read-ExcelLive 0 $(if($isAudit){1500}else{700}) }catch{} }   # 700 (was 300): a real model's historical/source rows were truncated out, so the coach couldn't find the number being asked about
+      $sysA="You are a sharp, accurate finance and Excel tutor at Breaking Into Wall Street / investment-banking level. Answer the student's question or help with whatever they are doing right now. Work carefully and double-check before answering. GROUND EVERY ANSWER IN THEIR ACTUAL SHEET: when the student asks which number or value to use, what a specific cell should be, or where a figure comes from, SCAN the EXACT cell data and the screenshot, FIND the real figure, and answer with the exact cell reference AND the number (e.g. 'use 4,512 from C32'). Do NOT give generic sourcing methodology ('use the prior-period ending', 'pick a plug', 'use a sensible value') when the number is already somewhere on their sheet - locate it and cite it. If the number genuinely is NOT on the sheet, say so plainly and name the ONE concrete place it should come from and the exact cell to put it in - give ONE decisive answer, never a vague list of options, and never repeat the same non-answer twice. Format cleanly with ## headers, **bold** for key terms and the final answer, - bullets, a markdown table (| col | col |) whenever the data is tabular, and thousands-separated numbers."
       if($isKick){
         $ua="I want a kick-start on the sheet I have open. Look at my Excel and tell me, briefly and directly: what this sheet is asking me to do and the FIRST concrete step to get moving (name the actual starting cell or row from the data). If I have clearly already started, point me at the NEXT step instead. 2-3 sentences, direct and encouraging - do not solve it for me, just get me going."
       } elseif($isWhy){
@@ -104,7 +115,7 @@ while(-not $sync.stop){
       #  FAST tier (Assist, Kick, simple typed Qs) -> cheap fast model ($sync.fastModel, e.g. gpt-5-mini)
       #    answered TEXT-ONLY off the live Excel COM text ($xlA), which is the authoritative ground truth.
       #  DEEP tier (Audit, "Explain in detail", Why) -> frontier model ($sync.model, gpt-5.5) WITH images.
-      $fastTier = ((-not $isAudit) -and (-not $tdet) -and (-not $isWhy))
+      $fastTier = ((-not $isAudit) -and (-not $tdet) -and (-not $isWhy) -and (-not $isLocate))   # a "which exact number" question needs the strong model + screenshot to actually find it
       # Send a screenshot when we need PIXELS: a deep path, OR no live Excel text (e.g. a browser quiz),
       # OR the sheet has a PASTED IMAGE - a screenshot of financials/charts where the data lives in the
       # picture, not cells ($sync.sheetHasImg, set by Read-ExcelLive). Otherwise stay text-only = faster+cheaper.
@@ -127,9 +138,12 @@ while(-not $sync.stop){
       # #3 prompt caching: the big static system prompt is the cacheable prefix (kept first + stable);
       # volatile data (question, Excel text, screenshot) rides in the user message after it.
       $ma=@(@{role='system';content=($sysA+$sync.brain)})+$hm+@(@{role='user';content=$ca})
-      $askModel=$(if($fastTier){ [string]$sync.fastModel }else{ [string]$sync.model })
+      # AUDIT ("Check my sheet") uses the strongest config so it catches subtle errors (sign flips,
+      # broken roll-forwards, circular links): the audit model (AUDIT_MODEL, default the deep model)
+      # at HIGH reasoning effort (AUDIT_EFFORT). Configurable via .env to crank to xhigh / a better model.
+      $askModel=$(if($fastTier){ [string]$sync.fastModel }elseif($isAudit){ [string]$sync.auditModel }else{ [string]$sync.model })
       if($fastTier){ $askTok=700; $askEff=(XW-FastEff $askModel) }
-      else { $askTok=$(if($isAudit){2800}elseif($tdet){2000}elseif($isWhy){1100}else{900}); $askEff=$(if($isAudit){'medium'}else{'low'}) }
+      else { $askTok=$(if($isAudit){4800}elseif($tdet){2000}elseif($isWhy){1100}else{900}); $askEff=$(if($isAudit){[string]$sync.auditEff}else{'low'}) }   # audit needs room to LIST every issue + harder reasoning
       if($askModel -match '^gpt-5'){ $pa=@{ model=$askModel; max_completion_tokens=$askTok; stream=$true; messages=$ma }; if($askEff){ $pa['reasoning_effort']=$askEff }; $pa=($pa | ConvertTo-Json -Depth 12) }
       else { $pa=@{ model=$askModel; max_tokens=$askTok; temperature=0; stream=$true; messages=$ma } | ConvertTo-Json -Depth 12 }
       $abf="$env:TEMP\xc_ask.json"; [IO.File]::WriteAllText($abf,$pa,(New-Object System.Text.UTF8Encoding($false)))
@@ -140,7 +154,7 @@ while(-not $sync.stop){
       $sbuf=New-Object System.Text.StringBuilder; $aerr=$null
       $sync.streamText=""; $sync.streamStamp=[int]$sync.streamStamp+1
       try{
-        & curl.exe -s -N --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf) | ForEach-Object {
+        & curl.exe -s -N --max-time $(if($isAudit){200}else{90}) "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$abf) | ForEach-Object {
           $ln=$_
           if($ln -like 'data: *'){
             $dd=$ln.Substring(6); if($dd -eq '[DONE]'){ return }
@@ -250,7 +264,7 @@ while(-not $sync.stop){
           Make-Drill $txt
           continue
         }
-        if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
+        if($asked -and $sync.handsOn -and ($txt -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it|format|re-?format|colou?r|colou?r ?code|highlight|shade|bold|italic|underline|border|outline|align|style|clean ?up|organize|organise)\b')){
           $axr3=Invoke-XlAction $txt
           if($axr3){
             [void]$askHist.Add(@{q=$txt;a=$axr3}); while($askHist.Count -gt 3){ $askHist.RemoveAt(0) }
@@ -293,7 +307,7 @@ while(-not $sync.stop){
           Make-Drill $chatQ
           continue
         }
-        if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it)\b')){
+        if($isChat -and $sync.handsOn -and ($chatQ -match '(?i)\b(set ?up|build|fill|create|write|put|label|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it|format|re-?format|colou?r|colou?r ?code|highlight|shade|bold|italic|underline|border|outline|align|style|clean ?up|organize|organise)\b')){
           $sync.ackPing=$true; $chatUntil=(Get-Date).AddSeconds(75)
           $axr2=Invoke-XlAction $chatQ
           if($axr2){
@@ -414,7 +428,7 @@ while(-not $sync.stop){
         }
         if($segs.Count -gt 40){ for($i=0;$i -lt ($segs.Count-40);$i++){ Remove-Item $segs[$i].FullName -Force -ErrorAction SilentlyContinue } }
         if(-not $asked -and $txt){ $sync.distillbuf=($sync.distillbuf+" "+$txt).Trim(); $sync.distillCount=$sync.distillCount+1 }
-        if($sync.distillCount -ge 36 -and $sync.distillbuf.Length -gt 120){
+        if($sync.distillCount -ge 20 -and $sync.distillbuf.Length -gt 120){   # v5: distill more often (was 36) so the observed memory fills faster - the inversion is the thesis
           # v3: distill this excerpt into the structured OBSERVED CURRICULUM (drillable concepts),
           # so the run-through can teach exactly what was just watched - any subject.
           if(Get-Command Obs-Observe -ErrorAction SilentlyContinue){ try{ Obs-Observe $sync.distillbuf | Out-Null }catch{} }

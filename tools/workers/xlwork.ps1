@@ -7,17 +7,25 @@ $xwI = '[Dll'+'Import("user'+'32.dll")]'
 $xwSrc = 'using System; using System.Runtime.InteropServices; public class WinX { '+$xwI+' public static extern IntPtr GetForegroundWindow(); }'
 try{ Add-Type $xwSrc -ErrorAction Stop }catch{}
 XLog ("watcher up. Read-ExcelLive loaded: "+[bool](Get-Command Read-ExcelLive -ErrorAction SilentlyContinue))
-$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1; $guideOverviewSheet=""; $lastNudgePub=""
+$lastHash=0; $lastChange=(Get-Date); $stuck=$false; $nudgeT=(Get-Date).AddDays(-1); $seen=@{}; $lastLogged=""; $lastState="OK"; $nullStreak=$false; $hb=(Get-Date); $prevXl=""; $sweptHash=0; $lastCoSave=(Get-Date).AddDays(-1); $guideT=(Get-Date).AddDays(-1); $lastGuideStep=""; $guideHash=-1; $guideOverviewSheet=""; $lastNudgePub=""; $baseGiven=@{}
 while(-not $sync.stop){
  try{
   $sync.wHB=(Get-Date); if(((Get-Date)-$hb).TotalSeconds -ge 120){ $hb=(Get-Date); XLog "heartbeat (alive)" }
   if($sync.paused){ Start-Sleep -Milliseconds 800; continue }
-  $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive }catch{ XLog ("read threw: "+$_.Exception.Message) } }
+  $xl=$null; if(Get-Command Read-ExcelLive -ErrorAction SilentlyContinue){ try{ $xl=Read-ExcelLive 0 600 }catch{ XLog ("read threw: "+$_.Exception.Message) } }   # see more of a real model (was 300) so the ambient check isn't blind below the top third
   if($xl -and $xl.Length -lt 130){ $xl=$null }
   if(-not $xl){ if(-not $nullStreak){ $nullStreak=$true; XLog "Excel read = null (closed or busy) - waiting" }; Start-Sleep -Seconds 3; continue }
   if($nullStreak){ $nullStreak=$false; XLog "Excel readable again" }
   if($sync.demoActive){ Start-Sleep -Seconds 2; continue }
   $sync.lastXl=$xl
+  # PRESET-WORKOUT baseline: the FIRST time we see a given (workbook, sheet), record which cells were
+  # ALREADY filled - that is the provided problem setup, not the student's work. The checker is told
+  # not to flag these (only the cells the student enters/changes after). Stops "it keeps saying the
+  # stuff already in the workout is wrong." Keyed per sheet so each tab gets its own baseline.
+  $curKey=''; try{ if($xl -match "Workbook '([^']+)'.*sheet '([^']+)'"){ $curKey=$Matches[1]+'||'+$Matches[2] } }catch{}
+  if($curKey -and (-not $baseGiven.ContainsKey($curKey))){
+    try{ $ga=New-Object System.Collections.ArrayList; foreach($ln in ($xl -split "`r?`n")){ if($ln -match '^([A-Za-z]{1,3}[0-9]{1,5})\s*='){ [void]$ga.Add($Matches[1]) } }; $baseGiven[$curKey]=(@($ga) -join ' '); XLog ("baseline captured for '"+$curKey+"': "+@($ga).Count+" given cells") }catch{ $baseGiven[$curKey]='' }
+  }
   if(($xl -match "Workbook '([^']+)'") -and ($Matches[1] -ne $sync.lastWb)){
     $sync.lastWb=$Matches[1]
     if($seen.ContainsKey($sync.lastWb)){ $sync.sheetPurpose=[string]$seen[$sync.lastWb] }
@@ -112,10 +120,17 @@ while(-not $sync.stop){
     if($sync.companyCtx){ $uc+=@{type='text';text=[string]$sync.companyCtx} }
     if($les2){ $uc+=@{type='text';text=("Recent lesson context: "+$les2)} }
     if($sync.lastNudge -and $sync.lastNudge -ne "OK"){ $uc+=@{type='text';text=("You last told me: '"+$sync.lastNudge+"'. If I fixed it and nothing else is wrong, reply OK. If it is STILL not fixed, flag it again.")} }
+    # DISMISS TRAINS THE BRAIN: issues the student reviewed and marked NOT errors. A dismiss is
+    # a durable signal - tell the checker to stop raising these AND anything of the same kind,
+    # not just mute the exact text for 20 min. (The 20-min exact-match suppress still applies below.)
+    try{ if($sync.xlDismissed -and $sync.xlDismissed.Count -gt 0){ $dl=@(@($sync.xlDismissed.ToArray()) | Select-Object -Last 8 | ForEach-Object { '- '+[string]$_.text }); if($dl.Count -gt 0){ $uc+=@{type='text';text=("The student REVIEWED and DISMISSED these as NOT errors. Do NOT raise these again, and do NOT flag anything that is the same KIND of issue - they are valid choices, not mistakes:`n"+($dl -join "`n"))} } } }catch{}
+    # PRESET-WORKOUT GIVENS: cells that were already filled when the student opened this workout are
+    # the provided problem setup, NOT their work - never flag them as errors, only use them as inputs.
+    try{ $gv=[string]$baseGiven[$curKey]; if($gv){ if($gv.Length -gt 1400){ $gv=$gv.Substring(0,1400)+" ... (and the other cells that were already filled when I opened this)" }; $uc+=@{type='text';text=("PRESET-WORKOUT GIVENS - these cells were ALREADY filled when I opened this workout, so they are the provided problem setup, NOT my work. NEVER flag any of these as an error; treat them as correct givens and only use them as inputs. ONLY check cells I have entered or changed MYSELF (cells not in this list). Given cells: "+$gv)} } }catch{}
     $uc+=@{type='text';text=("EXACT Excel data:`n"+$xl)}
-    $pay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort="medium"; messages=@(@{role='system';content=("You are a precise, conservative checker and tutor for a finance student rebuilding course models in Excel. Only flag a mistake when you are HIGHLY CONFIDENT it is genuinely and clearly wrong; when unsure, reply exactly OK and say nothing. Never invent or nitpick an error, and never require a method, convention, or step the student has not been shown. Only check work within the student's in-scope course domains; if the sheet is out of scope, reply exactly OK."+[string]$sync.scopeNote+$sync.brain)},@{role='user';content=$uc}) } | ConvertTo-Json -Depth 12
+    $pay=@{ model=$sync.model; max_completion_tokens=3500; reasoning_effort="low"; messages=@(@{role='system';content=("You are a precise, conservative checker and tutor for a finance student rebuilding course models in Excel. Only flag a mistake when you are HIGHLY CONFIDENT it is genuinely and clearly wrong; when unsure, reply exactly OK and say nothing. Never invent or nitpick an error, and never require a method, convention, or step the student has not been shown. Only check work within the student's in-scope course domains; if the sheet is out of scope, reply exactly OK."+[string]$sync.scopeNote+$sync.brain)},@{role='user';content=$uc}) } | ConvertTo-Json -Depth 12
     $bfx="$env:TEMP\xc_xlcheck.json"; [IO.File]::WriteAllText($bfx,$pay,(New-Object System.Text.UTF8Encoding($false)))
-    $rr=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bfx)
+    $rr=& curl.exe -s --max-time 90 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bfx)
     $jj=$null; try{ $jj=$rr|ConvertFrom-Json }catch{}
     if($jj.choices){
       $t=([string]$jj.choices[0].message.content).Trim()
@@ -125,6 +140,12 @@ while(-not $sync.stop){
       elseif($t -match '^\s*OK'){
         if($lastState -ne "OK"){ $lastState="OK"; $lastNudgePub=""; $sync.xlText="OK"; $sync.xlStamp=$sync.xlStamp+1; XLog "cleared (fixed)" }
       } else {
+        # User-dismissed false positives: if this flag matches one the user marked "not an error"
+        # within the last 20 min, do NOT republish it. Snapshot the synchronized list before iterating.
+        $userDis=$false
+        if($sync.xlDismissed){ foreach($d in @($sync.xlDismissed.ToArray())){ if(((Get-Date)-$d.t).TotalMinutes -gt 20){ continue }; if((Get-Command XC-SameIssue -ErrorAction SilentlyContinue) -and (XC-SameIssue $t $d.text)){ $userDis=$true; break } } }
+        if($userDis){ XLog "suppressed (user-dismissed)" }
+        else {
         $sameIssue=$false; if($lastNudgePub){ if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $sameIssue=(XC-SameIssue $t $lastNudgePub) }else{ $sameIssue=($t -eq $lastNudgePub) } }
         $cool=$(if($sameIssue){ 180 }elseif($lastNudgePub){ 150 }else{ 20 })
         if(((Get-Date)-$nudgeT).TotalSeconds -ge $cool){
@@ -132,6 +153,7 @@ while(-not $sync.stop){
           $dupS=$false; if(Get-Command XC-SameIssue -ErrorAction SilentlyContinue){ $dupS=(XC-SameIssue $t $lastLogged) }
           if(-not $dupS){ $lastLogged=$t; if(Get-Command Log-Struggle -ErrorAction SilentlyContinue){ try{ Log-Struggle $t }catch{} } }
         } else { XLog ("suppressed ("+$(if($sameIssue){"same issue, "+$cool+"s"}else{[string]$cool+"s cooldown"})+")") }
+        }
       }
     } elseif($jj.error){ XLog ("API error: "+$jj.error.message) } else { XLog "no API response (timeout?)" }
     if(($mode -eq "sweep") -and (((Get-Date)-$lastCoSave).TotalSeconds -ge 360)){

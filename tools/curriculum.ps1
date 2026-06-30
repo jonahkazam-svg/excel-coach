@@ -111,12 +111,12 @@ function Polish-BuiltSheet($ws,$ops){
     $hdrRow=$null; foreach($row in ($rowCnt.Keys | Sort-Object)){ if($rowCnt[$row] -ge 2){ $hdrRow=$row; break } }
     if($hdrRow){ foreach($o in $ops){ if($o.blank){ continue }; $a=[string]$o.addr; if($a -match '^[A-Za-z]+([0-9]+)$'){ if([int]$Matches[1] -eq $hdrRow){ try{ $hc=$ws.Range($a); $hc.Font.Bold=$true; $hc.Interior.Color=16115420; $hb=$hc.Borders(9); $hb.LineStyle=1; $hb.Weight=2; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($hb) }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($hc) }catch{} } } } }
     $cappedCols=@{}
-    try{ if(($maxCi -ge $minCi) -and ($minCi -ge 1)){ for($cc=$minCi;$cc -le $maxCi;$cc++){ try{ $colObj=$ws.Columns.Item($cc); $colObj.AutoFit(); try{ if($colObj.ColumnWidth -gt 45){ $colObj.ColumnWidth=45; $cappedCols[$cc]=$true } }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($colObj) }catch{} } } }catch{}
+    try{ if(($maxCi -ge $minCi) -and ($minCi -ge 1)){ for($cc=$minCi;$cc -le $maxCi;$cc++){ try{ $colObj=$ws.Columns.Item($cc); [void]$colObj.AutoFit(); try{ if($colObj.ColumnWidth -gt 45){ $colObj.ColumnWidth=45; $cappedCols[$cc]=$true } }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($colObj) }catch{} } } }catch{}
     # long labels in capped columns: wrap the build's OWN cells (never the student's) and fit those rows so nothing truncates
     try{
       $fitRows=@{}
       foreach($o in $ops){ if($o.blank){ continue }; $a=[string]$o.addr; if($a -notmatch '^([A-Za-z]+)([0-9]+)$'){ continue }; $cl=$Matches[1].ToUpper(); $rw=[int]$Matches[2]; $ci2=0; foreach($ch in $cl.ToCharArray()){ $ci2=$ci2*26+([int][char]$ch-64) }; if($cappedCols[$ci2]){ try{ $wc=$ws.Range($a); $wc.WrapText=$true; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($wc) }catch{}; $fitRows[$rw]=$true } }
-      foreach($rw in $fitRows.Keys){ try{ $ro=$ws.Rows.Item([int]$rw); $ro.AutoFit(); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ro) }catch{} }
+      foreach($rw in $fitRows.Keys){ try{ $ro=$ws.Rows.Item([int]$rw); [void]$ro.AutoFit(); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ro) }catch{} }
     }catch{}
   }catch{}
 }
@@ -140,8 +140,17 @@ function Get-XlBook($xl){
   }
   return $null
 }
+# Map a color name (or RRGGBB hex) to an Excel OLE color int (BGR). Returns -1 if unknown.
+function Xc-ColorInt($name){
+  $n=([string]$name).Trim().ToLower().TrimStart('#')
+  $map=@{ yellow=65535; red=255; green=5287936; blue=12611584; orange=49407; gray=14277081; grey=14277081; white=16777215; black=0; purple=10498160; teal=8421376; lightyellow=10092543; lightgreen=13561798; lightblue=15652797; lightred=13551615; pink=13551615 }
+  if($map.ContainsKey($n)){ return [int]$map[$n] }
+  if($n -match '^[0-9a-f]{6}$'){ $r=[Convert]::ToInt32($n.Substring(0,2),16); $g=[Convert]::ToInt32($n.Substring(2,2),16); $b=[Convert]::ToInt32($n.Substring(4,2),16); return ($r + $g*256 + $b*65536) }
+  return -1
+}
 function Apply-XlOps($ops,[switch]$Plan){
-  $written=0; $skipped=0; $sheets=0; $done=""; $failed=@(); $planned=@(); $putUsed=0; $builtOps=New-Object System.Collections.ArrayList
+  $written=0; $skipped=0; $sheets=0; $done=""; $failed=@(); $planned=@(); $putUsed=0; $fmtCount=0; $builtOps=New-Object System.Collections.ArrayList
+  $undoCells=New-Object System.Collections.ArrayList; $undoFmts=New-Object System.Collections.ArrayList; $undoSheets=New-Object System.Collections.ArrayList; $curShName=""   # pre-write snapshot so the Undo/Revert button can restore the sheet to exactly what was there before
   $xl=$null; $wb=$null; $sh=$null
   if(-not $Plan){
     try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ return "Excel is not open - open your workbook first." }
@@ -151,13 +160,14 @@ function Apply-XlOps($ops,[switch]$Plan){
     $ready=$false
     for($w=0;$w -lt 8;$w++){ try{ $sh=$xl.ActiveSheet; $null=$sh.Name; $ready=$true; break }catch{ Start-Sleep -Milliseconds 500 } }
     if(-not $ready){ return "Excel would not let me in (are you editing a cell?) - press Enter or Esc and ask me again." }
+    try{ $curShName=[string]$sh.Name }catch{ $curShName="" }
   }
   foreach($ln in ([string]$ops -split "`r?`n")){
     $l=$ln.Trim(); if(-not $l){ continue }
     if($l -match '^(SET|PUT)\s+([A-Za-z]{1,3}[0-9]{1,5})\s+(.+)$'){
       $op=$Matches[1].ToUpper(); $addr=$Matches[2].ToUpper(); $val=$Matches[3].Trim()
       if($written -ge 80){ $skipped++; continue }
-      if(($op -eq "PUT") -and ($putUsed -ge 15)){ $skipped++; continue }
+      if(($op -eq "PUT") -and ($putUsed -ge 80)){ $skipped++; continue }   # was 15 - too low to overwrite a full statement on a "fill it out" command (undo covers safety)
       if($Plan){ $planned+=($op+" "+$addr+" "+$val); $written++; continue }
       $opOk=$false; $lastErr=""
       for($try=0;$try -lt 6;$try++){
@@ -166,6 +176,9 @@ function Apply-XlOps($ops,[switch]$Plan){
           $cur=$cell.Value2
           $mayWrite=(($op -eq "PUT") -or ($null -eq $cur) -or (([string]$cur) -eq ""))
           if($mayWrite){
+            $oldF=""; try{ $oldF=[string]$cell.Formula }catch{ $oldF="" }
+            $wasEmpty=(($null -eq $cur) -or (([string]$cur) -eq ""))
+            [void]$undoCells.Add(@{ sheet=$curShName; addr=$addr; formula=$oldF; wasEmpty=$wasEmpty })   # remember what was here BEFORE we overwrite it, for Undo
             try{ $cell.Formula=$val }catch{ $cell.Value2=$val }
             if($sync.formatOn){ Format-XlCell $cell $val }
             $written++; if($op -eq "PUT"){ $putUsed++ }; [void]$builtOps.Add(@{addr=$addr;val=$val})
@@ -181,25 +194,123 @@ function Apply-XlOps($ops,[switch]$Plan){
       if($Plan){ $planned+=("SHEET "+$nm); $sheets++; continue }
       $shOk=$false
       for($try=0;$try -lt 3;$try++){
-        try{ $ns=$wb.Worksheets.Add([Type]::Missing,$sh); if($nm){ try{ $ns.Name=$nm }catch{} }; if($sh){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sh) }catch{} }; $sh=$ns; $sheets++; $shOk=$true; $builtOps.Clear(); break }catch{ Start-Sleep -Milliseconds 500 }
+        try{ $ns=$wb.Worksheets.Add([Type]::Missing,$sh); if($nm){ try{ $ns.Name=$nm }catch{} }; if($sh){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sh) }catch{} }; $sh=$ns; try{ $curShName=[string]$sh.Name }catch{}; [void]$undoSheets.Add(@{ name=$curShName }); $sheets++; $shOk=$true; $builtOps.Clear(); break }catch{ Start-Sleep -Milliseconds 500 }
       }
       if(-not $shOk){ $failed+=("sheet '"+$nm+"'") }
     }
     elseif($l -match '^DONE\s*(.*)$'){ $done=$Matches[1].Trim() }
+    elseif($l -match '^FMT\s+([A-Za-z]{1,3}[0-9]{0,5}(?::[A-Za-z]{1,3}[0-9]{0,5})?)\s+(.+)$'){
+      # FMT <cell-or-range> <attrs> - STYLE existing cells (color-code / bold / borders) WITHOUT
+      # changing their values. attrs: bold italic underline center border fill:<color> font:<color>
+      # or a bare color name (= fill). e.g. "FMT A3:E3 bold fill:lightblue", "FMT C7 font:red".
+      $rng=$Matches[1].ToUpper(); $attrs=$Matches[2].Trim()
+      if($Plan){ $planned+=("FMT "+$rng+" "+$attrs); continue }
+      $fOk=$false
+      for($try=0;$try -lt 4;$try++){
+        try{
+          $r=$sh.Range($rng)
+          if($try -eq 0){ try{ $rcells=$r.Cells; if($rcells.Count -le 400){ foreach($fc in $rcells){ $rec=@{ sheet=$curShName; addr=$null; bold=$null; italic=$null; underline=$null; interior=$null; fontColor=$null; halign=$null }; try{ $rec.addr=[string]$fc.Address($false,$false) }catch{}; try{ $rec.bold=$fc.Font.Bold }catch{}; try{ $rec.italic=$fc.Font.Italic }catch{}; try{ $rec.underline=$fc.Font.Underline }catch{}; try{ $rec.interior=$fc.Interior.Color }catch{}; try{ $rec.fontColor=$fc.Font.Color }catch{}; try{ $rec.halign=$fc.HorizontalAlignment }catch{}; if($rec.addr){ [void]$undoFmts.Add($rec) }; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($fc) }catch{} } }; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($rcells) }catch{} }catch{} }   # snapshot existing styling before we restyle, so Undo can put it back
+          foreach($a in ($attrs -split '[ ,;]+')){
+            $lc=$a.Trim().ToLower(); if(-not $lc){ continue }
+            if($lc -eq 'bold'){ try{ $r.Font.Bold=$true }catch{} }
+            elseif($lc -eq 'italic'){ try{ $r.Font.Italic=$true }catch{} }
+            elseif($lc -eq 'underline'){ try{ $r.Font.Underline=$true }catch{} }
+            elseif($lc -eq 'center' -or $lc -eq 'centre'){ try{ $r.HorizontalAlignment=-4108 }catch{} }
+            elseif($lc -eq 'border'){ try{ $bd=$r.Borders; $bd.LineStyle=1; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($bd) }catch{} }
+            elseif($lc -match '^fill[:=](.+)$'){ $ci=Xc-ColorInt $Matches[1]; if($ci -ge 0){ try{ $r.Interior.Color=$ci }catch{} } }
+            elseif($lc -match '^font[:=](.+)$'){ $ci=Xc-ColorInt $Matches[1]; if($ci -ge 0){ try{ $r.Font.Color=$ci }catch{} } }
+            else{ $ci=Xc-ColorInt $lc; if($ci -ge 0){ try{ $r.Interior.Color=$ci }catch{} } }
+          }
+          [void][Runtime.InteropServices.Marshal]::ReleaseComObject($r)
+          $fmtCount++; $fOk=$true; break
+        }catch{ Start-Sleep -Milliseconds 400 }
+      }
+      if(-not $fOk){ $failed+=("FMT "+$rng) }
+    }
   }
-  if((-not $Plan) -and $sync.formatOn -and ($builtOps.Count -gt 0) -and (Get-Command Polish-BuiltSheet -ErrorAction SilentlyContinue)){ try{ Polish-BuiltSheet $sh $builtOps }catch{} }
+  if((-not $Plan) -and $sync.formatOn -and ($builtOps.Count -gt 0) -and (Get-Command Polish-BuiltSheet -ErrorAction SilentlyContinue)){ try{ [void](Polish-BuiltSheet $sh $builtOps) }catch{} }   # [void] so AutoFit/COM return values can't leak into the spoken result ("True True True...")
+  if((-not $Plan) -and ($null -ne $sync.undoStack) -and (($undoCells.Count + $undoFmts.Count + $undoSheets.Count) -gt 0)){
+    try{ [void]$sync.undoStack.Add(@{ t=(Get-Date); label=$done; cells=$undoCells; fmts=$undoFmts; sheets=$undoSheets }); while($sync.undoStack.Count -gt 15){ $sync.undoStack.RemoveAt(0) } }catch{}
+  }
   if(-not $Plan){
     foreach($o in @($sh,$wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
   }
-  if($Plan){ return ("PLAN: ops="+($written+$sheets)+"; done='"+$done+"'") }
+  if($Plan){ return ("PLAN: ops="+($written+$sheets+$fmtCount)+"; done='"+$done+"'") }
   if(-not $done){ $done="Done." }
   $parts=@()
   if($written){ $parts+=("wrote "+$written+" cells") }
+  if($fmtCount){ $parts+=("styled "+$fmtCount+" range(s)") }
   if($sheets){ $parts+=([string]$sheets+" new sheet") }
   if($skipped){ $parts+=("skipped "+$skipped+" non-empty") }
   if($failed.Count -gt 0){ $parts+=("could NOT write "+($failed -join ", ")+" - Excel was busy; ask me to fill those again") }
   if($parts.Count -gt 0){ return ($done+" ("+($parts -join ", ")+")") }
   return $done
+}
+
+# Undo/Revert: COM writes bypass Excel's own Ctrl+Z, so we keep our own snapshot stack
+# (pushed by Apply-XlOps before each write) and restore the most recent one here. One press
+# reverts the coach's whole last edit back to exactly what was on the sheet before it.
+function Undo-XlOps(){
+  if(($null -eq $sync.undoStack) -or ($sync.undoStack.Count -eq 0)){ return "Nothing to undo - I haven't changed your sheet yet." }
+  $xl=$null; try{ $xl=[Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") }catch{ return "Open your workbook in Excel first, then I can undo." }
+  $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { try{ $wb=$xl.ActiveWorkbook }catch{} }
+  if(-not $wb){ return "I can see Excel but cannot reach your workbook - if you are editing a cell, press Enter or Esc, then try undo again." }
+  try{ $wb.Activate() }catch{}
+  $entry=$sync.undoStack[$sync.undoStack.Count-1]
+  $cells=@($entry.cells); $fmts=@($entry.fmts); $sheets=@($entry.sheets)
+  $reverted=0; $cleared=0; $restyled=0; $delSheets=0; $failed=0
+  # 1) restore cell contents (reverse of write order, so a cell touched twice lands on its earliest state)
+  for($i=$cells.Count-1; $i -ge 0; $i--){
+    $c=$cells[$i]
+    try{
+      $ws=$null; try{ $ws=$wb.Worksheets.Item([string]$c.sheet) }catch{}
+      if($null -eq $ws){ $failed++; continue }
+      $rg=$ws.Range([string]$c.addr)
+      if($c.wasEmpty){ try{ [void]$rg.ClearContents() }catch{}; $cleared++ }
+      else { $f=[string]$c.formula; try{ $rg.Formula=$f }catch{ try{ $rg.Value2=$f }catch{} }; $reverted++ }
+      try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($rg) }catch{}
+      try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ws) }catch{}
+    }catch{ $failed++ }
+  }
+  # 2) restore formatting we changed
+  for($i=$fmts.Count-1; $i -ge 0; $i--){
+    $fr=$fmts[$i]
+    try{
+      $ws=$null; try{ $ws=$wb.Worksheets.Item([string]$fr.sheet) }catch{}
+      if($null -eq $ws){ continue }
+      $rg=$ws.Range([string]$fr.addr)
+      if($null -ne $fr.bold){ try{ $rg.Font.Bold=$fr.bold }catch{} }
+      if($null -ne $fr.italic){ try{ $rg.Font.Italic=$fr.italic }catch{} }
+      if($null -ne $fr.underline){ try{ $rg.Font.Underline=$fr.underline }catch{} }
+      if($null -ne $fr.interior){ try{ $rg.Interior.Color=$fr.interior }catch{} }
+      if($null -ne $fr.fontColor){ try{ $rg.Font.Color=$fr.fontColor }catch{} }
+      if($null -ne $fr.halign){ try{ $rg.HorizontalAlignment=$fr.halign }catch{} }
+      $restyled++
+      try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($rg) }catch{}
+      try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ws) }catch{}
+    }catch{}
+  }
+  # 3) delete any sheet the coach created in that edit (suppress the confirm dialog)
+  if($sheets.Count -gt 0){
+    $da=$true; try{ $da=$xl.DisplayAlerts }catch{}
+    try{ $xl.DisplayAlerts=$false }catch{}
+    for($i=$sheets.Count-1; $i -ge 0; $i--){
+      try{ $ws=$wb.Worksheets.Item([string]$sheets[$i].name); $ws.Delete(); $delSheets++; try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ws) }catch{} }catch{}
+    }
+    try{ $xl.DisplayAlerts=$da }catch{}
+  }
+  try{ $sync.undoStack.RemoveAt($sync.undoStack.Count-1) }catch{}
+  foreach($o in @($wb,$xl)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
+  $p=@()
+  if($reverted){ $p+=("restored "+$reverted+" cell"+$(if($reverted -ne 1){"s"})) }
+  if($cleared){ $p+=("cleared "+$cleared+" cell"+$(if($cleared -ne 1){"s"})+" I'd filled") }
+  if($delSheets){ $p+=("removed "+$delSheets+" sheet"+$(if($delSheets -ne 1){"s"})+" I'd added") }
+  if($restyled){ $p+=("reverted styling on "+$restyled+" cell"+$(if($restyled -ne 1){"s"})) }
+  if($failed){ $p+=($failed.ToString()+" couldn't be reached - try undo again") }
+  $left=$sync.undoStack.Count
+  $tail=$(if($left -gt 0){ " ("+$left+" earlier edit"+$(if($left -ne 1){"s"})+" still undoable)" }else{ "" })
+  if($p.Count -eq 0){ return "Nothing to revert from that edit." }
+  return ("Reverted my last edit - "+($p -join ", ")+"."+$tail)
 }
 
 # Cross-workbook company ledger: persist the key figures from a sheet about a
@@ -518,7 +629,12 @@ function Compact-File($path,[int]$keyIndex){
 
 # --- Live Excel reader (shared so the worker runspace can read exact cells too, not just Get-Help) ---
 function ColLetter($n){ $r=""; do { $n--; $r=[string][char]([int][char]'A'+($n%26))+$r; $n=[int][math]::Floor($n/26) } while($n -gt 0); return $r }
-function Read-ExcelLive {
+function Read-ExcelLive($focusRows=0,$maxCells=300){
+  # $focusRows>0 => only emit rows in a band around the ACTIVE cell (its row-6 .. row+$focusRows),
+  # so an action like "finish workout 2" on a huge multi-workout sheet isn't truncated out by the
+  # cell cap. $focusRows=0 (default) = full top-down read. $maxCells = how many non-empty cells to
+  # emit before truncating (default 300 for fast ambient/action reads; the AUDIT passes a much higher
+  # cap so a full model isn't half-invisible to the checker - that under-catch was the big miss).
   $xl=$null; try { $xl=[System.Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application") } catch { return $null }
   if(-not $xl){ return $null }
   $out=$null
@@ -526,18 +642,20 @@ function Read-ExcelLive {
     $wb=$null; if(Get-Command Get-XlBook -ErrorAction SilentlyContinue){ $wb=Get-XlBook $xl } else { $wb=$xl.ActiveWorkbook }; if(-not $wb){ return $null }
     $sh=$wb.ActiveSheet; $ur=$sh.UsedRange
     $rows=[int]$ur.Rows.Count; $cols=[int]$ur.Columns.Count; $r0=[int]$ur.Row; $c0=[int]$ur.Column
-    $rr=[Math]::Min($rows,400); $cc=[Math]::Min($cols,80); if($rr -lt $rows -or $cc -lt $cols){ $ur=$ur.Resize($rr,$cc) }; $rows=$rr; $cols=$cc
+    $rowCap=$(if($maxCells -gt 300){ 800 }else{ 400 })   # let a big-model audit see taller sheets too
+    $rr=[Math]::Min($rows,$rowCap); $cc=[Math]::Min($cols,80); if($rr -lt $rows -or $cc -lt $cols){ $ur=$ur.Resize($rr,$cc) }; $rows=$rr; $cols=$cc
     $act=""; $sel=""; try{ $act=$xl.ActiveCell.Address($false,$false) }catch{}; try{ $sel=$xl.Selection.Address($false,$false) }catch{}
+    $actRow=0; if($focusRows -gt 0 -and $act -match '([0-9]+)$'){ $actRow=[int]$Matches[1] }
     $sb=New-Object System.Text.StringBuilder
     [void]$sb.AppendLine("Workbook '"+$wb.Name+"' sheet '"+$sh.Name+"'. Active cell "+$act+", selection "+$sel+".")
     [void]$sb.AppendLine("Non-empty cells (ADDRESS = value   [formula if any]):")
-    $n=0; $cap=300
+    $n=0; $cap=$maxCells
     if($rows*$cols -eq 1){
       $v=$ur.Value2; $fm=[string]$ur.Formula; $addr=(ColLetter $c0)+$r0
       if($null -ne $v -or $fm){ $ln=$addr+" = "+([string]$v); if($fm.StartsWith("=")){ $ln+="   "+$fm }; [void]$sb.AppendLine($ln); $n=1 }
     } else {
       $vals=$ur.Value2; $forms=$ur.Formula
-      for($i=1;$i -le $rows -and $n -lt $cap;$i++){ for($j=1;$j -le $cols -and $n -lt $cap;$j++){
+      for($i=1;$i -le $rows -and $n -lt $cap;$i++){ if($actRow -gt 0){ $sheetRow=$r0+$i-1; if($sheetRow -lt ($actRow-6) -or $sheetRow -gt ($actRow+$focusRows)){ continue } } for($j=1;$j -le $cols -and $n -lt $cap;$j++){
         $v=$vals.GetValue($i,$j); $fm=$forms.GetValue($i,$j)
         if($null -eq $v -and [string]::IsNullOrEmpty([string]$fm)){ continue }
         $addr=(ColLetter ($c0+$j-1))+($r0+$i-1)

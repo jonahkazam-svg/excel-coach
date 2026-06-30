@@ -103,6 +103,8 @@
   .nl-note{ color:rgba(255,255,255,0.62); } .nlDot.nl-note{ background:rgba(255,255,255,0.5); }
   .nl-answer{ color:#8ab4ff; } .nlDot.nl-answer{ background:#8ab4ff; }
   .nlRow.nlFixed .nlTitle{ color:rgba(255,255,255,0.5); text-decoration:line-through; }
+  .nlX{ flex:0 0 auto; width:18px; text-align:center; opacity:0; cursor:pointer; color:rgba(255,255,255,0.45); font-size:15px; line-height:1; transition:opacity .12s,color .12s; }
+  .nlRow:hover .nlX{ opacity:1; } .nlX:hover{ color:#fff; } .nlRow.nlFixed .nlX{ display:none; }
   .nlEmpty{ padding:16px 12px; color:rgba(255,255,255,0.5); font-size:12.5px; text-align:center; }
 
   /* ---------- status badge (top of body) ---------- */
@@ -935,11 +937,16 @@
                 '<span class="nlKind ' + kc + '">' + nlKindLabel(e) + '</span>' +
                 '<span class="nlTitle">' + esc(entryTitle(e)) + '</span>' +
                 '<span class="nlTime">' + esc(e.t || '') + '</span>' +
+                ((e.kind === 'issue' && e.status !== 'fixed') ? '<span class="nlX" data-dis="' + i + '" title="Not an error - dismiss">&times;</span>' : '') +
               '</div>';
     }
     box.innerHTML = html;
     [].forEach.call(box.querySelectorAll('.nlRow'), function(r){
       r.addEventListener('click', function(){ var i = +r.dataset.i; closeNotifList(); if (i !== cursor) renderEntry(i); });
+    });
+    // "Not an error" dismiss: mark the issue fixed locally + tell the host to stop re-flagging it
+    [].forEach.call(box.querySelectorAll('.nlX'), function(x){
+      x.addEventListener('click', function(ev){ ev.stopPropagation(); var i = +x.dataset.dis, e = answerHist[i]; post({type:'panel', k:'dismississue', term:(e && e.md) || ''}); if(e){ e.status = 'fixed'; } renderNotifList(); });
     });
   }
   function openNotifList(){ if (!answerHist.length) return; renderNotifList(); $('notifList').classList.remove('hidden'); $('navList').classList.add('active'); }

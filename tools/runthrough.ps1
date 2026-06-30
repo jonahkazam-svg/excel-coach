@@ -441,17 +441,24 @@ function Grade-ExcelExercise($exercise,$xl){
       $cell = ''; $expected = $null; $label = ''; $formula = ''
       try{ $cell = [string]$a.cell }catch{}; try{ $expected = $a.expected }catch{}; try{ $label = [string]$a.label }catch{}; try{ $formula = [string]$a.formula }catch{}
       if(-not $cell){ continue }
-      $got = $null
-      if($ws){ try{ $rc = $ws.Range($cell); $got = $rc.Value2; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($rc) }catch{} }
+      $got = $null; $gotF = ''
+      if($ws){ try{ $rc = $ws.Range($cell); $got = $rc.Value2; try{ $gotF = [string]$rc.Formula }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($rc) }catch{} }
       $ok = RT-CellMatch $got $expected
-      [void]$perCell.Add(@{ cell=$cell; got=$got; expected=$expected; ok=$ok; label=$label; formula=$formula })
+      # METHOD grading: a computation answer (its plain-language formula has an arithmetic
+      # operator) must be ENTERED AS A FORMULA in Excel, not hardcoded. A correct number typed
+      # by hand passes the value check but is NOT mastery - real modeling means the cell
+      # recomputes from its inputs. usedFormula = the cell actually holds an =formula.
+      $usedFormula = (([string]$gotF).TrimStart() -match '^=')
+      $needsFormula = (([string]$formula) -match '[\+\-\*/]')
+      $methodOk = ((-not $needsFormula) -or $usedFormula)
+      [void]$perCell.Add(@{ cell=$cell; got=$got; expected=$expected; ok=$ok; methodOk=$methodOk; usedFormula=$usedFormula; needsFormula=$needsFormula; gotFormula=$gotF; label=$label; formula=$formula })
     }
   } catch {} finally {
     foreach($o in @($ws,$wb)){ if($o){ try{ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($o) }catch{} } }
   }
   $cells = @($perCell.ToArray())
   $correct = ($cells.Count -gt 0)
-  foreach($c in $cells){ if(-not $c.ok){ $correct = $false } }
+  foreach($c in $cells){ if(-not ($c.ok -and $c.methodOk)){ $correct = $false } }   # full credit needs the right number AND the formula behind it
   return @{ correct=$correct; perCell=$cells; worked=$worked }
 }
 
@@ -486,7 +493,7 @@ function Mark-ExcelMistakes($exercise, $xl, $perCell){
     if(-not $wb){ return 0 }
     foreach($w in $wb.Worksheets){ try{ if($w.Name -eq 'Workout'){ $ws = $w; break } }catch{} }
     if(-not $ws){ return 0 }
-    $RED = 13552127; $GREEN = 13562310
+    $RED = 13552127; $GREEN = 13562310; $AMBER = 9887999   # amber = right number but typed in by hand (no formula)
     # All notes go in ONE column, 2 to the right of the rightmost used cell, so a note
     # never overwrites a given or answer cell regardless of the AI's layout.
     $maxN = 2
@@ -498,7 +505,10 @@ function Mark-ExcelMistakes($exercise, $xl, $perCell){
       $cell = ''; try{ $cell = ([string]$pc.cell).ToUpper() }catch{}
       if(-not $cell){ continue }
       $ok = $false; try{ $ok = [bool]$pc.ok }catch{}
-      try{ $ac = $ws.Range($cell); $ac.Interior.Color = $(if($ok){ $GREEN }else{ $RED }); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ac) }catch{}
+      $mok = $true; try{ if($null -ne $pc.methodOk){ $mok = [bool]$pc.methodOk } }catch{}
+      $hardcoded = ($ok -and (-not $mok))   # right number, but typed in instead of a formula
+      $col = if($ok -and $mok){ $GREEN } elseif($hardcoded){ $AMBER } else { $RED }
+      try{ $ac = $ws.Range($cell); $ac.Interior.Color = $col; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ac) }catch{}
       $rowN = ($cell -replace '^[A-Za-z]+','')
       if($rowN){
         $note = $noteCol + $rowN
@@ -511,6 +521,12 @@ function Mark-ExcelMistakes($exercise, $xl, $perCell){
           if($fm){ $txt = $txt + '  (' + $fm + ')' }
           RT-SetCell $ws $note $txt
           try{ $cc = $ws.Range($note); try{ $cc.Font.Color = 192 }catch{}; try{ $cc.Font.Italic = $true }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
+        } elseif($hardcoded){
+          $wrong++   # counts as needs-work so the caller's "X to fix" reflects it
+          $fm = ''; try{ $fm = [string]$pc.formula }catch{}
+          $txt = 'right number - build it as a formula' + $(if($fm){ '  (= ' + $fm + ')' }else{ '' })
+          RT-SetCell $ws $note $txt
+          try{ $cc = $ws.Range($note); try{ $cc.Font.Color = 26012 }catch{}; try{ $cc.Font.Italic = $true }catch{}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($cc) }catch{}
         }
       }
     }

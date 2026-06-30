@@ -40,12 +40,12 @@ if(-not $ff){ $bf=Join-Path (Split-Path $PSScriptRoot -Parent) "bin\ffmpeg.exe";
 if(-not $ff){ $ff=(Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
 
 $sync=[hashtable]::Synchronized(@{})
-$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$true; $sync.demoActive=$false; $sync.cancelled=$false; $sync.streamText=""; $sync.streamStamp=0; $sync.sheetHasImg=$false
+$sync.stop=$false; $sync.paused=$false; $sync.stamp=0; $sync.text=""; $sync.lesson=""; $sync.isPaused=$false; $sync.lastNudge=""; $sync.muteMe=$false; $sync.isAnswer=$false; $sync.lessonlog=""; $sync.coaching=$Coaching; $sync.distillbuf=""; $sync.distillCount=0; $sync.micMode=$true; $sync.srcLabel=""; $sync.pcWanted=$false; $sync.ttsText=""; $sync.ttsStop=$false; $sync.ttsVoice=(Read-EnvVal "TTS_VOICE" "onyx"); $sync.ttsMode=(Read-EnvVal "TTS" "openai"); $sync.lastWb=""; $sync.muteSound=$false; $sync.sheetPurpose=""; $sync.typedAsk=""; $sync.typedDetail=$false; $sync.askLabel=""; $sync.ackPing=$false; $sync.ttsBusyUntil=(Get-Date).AddDays(-1); $sync.xlText=""; $sync.xlStamp=0; $sync.formReq=$false; $sync.formText=""; $sync.formStamp=0; $sync.lessonModel=""; $sync.teachOn=$true; $sync.demoActive=$false; $sync.cancelled=$false; $sync.streamText=""; $sync.streamStamp=0; $sync.sheetHasImg=$false; $sync.xlDismissed=[System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList)); $sync.undoStack=[System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList))
 $sync.fishKey=(Read-EnvVal "FISH_API_KEY" ""); $sync.fishVoice=(Read-EnvVal "FISH_VOICE" ""); $sync.chatModel=(Read-EnvVal "CHAT_MODEL" "gpt-4o-mini"); $sync.chatOn=$false; $sync.lastXl=""
 $sync.idReq=$false; $sync.idText=""; $sync.idStamp=0; $sync.handsOn=$true; $sync.company=""; $sync.companyCtx=""; $sync.formatOn=$true; $sync.guideOn=$false; $sync.ttsVol=1.0; $sync.micMute=$true; $sync.woActive=$false; $sync.wHB=(Get-Date)
 if($sync.fishKey){ $sync.ttsMode="fish" }
 $sync.key=(Read-EnvVal "OPENAI_API_KEY" ""); $sync.mic=(Read-EnvVal "MIC_DEVICE" "Microphone (Logitech BRIO)")
-$sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.fastModel=(Read-EnvVal "FAST_MODEL" "gpt-5-mini"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"; $sync.tools=$PSScriptRoot
+$sync.ff=$ff; $sync.model=(Read-EnvVal "WATCH_MODEL" "gpt-5.5"); $sync.fastModel=(Read-EnvVal "FAST_MODEL" "gpt-5-mini"); $sync.auditModel=(Read-EnvVal "AUDIT_MODEL" $sync.model); $sync.auditEff=(Read-EnvVal "AUDIT_EFFORT" "high"); $sync.png=Join-Path $env:TEMP "watch_shot.png"; $sync.segdir=Join-Path $env:TEMP "watch_seg"; $sync.tools=$PSScriptRoot
 $sync.sys="You are a precise, helpful live study tutor for a student doing a Breaking Into Wall Street finance course. Work out what the student is ACTUALLY doing on screen (a quiz, a video, an Excel model, reading, etc.) and help with THAT. Be accurate and conservative: only say something is wrong if you are HIGHLY CONFIDENT and can CLEARLY see the error in the data in front of you - never guess, never invent a mistake, never nitpick. If you are not sure, or it could be a valid alternative method, a different order of steps, or just unfinished work, stay silent and reply EXACTLY: OK. Do NOT introduce or require any method, convention, formula, or step the student has not been shown in their lesson or sheet. Refer to things by their on-screen label/name, not guessed cell coordinates. When you do speak, be clear and explain briefly so they understand. If nothing genuinely needs saying, reply EXACTLY: OK. Format your answer cleanly: a '## ' header when it helps, '**bold**' for key terms and the final answer, '- ' bullets for lists, numbered steps when there is an order, and write numbers with thousands separators like 6,550.0. Well-structured and easy to read."
 if(-not $sync.key -or $sync.key -like '*REPLACE_ME*'){ Write-Host "NO KEY in .env"; exit }
 if(-not $sync.ff){ Write-Host "ffmpeg not found"; exit }
@@ -323,7 +323,7 @@ function Load-PanelSize { try{ $f=(Panel-SizeFile); if(Test-Path $f){ $p=(([stri
 function Save-PanelSize($w,$h){ try{ $d=Split-Path (Panel-SizeFile) -Parent; if(-not(Test-Path $d)){ New-Item -ItemType Directory -Force -Path $d | Out-Null }; [IO.File]::WriteAllText((Panel-SizeFile),([string][int]$w+','+[string][int]$h),(New-Object System.Text.UTF8Encoding($false))) }catch{} }
 # ---- state ----
 $script:collapsed=$true; $script:stripReady=$false; $script:panelReady=$false; $script:pendingAns=$null; $script:pendingLoad=$false; $script:pendingExercise=$null
-$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''; $script:rtSession=$false; $script:userLeft=(Load-StripPos); $script:lastSavedLeft=$script:userLeft; $script:woLastResult=$null; $script:woLastCorrect=$false; $script:woConcept=''; $script:woRung=1; $script:woRungMiss=0; $script:woLadderTop=3; $script:woPendingLadder=$null; $script:woConceptMiss=0; $script:woRecent=@()
+$script:statusText=""; $script:dotState=""; $script:lastTimer=""; $script:t0=(Get-Date); $script:lastXWdog=(Get-Date); $script:curIssue=0; $script:pracList=@(); $script:pracIdx=0; $script:cardHelpBusy=$false; $script:rtCur=$null; $script:woActive=$false; $script:woBusy=$false; $script:woIdx=0; $script:woSeq=0; $script:woNext=$null; $script:woLast=''; $script:rtSession=$false; $script:userLeft=(Load-StripPos); $script:lastSavedLeft=$script:userLeft; $script:woLastResult=$null; $script:woLastCorrect=$false; $script:woConcept=''; $script:woRung=1; $script:woRungMiss=0; $script:woLadderTop=3; $script:woPendingLadder=$null; $script:woConceptMiss=0; $script:woRecent=@(); $script:woMissKind=''
 $script:seen=0; $script:seenStream=0; $script:lastFull=""; $script:idle=$true; $script:baseStatus="Listening to the lesson"; $script:ffFails=0; $script:ffLastTry=(Get-Date); $script:lastHelpQ=""; $script:askBusy=$false; $script:lastActive=(Get-Date); $script:busySince=$null; $script:busyLabel="Thinking"; $script:seenXl=0; $script:xlNudgeShown=$false; $script:seenForm=0; $script:fxCache=@{}; $script:seenId=0; $script:idCache=@{ key=""; json="" }; $script:idPendingKey=""; $script:heardAt=$null; $script:listenState=$false
 # ---- forms ----
 $mkS=New-GlassWebForm (Px 280) (Px 40)
@@ -401,6 +401,63 @@ function Show-Answer($md,$kind='answer',$id=0){
 function Open-Ex($plObj){
   $j = (ConvertTo-Json $plObj -Depth 6)
   if($script:panelReady){ JS $script:wvP ("XC.openExercise("+$j+")") } else { $script:pendingExercise=$j }
+  WO-SaveSession   # crash-resume: persist the in-flight sitting every time an exercise is shown
+}
+# --- Run-through crash-resume: persist the in-flight sitting so a coach restart drops the
+# student back into the exact exercise (topic mastery already persists; this saves the
+# CURRENT exercise + ladder position). Cleared on End; only resumed if recent (<24h). ---
+function WO-SessionPath {
+  $root = Split-Path $PSScriptRoot -Parent; $d = Join-Path $root 'data'
+  if(-not (Test-Path $d)){ try{ New-Item -ItemType Directory -Force -Path $d | Out-Null }catch{} }
+  return (Join-Path $d 'runthrough-session.json')
+}
+function WO-SaveSession {
+  try{
+    if(-not $script:rtCur){ return }
+    $o = @{ rtCur=$script:rtCur; woConcept=[string]$script:woConcept; woRung=[int]$script:woRung; woRungMiss=[int]$script:woRungMiss; woConceptMiss=[int]$script:woConceptMiss; woIdx=[int]$script:woIdx; woSeq=[int]$script:woSeq; woLast=[string]$script:woLast; woRecent=@($script:woRecent); woLadderTop=[int]$script:woLadderTop; savedAt=(Get-Date).ToString('o') }
+    [IO.File]::WriteAllText((WO-SessionPath), ($o | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+  }catch{}
+}
+function WO-ClearSession { try{ $p=WO-SessionPath; if(Test-Path $p){ Remove-Item $p -Force -ErrorAction SilentlyContinue } }catch{} }
+function WO-LoadSession {
+  try{
+    $p = WO-SessionPath; if(-not (Test-Path $p)){ return }
+    $o = (Get-Content $p -Raw) | ConvertFrom-Json
+    if(-not $o -or -not $o.rtCur){ return }
+    $age = 999.0; try{ $age = ((Get-Date)-[datetime]::Parse([string]$o.savedAt)).TotalHours }catch{}
+    if($age -gt 24){ WO-ClearSession; return }   # stale sitting - start fresh
+    $ex = $o.rtCur
+    if(Get-Command RT-NormalizeExercise -ErrorAction SilentlyContinue){ try{ $ex = RT-NormalizeExercise $o.rtCur ([string]$o.rtCur.topicId) ([int]$o.rtCur.level) }catch{} }
+    $script:rtCur = $ex
+    $script:woConcept=[string]$o.woConcept; $script:woRung=[int]$o.woRung; $script:woRungMiss=[int]$o.woRungMiss; $script:woConceptMiss=[int]$o.woConceptMiss
+    $script:woIdx=[int]$o.woIdx; $script:woSeq=[int]$o.woSeq; $script:woLast=[string]$o.woLast
+    try{ $script:woRecent=@($o.woRecent | ForEach-Object { [string]$_ }) }catch{}
+    try{ if($o.woLadderTop){ $script:woLadderTop=[int]$o.woLadderTop } }catch{}
+    $script:rtSession=$true; $script:woActive=$false   # resumes when the student next opens Run-through (existing Start-Workout resume path)
+  }catch{}
+}
+# --- Dismissed-issue persistence (dismiss trains the brain across restarts): a flag the
+# student marks "not an error" is saved and reloaded, so the watcher keeps avoiding it (and
+# similar ones) in future sessions, not just for 20 minutes. ---
+function Dismiss-Path {
+  $root = Split-Path $PSScriptRoot -Parent; $d = Join-Path $root 'data'
+  if(-not (Test-Path $d)){ try{ New-Item -ItemType Directory -Force -Path $d | Out-Null }catch{} }
+  return (Join-Path $d 'dismissed.json')
+}
+function Dismiss-Save {
+  try{
+    if(-not $sync.xlDismissed){ return }
+    $arr = @(@($sync.xlDismissed.ToArray()) | Select-Object -Last 30 | ForEach-Object { @{ text=[string]$_.text; t=([datetime]$_.t).ToString('o') } })
+    [IO.File]::WriteAllText((Dismiss-Path), ($arr | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
+  }catch{}
+}
+function Dismiss-Load {
+  try{
+    $p = Dismiss-Path; if(-not (Test-Path $p)){ return }
+    $a = (Get-Content $p -Raw) | ConvertFrom-Json
+    foreach($it in @($a)){ if(-not $it.text){ continue }; $tt=(Get-Date).AddDays(-1); try{ $tt=[datetime]::Parse([string]$it.t) }catch{}; [void]$sync.xlDismissed.Add(@{ text=[string]$it.text; t=$tt }) }
+    while($sync.xlDismissed.Count -gt 30){ $sync.xlDismissed.RemoveAt(0) }
+  }catch{}
 }
 function Show-PanelLoading {
   Place-PanelHome
@@ -499,10 +556,23 @@ function Shutdown-Coach {
   try{ $strip.Close() }catch{}
 }
 function Handle-Ask($q){
+  # RESOLVE the current watcher nudge by voice/typing: "that's not an error", "dismiss", "it's fine",
+  # "false alarm". Marks the flag dismissed (persisted + fed back so the watcher stops raising it and
+  # similar ones) instead of sending it to the model. The other ways to resolve: the X on the issue
+  # row in the panel, or the dismiss button.
+  if($q -and ($q.Length -lt 46) -and ($q -match "(?i)^\s*(that.?s? ?(not an error|correct|right|fine|ok|good)|not an error|no error|it.?s (fine|right|correct|ok)|dismiss( that| it)?|ignore( that| it)?|leave it( alone)?|false alarm|wrong flag|resolve( that| it)?|mark resolved)\s*\.?\s*$")){
+    if($script:askBusy){ return }
+    $dt=[string]$sync.lastNudge
+    if($dt -and $dt -ne 'OK'){ if($sync.xlDismissed){ [void]$sync.xlDismissed.Add(@{ text=$dt; t=(Get-Date) }); while($sync.xlDismissed.Count -gt 30){ $sync.xlDismissed.RemoveAt(0) }; Dismiss-Save }; $sync.lastNudge='' }
+    $script:xlNudgeShown=$false; $script:idle=$true; Set-Dot '#22c55e' $true; Set-Msg "Got it - dismissed, not an error"; $script:baseStatus="Dismissed - not an error"
+    return
+  }
   if($script:askBusy){ return }
   $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
   JS $script:wvS ("XC.busy(true)")
-  if($q -eq ""){ Set-Msg "Reading your Excel + the lesson..."; $script:lastHelpQ=""; $script:busyLabel="Reading your screen" } else { Set-Msg ("Thinking: "+$q); $script:lastHelpQ=$q; $script:busyLabel="Thinking" }
+  if($q -eq ""){ Set-Msg "Reading your Excel + the lesson..."; $script:lastHelpQ=""; $script:busyLabel="Reading your screen" }
+  elseif($sync.handsOn -and ($q -match '(?i)\b(set ?up|build|fill|create|write|put|insert|add|enter|make|lay ?out|fix|change|update|correct|replace|populate|complete|finish|redo|do it|format|re-?format|colou?r|highlight|style|clean ?up)\b')){ Set-Msg "Building your sheet - careful pass, can take a minute..."; $script:lastHelpQ=$q; $script:busyLabel="Building the sheet" }
+  else { Set-Msg ("Thinking: "+$q); $script:lastHelpQ=$q; $script:busyLabel="Thinking" }
   $script:busySince=(Get-Date)
   Set-Dot '#2563eb' $false
   [System.Windows.Forms.Application]::DoEvents()
@@ -596,6 +666,40 @@ function Explain-Mistake($exercise, $perCell){
   if($j.choices){ $a=[string]$j.choices[0].message.content; if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $a=Clean-Answer $a }; return $a }
   return ""
 }
+# ADAPTIVE TEACHING: diagnose WHY the student missed, not just that they did, so the coach
+# can respond differently to each cause. Returns @{ kind; teach }. kind drives the ladder:
+#   method     - values right, just hardcoded (no AI needed) -> redo as a formula, no penalty
+#   conceptual - wrong idea/method -> scaffold DOWN + re-teach the concept (the "I do")
+#   arithmetic - right method, math slip -> same rung, "just recompute"
+#   sign       - magnitude right, +/- flipped -> same rung, sign rule
+#   reference  - used the wrong input/cell -> same rung, point at the right input
+function Diagnose-Miss($exercise, $perCell){
+  $cells=@($perCell)
+  $wrongVal=@($cells | Where-Object { -not $_.ok })
+  $methodOnly=@($cells | Where-Object { $_.ok -and ($null -ne $_.methodOk) -and (-not $_.methodOk) })
+  # Cheap path: every value is right and only the FORMULA is missing (hardcoded). No AI call.
+  if($wrongVal.Count -eq 0 -and $methodOnly.Count -gt 0){
+    $fm=''; try{ $fm=[string]$methodOnly[0].formula }catch{}
+    return @{ kind='method'; teach=("You have the right number - now build it as a formula (= "+$fm+") so the cell recomputes from its inputs. Getting the answer is good; making Excel DO the calc is the skill that carries into a real model.") }
+  }
+  if($wrongVal.Count -lt 1){ return @{ kind='unknown'; teach='' } }
+  if(-not $sync.key){ return @{ kind='unknown'; teach='' } }
+  $given=""; try{ foreach($g in @($exercise.layout.given)){ $given += [string]$g.label+" = "+[string]$g.value+"; " } }catch{}
+  $miss=""; foreach($pc in $wrongVal){ $miss += "- "+[string]$pc.label+": entered "+[string]$pc.got+", correct = "+[string]$pc.expected+" ("+[string]$pc.formula+")`n" }
+  $sysM="You are a patient finance/Excel tutor diagnosing ONE wrong calculation (an exact grader already confirmed it is wrong). FIRST classify the single most likely cause as exactly one of: conceptual (used the wrong method or idea), arithmetic (right method, slipped on the math), sign (right magnitude but a flipped +/- or subtraction), reference (used the wrong input or cell). THEN teach. Reply EXACTLY one line in this form: KIND: <conceptual|arithmetic|sign|reference> | <2-3 sentences: why their answer is wrong and the correct reasoning, ONLY in terms of the given formula and values - introduce no new method or convention, and do not claim anything else on the sheet is wrong>. Be specific to their numbers, encouraging, plain ASCII."
+  $usr="Question: "+[string]$exercise.prompt+"`nGiven: "+$given+"`nWrong:`n"+$miss
+  $payload=@{ model="gpt-4o-mini"; max_tokens=240; temperature=0.3; messages=@(@{role="system";content=$sysM},@{role="user";content=$usr}) } | ConvertTo-Json -Depth 8
+  $bf="$env:TEMP\xc_diagnose.json"; [IO.File]::WriteAllText($bf,$payload,(New-Object System.Text.UTF8Encoding($false)))
+  $r=& curl.exe -s --max-time 40 "https://api.openai.com/v1/chat/completions" -H ("Authorization: Bearer "+$sync.key) -H "Content-Type: application/json" -d ("@"+$bf)
+  $j=$null; try{ $j=$r|ConvertFrom-Json }catch{}
+  $kind='unknown'; $teach=''
+  if($j.choices){
+    $a=([string]$j.choices[0].message.content).Trim()
+    if($a -match '(?im)^\s*KIND:\s*([A-Za-z]+)\s*\|\s*(.+)$'){ $kind=$Matches[1].ToLower(); $teach=$Matches[2].Trim() } else { $teach=$a }
+    if(Get-Command Clean-Answer -ErrorAction SilentlyContinue){ $teach=Clean-Answer $teach }
+  }
+  return @{ kind=$kind; teach=$teach }
+}
 # FULL teach-from-the-ground-up explanation of the current exercise, on demand ("Go
 # deeper"). Unlike Explain-Mistake (deliberately terse, introduces nothing new), this
 # IS allowed to teach the underlying concept and walk every step - for when the short
@@ -646,6 +750,7 @@ function Gen-WorkoutEx {
     $ex=$null
     if($d.prior){ try{ $ex=Make-Exercise $tid $rg ("v"+$script:woSeq) $d.prior ([string]$d.mode) }catch{} }   # expand or vary, both use the prior
     if(-not $ex){ try{ $ex=Make-Exercise $tid $rg ("v"+$script:woSeq) }catch{} }   # fallback: plain generation
+    if($ex){ try{ $ex.phase=[string]$d.mode }catch{} }   # 'expand' (one step harder) or 'vary' (retry, fresh numbers)
     return $ex
   }
   # PICKER: move to a NEW concept and start a fresh ladder for it.
@@ -665,7 +770,18 @@ function Gen-WorkoutEx {
   $script:woConcept=$topicId; $script:woRung=$lvl; $script:woRungMiss=0; $script:woConceptMiss=0   # new concept -> fresh ladder, starting at the picker's level
   # Difficulty TRACKS mastery + the fresh nonce keeps numbers different each time.
   $ex=$null; try{ $ex=Make-Exercise $topicId $lvl ("v"+$script:woSeq) }catch{}
+  if($ex){ try{ $ex.phase='teach' }catch{} }   # fresh concept from the picker -> teach it first
   return $ex
+}
+# Frame the concept callout as a teach beat: a NEW concept is taught before the first drill;
+# an expansion/retry is labelled so the student knows it builds on what they just did.
+function WO-ConceptText($ex){
+  $c=''; try{ $c=[string]$ex.concept }catch{}
+  $ph=''; try{ $ph=[string]$ex.phase }catch{}
+  if($ph -eq 'teach'){ return ('New concept - learn this, then try it. '+$c).Trim() }
+  elseif($ph -eq 'expand'){ return ('Next step up, building on what you just did. '+$c).Trim() }
+  elseif($ph -eq 'vary'){ return ('Same idea, fresh numbers - try it again. '+$c).Trim() }
+  return $c
 }
 # Re-open the CURRENT run-through exercise's pill view - used to RESUME after the
 # student used another feature (which closes the view). Does NOT re-render the Excel
@@ -676,11 +792,11 @@ function Show-CurrentEx($ex){
   $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
   if([string]$ex.surface -eq 'excel'){
     $ttl=[string]$ex.layout.title; if(-not $ttl){ $ttl='Excel exercise' }
-    $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=('Level '+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
+    $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=('Level '+[string]$ex.level); prompt=[string]$ex.prompt; concept=(WO-ConceptText $ex); scoreboard=(WO-Scoreboard) }
     Open-Ex $pl
   } else {
     $chs=@(); if($ex.choices){ $chs=@($ex.choices | ForEach-Object { [string]$_ }) }
-    $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ 'Concept' }); topicName=$tn; progress=('Level '+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
+    $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ 'Concept' }); topicName=$tn; progress=('Level '+[string]$ex.level); prompt=[string]$ex.prompt; concept=(WO-ConceptText $ex); scoreboard=(WO-Scoreboard) }
     if($chs.Count -ge 2){ $pl['choices']=$chs } else { $pl['answer']=[string]$ex.answer }
     Open-Ex $pl
   }
@@ -714,13 +830,13 @@ function Start-Workout {
     $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true; $script:rtSession=$true
     $ttl=[string]$ex.layout.title; if(-not $ttl){ $ttl="Excel exercise" }
     $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
-    $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
+    $pl=@{ mode='excel'; title=$ttl; topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=(WO-ConceptText $ex); scoreboard=(WO-Scoreboard) }
     Open-Ex $pl
   } else {
     $script:rtCur=$ex; $script:woActive=$true; $sync.woActive=$true; $script:rtSession=$true
     $tn=''; if(Get-Command Get-Curriculum -ErrorAction SilentlyContinue){ try{ foreach($t in (Get-Curriculum)){ if([string]$t.id -eq [string]$ex.topicId){ $tn=[string]$t.topic; break } } }catch{} }
     $chs=@(); if($ex.choices){ $chs=@($ex.choices | ForEach-Object { [string]$_ }) }
-    $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ "Concept" }); topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=[string]$ex.concept; scoreboard=(WO-Scoreboard) }
+    $pl=@{ mode='pill'; title=$(if($tn){ $tn }else{ "Concept" }); topicName=$tn; progress=("Level "+[string]$ex.level); prompt=[string]$ex.prompt; concept=(WO-ConceptText $ex); scoreboard=(WO-Scoreboard) }
     if($chs.Count -ge 2){ $pl['choices']=$chs } else { $pl['answer']=[string]$ex.answer }
     Open-Ex $pl
   }
@@ -749,19 +865,32 @@ function Check-Workout {
   $nw=0; try{ if(Get-Command Mark-ExcelMistakes -ErrorAction SilentlyContinue){ $nw=Mark-ExcelMistakes $script:rtCur $xl $res.perCell } }catch{}
   $tail="`n`nPress **Next exercise** to continue, or **End** to save and exit."
   if($res.correct){
+    $script:woMissKind=''
     $body="Every answer cell checks out - nice work. (Marked green on the sheet.)"
     if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
     JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$true; md=($body+$tail)}) -Depth 6)+")")
   } else {
     $body="Here is what is off:`n"
-    foreach($pc in @($res.perCell)){ if(-not $pc.ok){ $lbl=[string]$pc.label; $body+="`n- "+[string]$pc.cell+$(if($lbl){ " ("+$lbl+")" }else{ "" })+": you have "+[string]$pc.got+", it should be "+[string]$pc.expected } }
-    if([int]$nw -gt 0){ $body+="`n`nI marked the wrong cell(s) **red on the sheet**, with what each should be next to them." }
+    foreach($pc in @($res.perCell)){
+      $lbl=[string]$pc.label; $tag=$(if($lbl){ " ("+$lbl+")" }else{ "" })
+      $pmok=$true; try{ if($null -ne $pc.methodOk){ $pmok=[bool]$pc.methodOk } }catch{}
+      if(-not $pc.ok){ $body+="`n- "+[string]$pc.cell+$tag+": you have "+[string]$pc.got+", it should be "+[string]$pc.expected }
+      elseif(-not $pmok){ $fm=[string]$pc.formula; $body+="`n- "+[string]$pc.cell+$tag+": right number, but you typed it in - enter it as a **formula** (= "+$fm+") so it recalculates from the inputs." }
+    }
+    if([int]$nw -gt 0){ $body+="`n`nOn the sheet: **red** = wrong number, **amber** = right number but typed in (build it as a formula)." }
     if($res.worked){ $body+="`n`n**How it's done:** "+[string]$res.worked }
     # show the comparison immediately, then add the contextual WHY (an AI call)
     JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md=($body+"`n`n_Working out why..._")}) -Depth 6)+")")
     [System.Windows.Forms.Application]::DoEvents()
-    $why=""; try{ $why=Explain-Mistake $script:rtCur $res.perCell }catch{}
-    if($why){ $body+="`n`n**Why:** "+$why }
+    # ADAPTIVE TEACHING: diagnose the cause and lead the explanation by it (this also drives
+    # how the ladder responds below). The 'method' (hardcoded) case needs no AI call.
+    $why=""; $script:woMissKind=''
+    try{ $dg=Diagnose-Miss $script:rtCur $res.perCell; if($dg){ $why=[string]$dg.teach; $script:woMissKind=[string]$dg.kind } }catch{}
+    if(-not $why){ try{ $why=Explain-Mistake $script:rtCur $res.perCell }catch{} }   # fallback
+    if($why){
+      $lead=switch([string]$script:woMissKind){ 'conceptual'{"**Let's rebuild the idea:** "} 'method'{""} 'sign'{"**Watch the sign:** "} 'reference'{"**Check your inputs:** "} 'arithmetic'{"**Just a slip - your method is right:** "} default{"**Why:** "} }
+      $body+="`n`n"+$lead+$why
+    }
     JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$false; md=($body+$tail)}) -Depth 6)+")")
   }
   # ADAPTIVE LADDER: decide the next exercise from THIS result and preload it (so "Next
@@ -783,14 +912,21 @@ function Check-Workout {
         # PASS at the top rung: concept mastered -> move to a new one (regenerated now).
         $script:woPendingLadder=$null; try{ $script:woNext=Gen-WorkoutEx }catch{ $script:woNext=$null }
       }
+    } elseif([string]$script:woMissKind -eq 'method'){
+      # NOT a real miss: the answer was right, only the formula was missing. Don't penalize the
+      # concept or scaffold down - just serve a fresh variation so they redo it AS a formula.
+      $script:woRungMiss=0; $script:woConceptMiss=0
+      $script:woPendingLadder=@{ mode='vary'; concept=[string]$script:woConcept; rung=[int]$script:woRung; prior=$script:rtCur }
+      try{ $script:woNext=Gen-WorkoutEx }catch{ $script:woNext=$null }
     } else {
-      # MISS: the preloaded expansion is wrong -> regenerate. After 3 misses on the SAME concept,
-      # STOP hammering it - move on to a different concept (spaced-rep resurfaces this one later,
-      # at a lower rung). This is the core fix for "same questions on repeat": a concept you keep
-      # failing no longer loops forever at rung 1. Otherwise serve a fresh variation (a 2nd miss
-      # in a row scaffolds down a rung). The gen overlaps the explanation shown below it.
+      # MISS: route by the DIAGNOSED cause. A CONCEPTUAL miss = they don't get the idea, so
+      # scaffold DOWN a rung right away (gentler) - we just showed the worked solution (the
+      # "I do"); the next is an easier fresh variation (the "you do"). An arithmetic/sign/
+      # reference SLIP keeps the same rung (the idea is fine; it was a slip). After 3 misses on
+      # the SAME concept, stop hammering it and move on (spaced-rep resurfaces it later, lower).
       $script:woRungMiss=[int]$script:woRungMiss+1
       $script:woConceptMiss=[int]$script:woConceptMiss+1
+      if([string]$script:woMissKind -eq 'conceptual' -and [int]$script:woRung -gt 1){ $script:woRung=[int]$script:woRung-1; $script:woRungMiss=0 }
       if($script:woConceptMiss -ge 3){
         $script:woConcept=''; $script:woRungMiss=0; $script:woConceptMiss=0; $script:woPendingLadder=$null
         try{ $script:woNext=Gen-WorkoutEx }catch{ $script:woNext=$null }   # picker serves a DIFFERENT concept (avoids recent)
@@ -921,6 +1057,13 @@ function Handle-Act($k){
       Show-PanelLoading
       $sync.askLabel="Demo + practice"; $sync.typedDetail=$false; $sync.typedAsk="__DEMO__"
     }
+    'undo'     {
+      if($script:askBusy){ return }
+      $script:askBusy=$true; $script:idle=$false; $script:lastActive=(Get-Date)
+      JS $script:wvS ("XC.busy(true)")
+      Set-Msg "Reverting my last edit..."; Set-Dot '#2563eb' $false; $script:busySince=(Get-Date); $script:busyLabel="Undo"
+      $sync.askLabel="Undo"; $sync.typedDetail=$false; $sync.typedAsk="__UNDO__"
+    }
     'demo'     { Start-Demo }
     'close'    { Shutdown-Coach }
   }
@@ -929,6 +1072,16 @@ function Handle-Panel($k,$term){
   $script:lastActive=(Get-Date)
   switch($k){
     'close'   { $sync.woActive=$false; try{ $panel.Hide() }catch{} }
+    'dismississue' {
+      # User says a flagged "issue" is a false positive. Record its text so the watcher stops
+      # re-flagging the same thing (auto-released after 20 min), and clear the current nudge.
+      $dt=[string]$term
+      if($dt){
+        if($sync.xlDismissed){ [void]$sync.xlDismissed.Add(@{ text=$dt; t=(Get-Date) }); while($sync.xlDismissed.Count -gt 30){ $sync.xlDismissed.RemoveAt(0) }; Dismiss-Save }
+        if((Get-Command XC-SameIssue -ErrorAction SilentlyContinue) -and (XC-SameIssue $dt $sync.lastNudge)){ $sync.lastNudge="" }
+        $script:xlNudgeShown=$false; if(-not $script:askBusy){ Set-Dot '#22c55e' $true; $script:idle=$true; $script:baseStatus="Dismissed - not an error" }
+      }
+    }
     'copy'    { try{ if($script:lastFull){ [System.Windows.Forms.Clipboard]::SetText($script:lastFull) } }catch{} }
     'copytext' { try{ if($term){ [System.Windows.Forms.Clipboard]::SetText([string]$term) } }catch{} }
     'workoutcheck' { if(Get-Command Check-Workout -ErrorAction SilentlyContinue){ Check-Workout } }
@@ -944,7 +1097,7 @@ function Handle-Panel($k,$term){
       JS $script:wvP ("XC.showExerciseResult("+(ConvertTo-Json (@{correct=$script:woLastCorrect; md=($deep+$tail)}) -Depth 6)+")")
       $script:woBusy=$false
     }
-    'workoutend'   { $script:woActive=$false; $sync.woActive=$false; $script:rtSession=$false; $script:rtCur=$null; $script:woNext=$null; JS $script:wvP ("XC.closeExercise()"); $sb=(WO-Scoreboard); Show-Answer ("Run-through ended - your progress is saved."+$(if($sb){ "  You're at "+$sb+" of the course." }else{ "" })+"  Open the ... menu and pick Run-through any time to keep going.") 'note' 0 }
+    'workoutend'   { $script:woActive=$false; $sync.woActive=$false; $script:rtSession=$false; $script:rtCur=$null; $script:woNext=$null; WO-ClearSession; JS $script:wvP ("XC.closeExercise()"); $sb=(WO-Scoreboard); Show-Answer ("Run-through ended - your progress is saved."+$(if($sb){ "  You're at "+$sb+" of the course." }else{ "" })+"  Open the ... menu and pick Run-through any time to keep going.") 'note' 0 }
     'formulas' {
       $fxKey=[string]$sync.sheetPurpose
       if($fxKey -and $script:fxCache.ContainsKey($fxKey)){ JS $script:wvP ("XC.setFormulas("+$script:fxCache[$fxKey]+")") }
@@ -1100,7 +1253,18 @@ $ui.Add_Tick({
     $script:idle=$false; Set-Dot '#2563eb' $false; Set-Msg "Heard you - thinking..."; JS $script:wvS ("XC.busy(true)")
     if(-not $sync.muteSound){ try{ (New-Object System.Media.SoundPlayer $sync.chime).Play() }catch{} }
   }
-  if($script:askBusy -and $script:busySince){ $es=[int]((Get-Date)-$script:busySince).TotalSeconds; if($es -ge 4){ Set-Msg ($script:busyLabel+"... "+$es+"s") } }
+  if($script:askBusy -and $script:busySince){
+    $es=[int]((Get-Date)-$script:busySince).TotalSeconds
+    # Stuck-ask watchdog: if a request never completes (hung worker / dropped network), auto-release
+    # the busy lock so the UI doesn't stay frozen and block every future Assist. The deep audit
+    # ("Check my sheet") legitimately runs much longer (high reasoning over the whole model), so it
+    # gets a 220s budget; everything else 90s.
+    $stuckLimit=$(if([string]$script:busyLabel -match 'Deep-check|Building the sheet'){300}else{90})
+    if($es -ge $stuckLimit){
+      $script:askBusy=$false; $script:busySince=$null; $script:idle=$true; $sync.typedAsk=""
+      JS $script:wvS ("XC.busy(false)"); Set-Msg "That took too long - please try again"; Set-Dot '#22c55e' $true; $script:baseStatus="Ready"
+    } elseif($es -ge 4){ Set-Msg ($script:busyLabel+"... "+$es+"s") }
+  }
   if($sync.formStamp -gt $script:seenForm){
     $script:seenForm=$sync.formStamp
     $fxItems=@()
@@ -1185,11 +1349,12 @@ $ui.Add_Tick({
 $sync.mute=$true
 $script:statusText="Listening to the lesson"
 $strip.Add_Shown({
+  Dismiss-Load     # reload "not an error" flags so the watcher keeps respecting them across restarts
+  WO-LoadSession   # crash-resume: restore an in-flight run-through sitting (resumes when the student next opens Run-through)
   $ui.Start()
-  if($env:XC_UIPROBE){
-    $pv=@('## PP&E roll-forward','Your **ending PP&E** looks off in cell **C39**.','- Ending PP&E = beginning PP&E + CapEx - depreciation','- **CapEx should exceed depreciation** for a growing company','1. Check **C37** - the beginning balance link','2. Re-add **C38** (CapEx) and subtract **C39** (depreciation)') -join "`n"
-    $script:lastFull=$pv; $script:collapsed=$false; Apply-Strip; Show-Answer $pv; Set-Query "Check my PP&E roll-forward"
-  }
+  # NOTE: the old XC_UIPROBE env-var auto-demo was removed - if that var was ever left set it
+  # stranded a live coach in a fake "PP&E error" demo on every launch. The real demo is the
+  # Demo Coach shortcut (writes act:demo -> Start-Demo), which is explicit and one-shot.
 })
 [void]$strip.ShowDialog()
 try{ $sync.stop=$true; Kill-FF; $rs.Close(); $rsT.Close(); $rsX.Close() }catch{}

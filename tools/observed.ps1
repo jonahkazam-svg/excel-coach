@@ -37,8 +37,33 @@ function Obs-Save($items){
   try{ [IO.File]::WriteAllText($p,$json,(New-Object System.Text.UTF8Encoding($false))) }catch{}
 }
 
+# Memory hygiene: keep the observed store current. Drop concepts that are BOTH stale (not
+# seen in $ttlDays) AND barely reinforced (hits<=1) - one-off mentions from long ago. Then
+# cap to the $maxKeep most relevant (relevance = hits weighted up, age down) so the drill
+# stays on what's recent and repeatedly taught instead of drifting into noise. Never empties
+# the store. Pure local computation. ASCII-only, PS 5.1.
+function Obs-Prune($items, [int]$maxKeep=200, [int]$ttlDays=45){
+  $items=@($items)
+  if($items.Count -le 1){ return $items }
+  $now=(Get-Date)
+  $scored=@()
+  foreach($it in $items){
+    if(-not $it){ continue }
+    $age=999.0; try{ if($it.seenAt){ $age=($now-[datetime]::Parse([string]$it.seenAt)).TotalDays } }catch{ $age=999.0 }
+    $hits=1; try{ $hits=[int]$it.hits }catch{ $hits=1 }
+    $drop=(($age -gt $ttlDays) -and ($hits -le 1))
+    $rel=($hits*10.0) - $age          # more hits keep; older fades
+    $scored += [pscustomobject]@{ it=$it; drop=$drop; rel=$rel }
+  }
+  $kept=@($scored | Where-Object { -not $_.drop })
+  if($kept.Count -eq 0){ $kept=@($scored) }                              # never wipe everything
+  if($kept.Count -gt $maxKeep){ $kept=@($kept | Sort-Object rel -Descending | Select-Object -First $maxKeep) }
+  return @($kept | ForEach-Object { $_.it })
+}
+
 # Merge freshly-distilled concepts into the store: dedupe by normalized title, bump hit
-# count, keep the richer definition/example. Returns the new total count.
+# count, keep the richer definition/example, then prune stale/low-value concepts. Returns
+# the new total count.
 function Obs-Merge($newItems){
   $items=@(Obs-Load)
   $byNorm=@{}; foreach($it in $items){ $k=Obs-NormTitle $it.title; if($k){ $byNorm[$k]=$it } }
@@ -57,6 +82,7 @@ function Obs-Merge($newItems){
       $items+=$obj; $byNorm[$nk]=$obj
     }
   }
+  $items=@(Obs-Prune $items)
   Obs-Save $items
   return @($items).Count
 }
